@@ -19,21 +19,21 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        expire = datetime.utcnow() + timedelta(minutes=30)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
 def create_refresh_token(db: Session, user_id: int) -> str:
     token = jwt.encode(
-        {"sub": str(user_id), "exp": datetime.utcnow() + timedelta(days=30)},
+        {"sub": str(user_id), "exp": datetime.utcnow() + timedelta(days=1)},
         settings.SECRET_KEY,
         algorithm=settings.ALGORITHM
     )
     db_token = RefreshToken(
         token=token,
         user_id=user_id,
-        expires_at=datetime.utcnow() + timedelta(days=30)
+        expires_at=datetime.utcnow() + timedelta(days=1)
     )
     db.add(db_token)
     db.commit()

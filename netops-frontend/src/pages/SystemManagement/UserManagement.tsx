@@ -22,7 +22,7 @@ interface User {
   is_ldap_user: boolean;
   department: string;
   role: string;
-  totp_enabled: boolean;
+  has_2fa: boolean;
   last_login: string;
   created_at: string;
   permissions?: {
@@ -139,7 +139,7 @@ const UserManagement: React.FC = () => {
       department: user.department,
       role: user.role,
       is_active: user.is_active,
-      totp_enabled: user.totp_enabled,
+      has_2fa: user.has_2fa,
       permissions: user.permissions || {}
     });
     
@@ -219,10 +219,10 @@ const UserManagement: React.FC = () => {
     try {
       await request.post('/users/toggle-2fa', {
         username: user.username,
-        enable: !user.totp_enabled
+        enable: !user.has_2fa
       });
       
-      message.success(`${user.totp_enabled ? '禁用' : '启用'}双因素认证成功`);
+      message.success(`${user.has_2fa ? '禁用' : '启用'}双因素认证成功`);
       fetchUsers();
     } catch (error) {
       console.error('更改2FA状态失败:', error);
@@ -296,8 +296,8 @@ const UserManagement: React.FC = () => {
     },
     {
       title: '双因素认证',
-      dataIndex: 'totp_enabled',
-      key: 'totp_enabled',
+      dataIndex: 'has_2fa',
+      key: 'has_2fa',
       render: (enabled: boolean) => (
         <Tag color={enabled ? 'green' : 'orange'}>
           {enabled ? '已启用' : '未启用'}
@@ -336,7 +336,7 @@ const UserManagement: React.FC = () => {
               disabled={record.is_ldap_user}
             />
           </Tooltip>
-          <Tooltip title={record.totp_enabled ? "禁用2FA" : "启用2FA"}>
+          <Tooltip title={record.has_2fa ? "禁用2FA" : "启用2FA"}>
             <Button 
               type="text" 
               icon={<SafetyOutlined />} 
@@ -519,7 +519,7 @@ const UserManagement: React.FC = () => {
             </Form.Item>
             
             <Form.Item
-              name="totp_enabled"
+              name="has_2fa"
               label="启用双因素认证"
               valuePropName="checked"
             >

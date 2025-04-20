@@ -23,7 +23,7 @@ interface User2FA {
   id: number;
   username: string;
   email: string;
-  totp_enabled: boolean;
+  has_2fa: boolean;
   last_login: string;
   created_at: string;
 }
@@ -45,7 +45,7 @@ const TwoFactorAuth: React.FC = () => {
   const fetchUserStatus = async () => {
     try {
       const response = await request.get('users/me');
-      if (response.data.totp_enabled) {
+      if (response.data.has_2fa) {
         setSetupComplete(true);
       }
     } catch (error) {
@@ -303,8 +303,8 @@ const TwoFactorAuth: React.FC = () => {
     },
     {
       title: '双因素认证状态',
-      dataIndex: 'totp_enabled',
-      key: 'totp_enabled',
+      dataIndex: 'has_2fa',
+      key: 'has_2fa',
       render: (enabled: boolean) => (
         <Tag color={enabled ? 'green' : 'red'}>
           {enabled ? '已启用' : '未启用'}
@@ -326,7 +326,7 @@ const TwoFactorAuth: React.FC = () => {
       key: 'action',
       render: (_: any, record: User2FA) => (
         <Space size="middle">
-          {!record.totp_enabled ? (
+          {!record.has_2fa ? (
             <Button
               type="primary"
               icon={<QrcodeOutlined />}
@@ -446,7 +446,7 @@ const TwoFactorAuth: React.FC = () => {
             <Card>
               <Statistic
                 title="已启用2FA"
-                value={users.filter(user => user.totp_enabled).length}
+                value={users.filter(user => user.has_2fa).length}
                 prefix={<SafetyOutlined />}
               />
             </Card>
@@ -455,7 +455,7 @@ const TwoFactorAuth: React.FC = () => {
             <Card>
               <Statistic
                 title="未启用2FA"
-                value={users.filter(user => !user.totp_enabled).length}
+                value={users.filter(user => !user.has_2fa).length}
                 prefix={<LockOutlined />}
               />
             </Card>

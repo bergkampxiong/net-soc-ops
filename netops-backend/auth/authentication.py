@@ -93,8 +93,8 @@ def create_refresh_token(user_id: int, db: Session):
     # 生成随机令牌
     token = secrets.token_urlsafe(32)
     
-    # 设置过期时间（7天）
-    expires_at = (datetime.utcnow() + timedelta(days=7)).isoformat()
+    # 设置过期时间（1天）
+    expires_at = (datetime.utcnow() + timedelta(days=1)).isoformat()
     
     # 创建刷新令牌记录
     refresh_token = RefreshToken(
