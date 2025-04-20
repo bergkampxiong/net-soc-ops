@@ -1,0 +1,111 @@
+.configGenerator {
+  padding: 24px;
+  background-color: #f5f7fa;
+  min-height: 100vh;
+
+  .mainCard {
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    border: none;
+
+    .header {
+      margin-bottom: 24px;
+      border-bottom: 1px solid #edf0f5;
+      padding-bottom: 16px;
+
+      h4 {
+        margin: 0;
+        color: #1a1f36;
+        font-weight: 600;
+      }
+    }
+
+    :global {
+      .ant-card {
+        border-radius: 8px;
+        border: 1px solid #edf0f5;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+        transition: all 0.3s ease;
+
+        &:hover {
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        .ant-card-head {
+          border-bottom: 1px solid #edf0f5;
+          padding: 0 16px;
+          min-height: 48px;
+          font-weight: 500;
+          color: #1a1f36;
+        }
+
+        .ant-card-body {
+          padding: 16px;
+        }
+      }
+
+      .ant-select {
+        .ant-select-selector {
+          border-radius: 6px;
+          border-color: #edf0f5;
+          transition: all 0.3s ease;
+
+          &:hover {
+            border-color: #40a9ff;
+          }
+        }
+      }
+
+      .ant-form-item-label > label {
+        color: #1a1f36;
+        font-weight: 500;
+      }
+
+      .ant-input {
+        border-radius: 6px;
+        border-color: #edf0f5;
+        transition: all 0.3s ease;
+
+        &:hover {
+          border-color: #40a9ff;
+        }
+
+        &:focus {
+          box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
+        }
+      }
+
+      .ant-btn {
+        border-radius: 6px;
+        height: 36px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+
+        &.ant-btn-primary {
+          background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+          border: none;
+          box-shadow: 0 2px 6px rgba(24, 144, 255, 0.2);
+
+          &:hover {
+            background: linear-gradient(135deg, #40a9ff 0%, #1890ff 100%);
+            box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+          }
+        }
+      }
+    }
+  }
+}
+
+:global {
+  .monaco-editor {
+    border: 1px solid #edf0f5;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+
+    &:hover {
+      border-color: #40a9ff;
+    }
+  }
+} 

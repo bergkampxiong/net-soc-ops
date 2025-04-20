@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create Blank Image</title>
+    <script>
+        function createBlankImage(size) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            
+            // 填充蓝色背景
+            ctx.fillStyle = '#1890ff';
+            ctx.fillRect(0, 0, size, size);
+            
+            // 添加文字
+            ctx.fillStyle = 'white';
+            ctx.font = `${size/4}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('NetOps', size/2, size/2);
+            
+            // 转换为图片并下载
+            const dataUrl = canvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = `logo${size}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    </script>
+</head>
+<body>
+    <button onclick="createBlankImage(192)">Create logo192.png</button>
+    <button onclick="createBlankImage(512)">Create logo512.png</button>
+</body>
+</html> 

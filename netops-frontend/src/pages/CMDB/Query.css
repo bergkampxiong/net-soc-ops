@@ -1,0 +1,164 @@
+.cmdb-query-page {
+  padding: 12px;
+}
+
+.cmdb-query-card {
+  margin-bottom: 24px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+
+.cmdb-query-card .ant-card-head {
+  background-color: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.cmdb-query-card .ant-table-thead > tr > th {
+  background-color: #f5f5f5;
+  font-weight: 600;
+  padding: 12px 8px;
+}
+
+.cmdb-query-card .ant-table-tbody > tr:hover > td {
+  background-color: #e6f7ff;
+}
+
+.cmdb-query-card .ant-table-filter-trigger {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.cmdb-query-card .ant-table-filter-trigger.active {
+  color: #1890ff;
+}
+
+.cmdb-query-card .ant-btn {
+  margin-right: 8px;
+}
+
+.cmdb-query-card .ant-tag {
+  margin-right: 0;
+}
+
+/* 表格响应式样式 */
+.cmdb-query-card .ant-table {
+  overflow-x: auto;
+}
+
+.cmdb-query-card .ant-table-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 筛选下拉菜单样式 */
+.ant-table-filter-dropdown {
+  padding: 8px;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.ant-table-filter-dropdown .ant-input {
+  width: 188px;
+  margin-bottom: 8px;
+}
+
+.ant-table-filter-dropdown .ant-btn {
+  margin-right: 8px;
+}
+
+/* CSV导入相关样式 */
+.ant-upload-drag {
+  padding: 24px;
+  border: 2px dashed #d9d9d9;
+  border-radius: 4px;
+  background: #fafafa;
+  text-align: center;
+  transition: border-color 0.3s;
+}
+
+.ant-upload-drag:hover {
+  border-color: #1890ff;
+}
+
+.ant-upload-drag-icon {
+  margin-bottom: 16px;
+  font-size: 48px;
+  color: #1890ff;
+}
+
+.ant-upload-text {
+  margin-bottom: 8px;
+  font-size: 16px;
+  color: rgba(0, 0, 0, 0.85);
+}
+
+.ant-upload-hint {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.csv-template-container {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.csv-template-header {
+  margin-bottom: 16px;
+}
+
+.csv-template-example {
+  margin-top: 24px;
+}
+
+.csv-template-example pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* 响应式布局调整 */
+@media (max-width: 768px) {
+  .cmdb-query-page {
+    padding: 8px;
+  }
+  
+  .cmdb-query-card .ant-table-thead > tr > th {
+    padding: 8px 4px;
+  }
+  
+  .cmdb-query-card .ant-table-tbody > tr > td {
+    padding: 8px 4px;
+  }
+  
+  .cmdb-query-card .ant-btn {
+    padding: 0 8px;
+    font-size: 12px;
+  }
+  
+  .cmdb-query-card .ant-btn > .anticon + span {
+    margin-left: 4px;
+  }
+}
+
+/* 表单样式优化 */
+.ant-modal-body .ant-form-item {
+  margin-bottom: 16px;
+}
+
+.ant-modal-body .ant-form-item-label {
+  padding-bottom: 4px;
+}
+
+/* 表格固定列样式 */
+.ant-table-cell-fix-right {
+  background-color: #fff;
+}
+
+.ant-table-cell-fix-right-first::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  background-color: #f0f0f0;
+} 

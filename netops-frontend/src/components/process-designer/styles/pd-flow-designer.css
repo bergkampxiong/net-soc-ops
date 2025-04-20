@@ -1,0 +1,475 @@
+.pd-flow-designer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: calc(100vh - 64px); /* 减去顶部导航栏高度 */
+  background: #fafafa;
+  position: relative;
+}
+
+.pd-flow-container {
+  flex: 1;
+  display: flex;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #fafafa;
+  overflow: hidden;
+}
+
+.react-flow-wrapper {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: #fafafa;
+}
+
+.react-flow {
+  width: 100% !important;
+  height: 100% !important;
+  background: #ffffff;
+}
+
+.react-flow__container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.react-flow__renderer {
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+}
+
+.react-flow__viewport {
+  width: 100%;
+  height: 100%;
+}
+
+.react-flow__pane {
+  width: 100%;
+  height: 100%;
+}
+
+.react-flow__background {
+  background: #fafafa;
+}
+
+/* 工具栏样式 */
+.pd-toolbar {
+  padding: 12px 24px;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+  z-index: 4;
+}
+
+.pd-toolbar .ant-btn {
+  height: 32px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pd-toolbar .ant-btn .anticon {
+  font-size: 14px;
+}
+
+/* 节点面板样式 */
+.pd-node-panel {
+  width: 220px;
+  height: 100%;
+  padding: 20px;
+  background: #fff;
+  border-right: 1px solid #f0f0f0;
+  overflow-y: auto;
+}
+
+.pd-node {
+  background: #fff;
+  border: 1px solid #e6f4ff;
+  border-radius: 4px;
+  padding: 6px 8px;
+  width: 120px !important;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.pd-node:hover {
+  background: #f0f7ff;
+  border-color: #91caff;
+}
+
+.pd-node.selected {
+  background: #e6f4ff;
+  border-color: #1890ff;
+}
+
+.node-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.node-content .anticon {
+  font-size: 16px !important;
+  color: #1890ff;
+  flex-shrink: 0;
+}
+
+.node-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.node-title {
+  font-size: 12px;
+  color: #1f1f1f;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 连接点样式 */
+.react-flow__handle {
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border: 1px solid #1890ff;
+  border-radius: 50%;
+}
+
+.react-flow__handle-top {
+  top: -4px;
+}
+
+.react-flow__handle-bottom {
+  bottom: -4px;
+}
+
+.react-flow__handle-left {
+  left: -4px;
+}
+
+.react-flow__handle-right {
+  right: -4px;
+}
+
+.react-flow__handle:hover {
+  background: #1890ff;
+}
+
+/* 左侧面板节点样式 */
+.node-item {
+  margin-bottom: 10px;
+  padding: 10px 16px;
+  background: #fff;
+  border: 1px solid #e6f4ff;
+  border-radius: 6px;
+  cursor: grab;
+  user-select: none;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 180px;
+}
+
+.node-item:hover {
+  background: #f0f7ff;
+  border-color: #91caff;
+}
+
+.node-item .anticon {
+  font-size: 26px !important;
+  color: #1890ff;
+  flex-shrink: 0;
+}
+
+.node-item .node-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.node-item .node-title {
+  font-size: 16px;
+  color: #1f1f1f;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 拖拽时的样式 */
+.react-flow__node-default {
+  background: #ffffff;
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+  padding: 12px;
+  width: 180px !important;
+  height: auto !important;
+  cursor: grab;
+}
+
+.react-flow__node-default.dragging {
+  opacity: 0.8;
+  cursor: grabbing;
+}
+
+.react-flow__node-default:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: #1890ff;
+}
+
+.react-flow__node-default.selected {
+  border: 2px solid #1890ff;
+  box-shadow: 0 0 0 4px rgba(24, 144, 255, 0.1);
+}
+
+/* 简化节点类型样式 */
+.pd-node-start,
+.pd-node-end,
+.pd-node-task,
+.pd-node-condition,
+.pd-node-loop,
+.pd-node-device-connect,
+.pd-node-config-deploy,
+.pd-node-command-execute,
+.pd-node-config-backup,
+.pd-node-status-check {
+  border-color: #e6f4ff;
+}
+
+.pd-node-start .anticon,
+.pd-node-end .anticon,
+.pd-node-task .anticon,
+.pd-node-condition .anticon,
+.pd-node-loop .anticon,
+.pd-node-device-connect .anticon,
+.pd-node-config-deploy .anticon,
+.pd-node-command-execute .anticon,
+.pd-node-config-backup .anticon,
+.pd-node-status-check .anticon {
+  color: #1890ff;
+  font-size: 14px;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+/* 边样式 */
+.react-flow__edge {
+  pointer-events: all;
+}
+
+.react-flow__edge-path {
+  stroke: #1890ff;
+  stroke-width: 1.5;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #1890ff;
+  stroke-width: 2;
+}
+
+.react-flow__edge.animated .react-flow__edge-path {
+  stroke-dasharray: 5;
+  animation: dashdraw 0.5s linear infinite;
+}
+
+.react-flow__edge.interactive {
+  cursor: pointer;
+}
+
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: #40a9ff;
+  stroke-width: 2;
+}
+
+.react-flow__edge.selected {
+  z-index: 1;
+}
+
+.react-flow__edge-text {
+  font-size: 12px;
+  fill: #666;
+}
+
+.react-flow__edge-textbg {
+  fill: #fff;
+  stroke: #fff;
+  stroke-width: 3;
+}
+
+/* 控制面板样式 */
+.react-flow__controls {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.react-flow__controls-button {
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  background: #fff;
+  border: none;
+  border-bottom: 1px solid #f0f0f0;
+  color: #595959;
+  transition: all 0.2s ease;
+}
+
+.react-flow__controls-button:hover {
+  background: #f0f7ff;
+  color: #1890ff;
+}
+
+/* 小地图样式 */
+.react-flow__minimap {
+  background: #fff;
+  border: 1px solid #f0f0f0;
+  border-radius: 4px;
+  opacity: 0.8;
+}
+
+.react-flow__attribution {
+  display: none;
+}
+
+/* 节点配置面板样式 */
+.pd-node-config-panel {
+  background: #ffffff;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 16px;
+  width: 300px;
+}
+
+/* 验证面板样式 */
+.pd-validation-panel {
+  background: #ffffff;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 16px;
+  width: 300px;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #fafafa;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #e8e8e8;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #d9d9d9;
+}
+
+.pd-node-card {
+  background: #fff;
+  border: 1px solid #e6f4ff;
+  border-radius: 4px;
+  width: 120px;
+}
+
+.pd-node-card:hover {
+  background: #f0f7ff;
+  border-color: #91caff;
+}
+
+.pd-node-card .ant-card-body {
+  padding: 6px 8px;
+}
+
+.pd-node-desc {
+  display: none;
+}
+
+@keyframes dashdraw {
+  from {
+    stroke-dashoffset: 10;
+  }
+}
+
+.pd-device-connect-node {
+  width: 120px;
+  padding: 6px 8px;
+  background: #fff;
+  border: 1px solid #e6f7ff;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.pd-device-connect-node:hover {
+  border-color: #91d5ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.pd-device-connect-node.selected {
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.pd-device-connect-node .node-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pd-device-connect-node .node-content .anticon {
+  font-size: 14px;
+  color: #1890ff;
+}
+
+.pd-device-connect-node .node-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: normal;
+  color: rgba(0, 0, 0, 0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pd-device-connect-node .ant-form {
+  margin-top: 8px;
+}
+
+.pd-device-connect-node .ant-form-item {
+  margin-bottom: 8px;
+}
+
+.pd-device-connect-node .ant-form-item-label {
+  padding: 0;
+}
+
+.pd-device-connect-node .ant-form-item-label > label {
+  color: rgba(0, 0, 0, 0.65);
+  font-size: 12px;
+  height: 20px;
+}
+
+.pd-device-connect-node .ant-select {
+  font-size: 12px;
+}
+
+.pd-device-connect-node .ant-select-selection-item {
+  line-height: 20px;
+} 

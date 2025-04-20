@@ -1,0 +1,46 @@
+.pd-process-list {
+  padding: 24px;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.pd-process-list-header {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.pd-process-list .ant-table {
+  background: #fff;
+}
+
+.pd-process-list .ant-table-thead > tr > th {
+  background: #fafafa;
+  font-weight: 500;
+}
+
+.pd-process-list .ant-table-tbody > tr:hover > td {
+  background: #f0f7ff;
+  cursor: pointer;
+}
+
+.pd-process-list .ant-table-tbody > tr.ant-table-row-selected > td {
+  background: #e6f4ff;
+}
+
+.pd-process-list .ant-btn-link {
+  padding: 4px 8px;
+}
+
+.pd-process-list .ant-modal-body {
+  padding: 24px;
+}
+
+.pd-process-list .ant-form-item {
+  margin-bottom: 16px;
+}
+
+.pd-process-list .ant-input-textarea {
+  min-height: 100px;
+} 

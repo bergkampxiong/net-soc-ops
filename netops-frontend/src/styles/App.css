@@ -1,0 +1,281 @@
+.app {
+  text-align: center;
+}
+
+.app-logo {
+  height: 40px;
+  pointer-events: none;
+}
+
+.app-header {
+  background-color: #282c34;
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+  color: white;
+}
+
+.app-link {
+  color: #61dafb;
+}
+
+/* 登录页样式 */
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background: linear-gradient(135deg, #1890ff 0%, #001529 100%);
+}
+
+.login-form {
+  width: 380px;
+  padding: 30px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.login-form-title {
+  text-align: center;
+  margin-bottom: 30px;
+  font-size: 24px;
+  color: #001529;
+}
+
+.login-form-button {
+  width: 100%;
+}
+
+/* 全局样式 */
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 布局样式 */
+.site-layout {
+  min-height: 100vh;
+}
+
+.logo {
+  height: 64px;
+  line-height: 64px;
+  color: white;
+  font-size: 20px;
+  font-weight: bold;
+  text-align: center;
+  overflow: hidden;
+}
+
+.site-layout-background {
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.trigger {
+  padding: 0 24px;
+  font-size: 18px;
+  line-height: 64px;
+  cursor: pointer;
+  transition: color 0.3s;
+}
+
+.trigger:hover {
+  color: #1890ff;
+}
+
+.content-container {
+  margin: 24px;
+  padding: 24px;
+  background: #fff;
+  min-height: 280px;
+}
+
+.page-container {
+  overflow-y: auto;
+}
+
+/* 页面头部样式 */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.page-header h2 {
+  margin: 0;
+}
+
+/* 系统管理页面样式 */
+.system-management .ant-tabs-nav {
+  width: 200px;
+}
+
+.system-management .ant-tabs-content-holder {
+  padding-left: 24px;
+  border-left: 1px solid #f0f0f0;
+}
+
+.user-management .page-header,
+.ldap-config .page-header,
+.audit-logs .page-header,
+.security-settings .page-header,
+.two-factor-auth .page-header {
+  margin-top: 0;
+}
+
+/* 表格操作按钮样式 */
+.table-actions .ant-btn {
+  margin-right: 8px;
+}
+
+/* 表单样式 */
+.ant-form-item-label {
+  font-weight: 500;
+}
+
+/* 卡片样式 */
+.ant-card {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* 标签样式 */
+.ant-tag {
+  margin-right: 8px;
+}
+
+/* 步骤条样式 */
+.steps-content {
+  margin-top: 16px;
+}
+
+/* 响应式样式 */
+@media (max-width: 768px) {
+  .system-management .ant-tabs-nav {
+    width: auto;
+  }
+  
+  .system-management .ant-tabs-content-holder {
+    padding-left: 0;
+    border-left: none;
+  }
+}
+
+/* 全局表格样式 */
+.ant-table-thead > tr > th {
+  background-color: #fafafa;
+  font-weight: 600;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background-color: #f0f7ff;
+}
+
+/* 全局按钮样式 */
+.ant-btn {
+  border-radius: 4px;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.015);
+}
+
+.ant-btn-primary {
+  background: linear-gradient(90deg, #1890ff, #52c41a);
+  border: none;
+  box-shadow: 0 2px 6px rgba(24, 144, 255, 0.3);
+}
+
+.ant-btn-primary:hover {
+  background: linear-gradient(90deg, #40a9ff, #73d13d);
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.5);
+}
+
+/* 全局进度条样式 */
+.ant-progress-bg {
+  background: linear-gradient(90deg, #1890ff, #52c41a);
+}
+
+/* 全局列表样式 */
+.ant-list-item {
+  transition: all 0.3s;
+  border-radius: 4px;
+}
+
+.ant-list-item:hover {
+  background-color: #f0f7ff;
+}
+
+/* 全局统计数字样式 */
+.ant-statistic-title {
+  font-weight: 500;
+}
+
+.ant-statistic-content-value {
+  font-weight: 600;
+}
+
+/* CMDB样式 */
+.cmdb-container {
+  padding: 20px;
+}
+
+.cmdb-card {
+  margin-bottom: 20px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.cmdb-dashboard {
+  margin-top: 20px;
+}
+
+.cmdb-query-container,
+.cmdb-discovery-container,
+.cmdb-inventory-container {
+  padding: 20px;
+}
+
+/* 表格样式 */
+.cmdb-table {
+  margin-top: 16px;
+}
+
+/* 表单样式 */
+.cmdb-form {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* 详情页样式 */
+.cmdb-detail {
+  background: #fff;
+  padding: 24px;
+  margin-bottom: 24px;
+  border-radius: 2px;
+}
+
+/* 统计卡片样式 */
+.cmdb-stat-card {
+  height: 180px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.cmdb-stat-card .ant-card-head {
+  min-height: 48px;
+}
+
+.cmdb-stat-card .ant-statistic-title {
+  font-size: 14px;
+}
+
+.cmdb-stat-card .ant-statistic-content {
+  font-size: 24px;
+} 

@@ -1,0 +1,164 @@
+warning: in the working copy of 'netops-frontend/src/pages/rpa/atomic-components/config-management/index.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'netops-frontend/src/utils/sessionManager.ts', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/netops-backend/services/config_management_service.py b/netops-backend/services/config_management_service.py[m
+[1mindex 05c7f4e..0832218 100644[m
+[1m--- a/netops-backend/services/config_management_service.py[m
+[1m+++ b/netops-backend/services/config_management_service.py[m
+[36m@@ -116,17 +116,15 @@[m [mclass ConfigManagementService:[m
+         try:[m
+             db_config = self._get_db_config(config_id)[m
+             if db_config:[m
+[31m-                # 将template_type映射到type字段，只保留数据库模型中存在的字段[m
+[32m+[m[32m                # 将配置数据转换为字典[m
+                 config_dict = config.dict()[m
+                 [m
+                 # 只更新数据库模型中存在的字段[m
+                 allowed_fields = ['name', 'type', 'content', 'description', 'device_type', 'status'][m
+                 for key, value in config_dict.items():[m
+                     if key in allowed_fields:[m
+[31m-                        if key == 'template_type':[m
+[31m-                            setattr(db_config, 'type', value)[m
+[31m-                        else:[m
+[31m-                            setattr(db_config, key, value)[m
+[32m+[m[32m                        setattr(db_config, key, value)[m
+[32m+[m[41m                [m
+                 db_config.updated_at = datetime.utcnow()[m
+                 self.db.commit()[m
+                 self.db.refresh(db_config)[m
+[36m@@ -135,11 +133,11 @@[m [mclass ConfigManagementService:[m
+                 return ConfigFile([m
+                     id=str(db_config.id),[m
+                     name=db_config.name,[m
+[31m-                    template_type=db_config.type,[m
+[32m+[m[32m                    type=db_config.type,[m
+                     content=db_config.content,[m
+                     description=db_config.description,[m
+[31m-                    status=db_config.status,  # 使用数据库中的实际状态[m
+[31m-                    device_type=db_config.device_type,  # 使用数据库中的实际设备类型[m
+[32m+[m[32m                    status=db_config.status,[m
+[32m+[m[32m                    device_type=db_config.device_type,[m
+                     tags=config_dict.get('tags', []),[m
+                     created_at=db_config.created_at,[m
+                     updated_at=db_config.updated_at,[m
+[1mdiff --git a/netops-frontend/src/pages/rpa/atomic-components/config-management/index.tsx b/netops-frontend/src/pages/rpa/atomic-components/config-management/index.tsx[m
+[1mindex 1645a4c..77cda0d 100644[m
+[1m--- a/netops-frontend/src/pages/rpa/atomic-components/config-management/index.tsx[m
+[1m+++ b/netops-frontend/src/pages/rpa/atomic-components/config-management/index.tsx[m
+[36m@@ -12,7 +12,7 @@[m [mconst { Option } = Select;[m
+ interface ConfigFile {[m
+   id: string;[m
+   name: string;[m
+[31m-  type: string;[m
+[32m+[m[32m  template_type: string;[m
+   content: string;[m
+   created_at: string;[m
+   updated_at: string;[m
+[36m@@ -77,8 +77,8 @@[m [mconst ConfigManagement: React.FC = () => {[m
+     },[m
+     {[m
+       title: '配置类型',[m
+[31m-      dataIndex: 'type',[m
+[31m-      key: 'type',[m
+[32m+[m[32m      dataIndex: 'template_type',[m
+[32m+[m[32m      key: 'template_type',[m
+       render: (type) => ([m
+         <Tag color={[m
+           type === 'jinja2' ? 'blue' :[m
+[36m@@ -136,7 +136,7 @@[m [mconst ConfigManagement: React.FC = () => {[m
+     form.resetFields();[m
+     setCurrentType('jinja2');[m
+     form.setFieldsValue({ [m
+[31m-      type: 'jinja2',[m
+[32m+[m[32m      template_type: 'jinja2',[m
+       device_type: 'cisco_ios',[m
+       status: 'draft'[m
+     });[m
+[36m@@ -145,10 +145,10 @@[m [mconst ConfigManagement: React.FC = () => {[m
+ [m
+   const handleEdit = (record: ConfigFile) => {[m
+     setEditingConfig(record);[m
+[31m-    setCurrentType(record.type);[m
+[32m+[m[32m    setCurrentType(record.template_type);[m
+     form.setFieldsValue({[m
+       name: record.name,[m
+[31m-      type: record.type,[m
+[32m+[m[32m      template_type: record.template_type,[m
+       device_type: record.device_type,[m
+       content: record.content,[m
+       status: record.status[m
+[36m@@ -191,7 +191,7 @@[m [mconst ConfigManagement: React.FC = () => {[m
+   const handleSubmit = async (values: any) => {[m
+     try {[m
+       // 如果是作业配置，验证JSON格式[m
+[31m-      if (values.type === 'job') {[m
+[32m+[m[32m      if (values.template_type === 'job') {[m
+         try {[m
+           const jobConfig = JSON.parse(values.content);[m
+           if (!jobConfig.name || !Array.isArray(jobConfig.steps)) {[m
+[36m@@ -210,24 +210,32 @@[m [mconst ConfigManagement: React.FC = () => {[m
+         }[m
+       }[m
+ [m
+[31m-      const configData: Partial<ConfigFile> = {[m
+[31m-        name: values.name,[m
+[31m-        type: values.type,[m
+[31m-        content: values.content,[m
+[31m-        device_type: values.device_type,[m
+[31m-        status: values.status || 'draft'[m
+[31m-      };[m
+[31m-[m
+       if (editingConfig) {[m
+         // 更新配置[m
+[31m-        await request.put(`/api/config/files/${editingConfig.id}`, configData);[m
+[32m+[m[32m        const response = await request.put(`/api/config/files/${editingConfig.id}`, {[m
+[32m+[m[32m          name: values.name,[m
+[32m+[m[32m          template_type: values.template_type,[m
+[32m+[m[32m          content: values.content,[m
+[32m+[m[32m          device_type: values.device_type,[m
+[32m+[m[32m          status: values.status || 'draft',[m
+[32m+[m[32m          description: values.description || null,[m
+[32m+[m[32m          tags: values.tags || [][m
+[32m+[m[32m        });[m
+         message.success('更新成功');[m
+         setConfigs(configs.map(config => [m
+[31m-          config.id === editingConfig.id ? { ...config, ...configData } : config[m
+[32m+[m[32m          config.id === editingConfig.id ? response.data : config[m
+         ));[m
+       } else {[m
+         // 创建新配置[m
+[31m-        const response = await request.post('/api/config/files', configData);[m
+[32m+[m[32m        const response = await request.post('/api/config/files', {[m
+[32m+[m[32m          name: values.name,[m
+[32m+[m[32m          template_type: values.template_type,[m
+[32m+[m[32m          content: values.content,[m
+[32m+[m[32m          device_type: values.device_type,[m
+[32m+[m[32m          status: values.status || 'draft',[m
+[32m+[m[32m          description: values.description || null,[m
+[32m+[m[32m          tags: values.tags || [][m
+[32m+[m[32m        });[m
+         setConfigs([...configs, response.data]);[m
+         message.success('创建成功');[m
+       }[m
+[36m@@ -247,7 +255,7 @@[m [mconst ConfigManagement: React.FC = () => {[m
+ [m
+   const filteredConfigs = configs.filter(config => {[m
+     const matchesSearch = config.name.toLowerCase().includes(searchText.toLowerCase());[m
+[31m-    const matchesType = selectedType === 'all' || config.type === selectedType;[m
+[32m+[m[32m    const matchesType = selectedType === 'all' || config.template_type === selectedType;[m
+     return matchesSearch && matchesType;[m
+   });[m
+ [m
+[36m@@ -316,7 +324,7 @@[m [mconst ConfigManagement: React.FC = () => {[m
+           layout="vertical"[m
+           onFinish={handleSubmit}[m
+           initialValues={{[m
+[31m-            type: 'jinja2',[m
+[32m+[m[32m            template_type: 'jinja2',[m
+             device_type: 'cisco_ios',[m
+             status: 'draft'[m
+           }}[m
+[36m@@ -330,7 +338,7 @@[m [mconst ConfigManagement: React.FC = () => {[m
+           </Form.Item>[m
+ [m
+           <Form.Item[m
+[31m-            

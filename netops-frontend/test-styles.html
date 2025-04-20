@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetOps全局样式测试</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/antd@5.14.2/dist/reset.css">
+    <link rel="stylesheet" href="src/styles/global.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="page-container">
+        <h2>NetOps全局样式测试</h2>
+        
+        <div class="section-container">
+            <h3>卡片样式</h3>
+            <div class="card-grid">
+                <div class="card-container" style="padding: 20px;">
+                    <h4>基本卡片</h4>
+                    <p>这是一个基本卡片，悬停时会有阴影和上移效果。</p>
+                </div>
+                
+                <div class="stat-card" style="padding: 20px;">
+                    <h4>统计卡片</h4>
+                    <p>这是一个统计卡片，用于显示数据统计信息。</p>
+                    <div style="font-size: 24px; font-weight: bold; color: #1890ff;">256</div>
+                </div>
+                
+                <div class="chart-card" style="padding: 20px;">
+                    <h4>图表卡片</h4>
+                    <p>这是一个图表卡片，用于显示图表。</p>
+                    <div style="height: 100px; background-color: #f0f2f5; border-radius: 4px;"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section-container">
+            <h3>表格样式</h3>
+            <div class="card-container" style="padding: 20px;">
+                <table class="custom-table" style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr>
+                            <th style="padding: 12px; text-align: left; border-bottom: 1px solid #f0f0f0;">名称</th>
+                            <th style="padding: 12px; text-align: left; border-bottom: 1px solid #f0f0f0;">IP地址</th>
+                            <th style="padding: 12px; text-align: left; border-bottom: 1px solid #f0f0f0;">类型</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td style="padding: 12px; border-bottom: 1px solid #f0f0f0;">Core-Router-01</td>
+                            <td style="padding: 12px; border-bottom: 1px solid #f0f0f0;">192.168.1.1</td>
+                            <td style="padding: 12px; border-bottom: 1px solid #f0f0f0;">路由器</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 12px; border-bottom: 1px solid #f0f0f0;">Switch-Floor3-01</td>
+                            <td style="padding: 12px; border-bottom: 1px solid #f0f0f0;">192.168.1.10</td>
+                            <td style="padding: 12px; border-bottom: 1px solid #f0f0f0;">交换机</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="section-container">
+            <h3>按钮样式</h3>
+            <div class="card-container" style="padding: 20px;">
+                <button class="ant-btn" style="margin-right: 8px; padding: 4px 15px; background-color: #1890ff; color: white; border: none; cursor: pointer;">主要按钮</button>
+                <button class="ant-btn" style="margin-right: 8px; padding: 4px 15px; background-color: white; color: #1890ff; border: 1px solid #1890ff; cursor: pointer;">次要按钮</button>
+                <button class="ant-btn" style="padding: 4px 15px; background-color: #ff4d4f; color: white; border: none; cursor: pointer;">危险按钮</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html> 
