@@ -47,12 +47,12 @@ class SessionManager {
     try {
       await request.post('/auth/logout');
       localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('refresh_token');
       window.location.href = '/login';
     } catch (error) {
       console.error('登出失败:', error);
       localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('refresh_token');
       window.location.href = '/login';
     }
   }

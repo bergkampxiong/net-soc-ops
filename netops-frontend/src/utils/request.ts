@@ -99,7 +99,7 @@ request.interceptors.response.use(
     const originalRequest = error.config;
     
     // 如果是401错误且不是刷新令牌的请求
-    if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.url.includes('/auth/refresh')) {
+    if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.url.includes('/auth/token/refresh')) {
       originalRequest._retry = true;
       
       try {
@@ -110,7 +110,7 @@ request.interceptors.response.use(
         }
         
         // 尝试刷新令牌
-        const response = await request.post('/auth/refresh', { refresh_token: refreshToken });
+        const response = await request.post('/auth/token/refresh', { refresh_token: refreshToken });
         
         if (response.status === 200) {
           // 更新访问令牌

@@ -24,8 +24,17 @@ export const logout = async () => {
 /**
  * 刷新令牌
  */
-export const refreshToken = async (refreshToken: string) => {
-  return request.post('/auth/refresh', { refresh_token: refreshToken });
+export const refreshToken = async (refresh_token: string) => {
+  try {
+    const response = await request.post('/auth/token/refresh', { refresh_token });
+    if (response.status === 200) {
+      localStorage.setItem('token', response.data.access_token);
+      return response.data;
+    }
+  } catch (error) {
+    console.error('刷新令牌失败:', error);
+    throw error;
+  }
 };
 
 /**
