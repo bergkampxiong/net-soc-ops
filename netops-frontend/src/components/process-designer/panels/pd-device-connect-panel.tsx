@@ -3,8 +3,9 @@ import { Drawer, Form, Select, Button, Space, message } from 'antd';
 import { CloudServerOutlined } from '@ant-design/icons';
 import { deviceGroupApi } from '../../../api/device';
 import { getSSHConfigs } from '../../../services/sshConfig';
-import type { DeviceGroup, DeviceMember } from '../../../types/device';
+import type { DeviceGroup } from '../../../types/device';
 import type { SSHConfig } from '../../../services/sshConfig';
+import request from '../../../utils/request';
 
 const { Option } = Select;
 
@@ -25,7 +26,7 @@ export const PDDeviceConnectPanel: React.FC<DeviceConnectPanelProps> = ({
   const [loading, setLoading] = useState(false);
   const [sshConfigs, setSSHConfigs] = useState<SSHConfig[]>([]);
   const [deviceGroups, setDeviceGroups] = useState<DeviceGroup[]>([]);
-  const [groupMembers, setGroupMembers] = useState<DeviceMember[]>([]);
+  const [ipAddresses, setIpAddresses] = useState<string[]>([]);
 
   // 只在面板打开时加载数据
   useEffect(() => {
@@ -43,13 +44,13 @@ export const PDDeviceConnectPanel: React.FC<DeviceConnectPanelProps> = ({
       setSSHConfigs(sshConfigsData);
 
       // 加载设备分组列表
-      const deviceGroupsResponse = await deviceGroupApi.getList();
-      setDeviceGroups(deviceGroupsResponse.data.data);
+      const deviceGroupsResponse = await request.get('/api/device/category/groups');
+      setDeviceGroups(deviceGroupsResponse.data);
 
-      // 如果有初始数据，加载对应的设备列表
+      // 如果有初始数据，加载对应的IP地址列表
       if (initialData?.deviceGroupId) {
-        // const members = await fetchGroupMembers(initialData.deviceGroupId);
-        // setGroupMembers(members);
+        const ipAddressesResponse = await request.get(`/api/device/category/groups/${initialData.deviceGroupId}/ip-addresses`);
+        setIpAddresses(ipAddressesResponse.data);
       }
 
       // 设置表单初始值
@@ -64,17 +65,16 @@ export const PDDeviceConnectPanel: React.FC<DeviceConnectPanelProps> = ({
   // 处理设备组选择
   const handleGroupChange = async (groupId: string) => {
     if (!groupId) {
-      setGroupMembers([]);
+      setIpAddresses([]);
       return;
     }
 
     setLoading(true);
     try {
-      // TODO: 替换为实际的API调用
-      // const members = await fetchGroupMembers(groupId);
-      // setGroupMembers(members);
+      const ipAddressesResponse = await request.get(`/api/device/category/groups/${groupId}/ip-addresses`);
+      setIpAddresses(ipAddressesResponse.data);
     } catch (error) {
-      message.error('加载设备列表失败');
+      message.error('加载IP地址列表失败');
     } finally {
       setLoading(false);
     }
@@ -144,21 +144,26 @@ export const PDDeviceConnectPanel: React.FC<DeviceConnectPanelProps> = ({
         >
           <Select
             placeholder="请选择设备分组"
-            options={deviceGroups}
             loading={loading}
             onChange={handleGroupChange}
-          />
+          >
+            {deviceGroups.map(group => (
+              <Option key={group.id} value={group.id}>
+                {group.name}
+              </Option>
+            ))}
+          </Select>
         </Form.Item>
 
         <Form.Item
           name="selectedDevices"
-          label="目标设备"
-          rules={[{ required: true, message: '请选择目标设备' }]}
+          label="目标设备IP"
+          rules={[{ required: true, message: '请选择目标设备IP' }]}
         >
           <Select
             mode="multiple"
-            placeholder="请选择目标设备"
-            options={groupMembers}
+            placeholder="请选择目标设备IP"
+            options={ipAddresses.map(ip => ({ label: ip, value: ip }))}
             loading={loading}
           />
         </Form.Item>
