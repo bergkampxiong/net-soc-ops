@@ -395,4 +395,48 @@ def remove_group_members_batch(
         import traceback
         error_details = traceback.format_exc()
         print(f"批量从分组中移除设备失败: {str(e)}\n{error_details}")
-        raise HTTPException(status_code=500, detail=f"批量从分组中移除设备失败: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"批量从分组中移除设备失败: {str(e)}")
+
+# 获取分组成员的IP地址列表
+@router.get("/groups/{group_id}/ip-addresses")
+async def get_group_ip_addresses(
+    group_id: int,
+    db: Session = Depends(get_db)
+):
+    # 检查分组是否存在
+    group = db.query(DeviceGroup).filter(DeviceGroup.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="设备分组不存在")
+        
+    members = db.query(DeviceGroupMember).filter(
+        DeviceGroupMember.group_id == group_id
+    ).all()
+    
+    if not members:
+        return []
+    
+    # 收集所有设备ID
+    device_ids = [member.device_id for member in members]
+    
+    # 批量获取设备信息
+    ip_addresses = []
+    async with httpx.AsyncClient() as client:
+        # 并行请求所有设备信息
+        tasks = []
+        for device_id in device_ids:
+            tasks.append(client.get(f"http://localhost:3000/api/cmdb/assets/{device_id}", timeout=5.0))
+        
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # 处理响应
+        for response in responses:
+            if isinstance(response, Exception):
+                continue
+                
+            if response.status_code == 200:
+                device_data = response.json()
+                ip_address = device_data.get("ip_address", "")
+                if ip_address:
+                    ip_addresses.append(ip_address)
+    
+    return ip_addresses 
