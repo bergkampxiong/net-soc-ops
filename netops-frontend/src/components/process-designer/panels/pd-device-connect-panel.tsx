@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Drawer, Form, Select, Button, Space, message } from 'antd';
 import { CloudServerOutlined } from '@ant-design/icons';
 import { deviceGroupApi } from '../../../api/device';
-import { sshConfigApi } from '../../../api/rpa';
+import { getSSHConfigs } from '../../../services/sshConfig';
 import type { DeviceGroup, DeviceMember } from '../../../types/device';
-import type { SSHConfig } from '../../../types/rpa';
+import type { SSHConfig } from '../../../services/sshConfig';
 
 const { Option } = Select;
 
@@ -38,17 +38,9 @@ export const PDDeviceConnectPanel: React.FC<DeviceConnectPanelProps> = ({
   const loadInitialData = async () => {
     setLoading(true);
     try {
-      // TODO: 替换为实际的API调用
-      // const [sshConfigsData, deviceGroupsData] = await Promise.all([
-      //   fetchSSHConfigs(),
-      //   fetchDeviceGroups()
-      // ]);
-      // setSSHConfigs(sshConfigsData);
-      // setDeviceGroups(deviceGroupsData);
-
       // 加载SSH配置列表
-      const response = await sshConfigApi.getList();
-      setSSHConfigs(response.data.data);
+      const sshConfigsData = await getSSHConfigs();
+      setSSHConfigs(sshConfigsData);
 
       // 加载设备分组列表
       const deviceGroupsResponse = await deviceGroupApi.getList();
@@ -135,9 +127,14 @@ export const PDDeviceConnectPanel: React.FC<DeviceConnectPanelProps> = ({
         >
           <Select
             placeholder="请选择SSH配置"
-            options={sshConfigs}
             loading={loading}
-          />
+          >
+            {sshConfigs.map(config => (
+              <Option key={config.id} value={config.id}>
+                {config.name}
+              </Option>
+            ))}
+          </Select>
         </Form.Item>
 
         <Form.Item
