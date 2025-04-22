@@ -54,7 +54,15 @@ import { PDConfigDeployNode } from './nodes/pd-config-deploy-node';
 import { PDCommandExecuteNode } from './nodes/pd-command-execute-node';
 import { PDConfigBackupNode } from './nodes/pd-config-backup-node';
 import { PDStatusCheckNode } from './nodes/pd-status-check-node';
+
+// 导入所有配置面板组件
 import { PDDeviceConnectPanel } from './panels/pd-device-connect-panel';
+import { PDTaskPanel } from './panels/pd-task-panel';
+import { PDConditionPanel } from './panels/pd-condition-panel';
+import { PDConfigDeployPanel } from './panels/pd-config-deploy-panel';
+import { PDCommandExecutePanel } from './panels/pd-command-execute-panel';
+import { PDConfigBackupPanel } from './panels/pd-config-backup-panel';
+import { PDStatusCheckPanel } from './panels/pd-status-check-panel';
 
 // 节点类型映射
 const nodeTypes = {
@@ -148,6 +156,18 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
   const previousProcessId = useRef(processId);
   const [showDeviceConnectPanel, setShowDeviceConnectPanel] = useState(false);
   const [selectedDeviceNode, setSelectedDeviceNode] = useState<Node | null>(null);
+  const [showTaskPanel, setShowTaskPanel] = useState(false);
+  const [showConditionPanel, setShowConditionPanel] = useState(false);
+  const [showConfigDeployPanel, setShowConfigDeployPanel] = useState(false);
+  const [showCommandExecutePanel, setShowCommandExecutePanel] = useState(false);
+  const [showConfigBackupPanel, setShowConfigBackupPanel] = useState(false);
+  const [showStatusCheckPanel, setShowStatusCheckPanel] = useState(false);
+  const [selectedTaskNode, setSelectedTaskNode] = useState<Node | null>(null);
+  const [selectedConditionNode, setSelectedConditionNode] = useState<Node | null>(null);
+  const [selectedConfigDeployNode, setSelectedConfigDeployNode] = useState<Node | null>(null);
+  const [selectedCommandExecuteNode, setSelectedCommandExecuteNode] = useState<Node | null>(null);
+  const [selectedConfigBackupNode, setSelectedConfigBackupNode] = useState<Node | null>(null);
+  const [selectedStatusCheckNode, setSelectedStatusCheckNode] = useState<Node | null>(null);
 
   // 处理键盘删除事件
   const onKeyDown = useCallback((event: KeyboardEvent) => {
@@ -236,6 +256,24 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
     if (node.type === 'deviceConnect') {
       setSelectedDeviceNode(node);
       setShowDeviceConnectPanel(true);
+    } else if (node.type === 'task') {
+      setSelectedTaskNode(node);
+      setShowTaskPanel(true);
+    } else if (node.type === 'condition') {
+      setSelectedConditionNode(node);
+      setShowConditionPanel(true);
+    } else if (node.type === 'configDeploy') {
+      setSelectedConfigDeployNode(node);
+      setShowConfigDeployPanel(true);
+    } else if (node.type === 'commandExecute') {
+      setSelectedCommandExecuteNode(node);
+      setShowCommandExecutePanel(true);
+    } else if (node.type === 'configBackup') {
+      setSelectedConfigBackupNode(node);
+      setShowConfigBackupPanel(true);
+    } else if (node.type === 'statusCheck') {
+      setSelectedStatusCheckNode(node);
+      setShowStatusCheckPanel(true);
     }
     setSelectedNode(node);
   }, []);
@@ -326,6 +364,17 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
       onDirtyChange?.(true);
     }
   }, [selectedDeviceNode, setNodes, onDirtyChange]);
+
+  // 处理节点配置更新
+  const handleNodeConfigUpdate = useCallback((updatedNode: Node) => {
+    setNodes((nds) =>
+      nds.map((node) =>
+        node.id === updatedNode.id ? updatedNode : node
+      )
+    );
+    setIsDirty(true);
+    onDirtyChange?.(true);
+  }, [setNodes, onDirtyChange]);
 
   // 加载流程数据
   useEffect(() => {
@@ -461,6 +510,48 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
         onClose={() => setShowDeviceConnectPanel(false)}
         initialData={selectedDeviceNode?.data}
         onSave={handleDeviceConnectSave}
+      />
+
+      <PDTaskPanel
+        visible={showTaskPanel}
+        onClose={() => setShowTaskPanel(false)}
+        initialData={selectedTaskNode?.data}
+        onSave={handleNodeConfigUpdate}
+      />
+
+      <PDConditionPanel
+        visible={showConditionPanel}
+        onClose={() => setShowConditionPanel(false)}
+        initialData={selectedConditionNode?.data}
+        onSave={handleNodeConfigUpdate}
+      />
+
+      <PDConfigDeployPanel
+        visible={showConfigDeployPanel}
+        onClose={() => setShowConfigDeployPanel(false)}
+        initialData={selectedConfigDeployNode?.data}
+        onSave={handleNodeConfigUpdate}
+      />
+
+      <PDCommandExecutePanel
+        visible={showCommandExecutePanel}
+        onClose={() => setShowCommandExecutePanel(false)}
+        initialData={selectedCommandExecuteNode?.data}
+        onSave={handleNodeConfigUpdate}
+      />
+
+      <PDConfigBackupPanel
+        visible={showConfigBackupPanel}
+        onClose={() => setShowConfigBackupPanel(false)}
+        initialData={selectedConfigBackupNode?.data}
+        onSave={handleNodeConfigUpdate}
+      />
+
+      <PDStatusCheckPanel
+        visible={showStatusCheckPanel}
+        onClose={() => setShowStatusCheckPanel(false)}
+        initialData={selectedStatusCheckNode?.data}
+        onSave={handleNodeConfigUpdate}
       />
     </div>
   );
