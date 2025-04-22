@@ -395,7 +395,7 @@ def remove_group_members_batch(
         import traceback
         error_details = traceback.format_exc()
         print(f"批量从分组中移除设备失败: {str(e)}\n{error_details}")
-        raise HTTPException(status_code=500, detail=f"批量从分组中移除设备失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"批量从分组中移除设备失败: {str(e)}") 
 
 # 获取分组成员的IP地址列表
 @router.get("/groups/{group_id}/ip-addresses")

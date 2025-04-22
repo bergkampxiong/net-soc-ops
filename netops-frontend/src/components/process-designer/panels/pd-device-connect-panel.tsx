@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Drawer, Form, Select, Button, Space, message } from 'antd';
+import { Drawer, Form, Select, Button, Space, message, Radio } from 'antd';
 import { CloudServerOutlined } from '@ant-design/icons';
 import { deviceGroupApi } from '../../../api/device';
 import { getSSHConfigs } from '../../../services/sshConfig';
@@ -44,17 +44,21 @@ export const PDDeviceConnectPanel: React.FC<DeviceConnectPanelProps> = ({
       setSSHConfigs(sshConfigsData);
 
       // 加载设备分组列表
-      const deviceGroupsResponse = await request.get('/api/device/category/groups');
+      const deviceGroupsResponse = await request.get('/device/category/groups');
       setDeviceGroups(deviceGroupsResponse.data);
 
       // 如果有初始数据，加载对应的IP地址列表
       if (initialData?.deviceGroupId) {
-        const ipAddressesResponse = await request.get(`/api/device/category/groups/${initialData.deviceGroupId}/ip-addresses`);
+        const ipAddressesResponse = await request.get(`/device/category/groups/${initialData.deviceGroupId}/ip-addresses`);
         setIpAddresses(ipAddressesResponse.data);
       }
 
       // 设置表单初始值
-      form.setFieldsValue(initialData);
+      form.setFieldsValue({
+        ...initialData,
+        // 默认选择网络设备连接池
+        poolType: initialData?.poolType || 'device'
+      });
     } catch (error) {
       message.error('加载数据失败');
     } finally {
@@ -71,7 +75,7 @@ export const PDDeviceConnectPanel: React.FC<DeviceConnectPanelProps> = ({
 
     setLoading(true);
     try {
-      const ipAddressesResponse = await request.get(`/api/device/category/groups/${groupId}/ip-addresses`);
+      const ipAddressesResponse = await request.get(`/device/category/groups/${groupId}/ip-addresses`);
       setIpAddresses(ipAddressesResponse.data);
     } catch (error) {
       message.error('加载IP地址列表失败');
@@ -120,6 +124,17 @@ export const PDDeviceConnectPanel: React.FC<DeviceConnectPanelProps> = ({
         layout="vertical"
         disabled={loading}
       >
+        <Form.Item
+          name="poolType"
+          label="连接池类型"
+          rules={[{ required: true, message: '请选择连接池类型' }]}
+        >
+          <Radio.Group>
+            <Radio.Button value="redis">Redis通信连接池</Radio.Button>
+            <Radio.Button value="device">网络设备连接池</Radio.Button>
+          </Radio.Group>
+        </Form.Item>
+
         <Form.Item
           name="sshConfigId"
           label="SSH配置"
