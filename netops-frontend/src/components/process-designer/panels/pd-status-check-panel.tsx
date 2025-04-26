@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Form, Input, Button, Space, message } from 'antd';
-import { CloseOutlined } from '@ant-design/icons';
+import { Drawer, Form, Input, Button, Space, message } from 'antd';
+import { CheckCircleOutlined } from '@ant-design/icons';
 import type { StatusCheckNode } from '../../../types/automation';
 
 interface StatusCheckPanelProps {
@@ -39,44 +39,62 @@ export const PDStatusCheckPanel: React.FC<StatusCheckPanelProps> = ({
     }
   };
 
-  if (!visible) return null;
-
   return (
-    <div className="pd-config-panel">
-      <div className="pd-config-panel-header">
-        <span>状态检查节点配置</span>
-        <Button type="text" icon={<CloseOutlined />} onClick={onClose} />
-      </div>
-      <div className="pd-config-panel-content">
-        <Form
-          form={form}
-          layout="vertical"
-          disabled={loading}
-        >
-          <Form.Item
-            name="name"
-            label="检查名称"
-            rules={[{ required: true, message: '请输入检查名称' }]}
-          >
-            <Input placeholder="请输入检查名称" />
-          </Form.Item>
-
-          <Form.Item
-            name="description"
-            label="检查描述"
-          >
-            <Input.TextArea rows={3} placeholder="请输入检查描述" />
-          </Form.Item>
-        </Form>
-      </div>
-      <div className="pd-config-panel-footer">
+    <Drawer
+      title={
+        <Space>
+          <CheckCircleOutlined />
+          <span>状态检查节点配置</span>
+        </Space>
+      }
+      width={400}
+      open={visible}
+      onClose={onClose}
+      extra={
         <Space>
           <Button onClick={onClose}>取消</Button>
           <Button type="primary" onClick={handleSave} loading={loading}>
             保存
           </Button>
         </Space>
-      </div>
-    </div>
+      }
+    >
+      <Form
+        form={form}
+        layout="vertical"
+        disabled={loading}
+      >
+        <Form.Item
+          name="name"
+          label="检查名称"
+          rules={[{ required: true, message: '请输入检查名称' }]}
+        >
+          <Input placeholder="请输入检查名称" />
+        </Form.Item>
+
+        <Form.Item
+          name="description"
+          label="检查描述"
+        >
+          <Input.TextArea rows={3} placeholder="请输入检查描述" />
+        </Form.Item>
+
+        <Form.Item
+          name="checkCommand"
+          label="检查命令"
+          rules={[{ required: true, message: '请输入检查命令' }]}
+        >
+          <Input.TextArea rows={4} placeholder="请输入检查命令" />
+        </Form.Item>
+
+        <Form.Item
+          name="expectedResult"
+          label="预期结果"
+          rules={[{ required: true, message: '请输入预期结果' }]}
+        >
+          <Input.TextArea rows={4} placeholder="请输入预期结果" />
+        </Form.Item>
+      </Form>
+    </Drawer>
   );
 }; 

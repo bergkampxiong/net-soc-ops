@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Form, Input, Button, Space, message } from 'antd';
-import { CloseOutlined } from '@ant-design/icons';
+import { Drawer, Form, Input, Button, Space, message } from 'antd';
+import { DeploymentUnitOutlined } from '@ant-design/icons';
 import type { ConfigDeployNode } from '../../../types/automation';
 
 interface ConfigDeployPanelProps {
@@ -39,44 +39,54 @@ export const PDConfigDeployPanel: React.FC<ConfigDeployPanelProps> = ({
     }
   };
 
-  if (!visible) return null;
-
   return (
-    <div className="pd-config-panel">
-      <div className="pd-config-panel-header">
-        <span>配置下发节点配置</span>
-        <Button type="text" icon={<CloseOutlined />} onClick={onClose} />
-      </div>
-      <div className="pd-config-panel-content">
-        <Form
-          form={form}
-          layout="vertical"
-          disabled={loading}
-        >
-          <Form.Item
-            name="name"
-            label="配置名称"
-            rules={[{ required: true, message: '请输入配置名称' }]}
-          >
-            <Input placeholder="请输入配置名称" />
-          </Form.Item>
-
-          <Form.Item
-            name="description"
-            label="配置描述"
-          >
-            <Input.TextArea rows={3} placeholder="请输入配置描述" />
-          </Form.Item>
-        </Form>
-      </div>
-      <div className="pd-config-panel-footer">
+    <Drawer
+      title={
+        <Space>
+          <DeploymentUnitOutlined />
+          <span>配置下发节点配置</span>
+        </Space>
+      }
+      width={400}
+      open={visible}
+      onClose={onClose}
+      extra={
         <Space>
           <Button onClick={onClose}>取消</Button>
           <Button type="primary" onClick={handleSave} loading={loading}>
             保存
           </Button>
         </Space>
-      </div>
-    </div>
+      }
+    >
+      <Form
+        form={form}
+        layout="vertical"
+        disabled={loading}
+      >
+        <Form.Item
+          name="name"
+          label="配置名称"
+          rules={[{ required: true, message: '请输入配置名称' }]}
+        >
+          <Input placeholder="请输入配置名称" />
+        </Form.Item>
+
+        <Form.Item
+          name="description"
+          label="配置描述"
+        >
+          <Input.TextArea rows={3} placeholder="请输入配置描述" />
+        </Form.Item>
+
+        <Form.Item
+          name="configContent"
+          label="配置内容"
+          rules={[{ required: true, message: '请输入配置内容' }]}
+        >
+          <Input.TextArea rows={6} placeholder="请输入配置内容" />
+        </Form.Item>
+      </Form>
+    </Drawer>
   );
 }; 

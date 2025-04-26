@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Form, Input, Button, Space, message } from 'antd';
-import { CloseOutlined } from '@ant-design/icons';
+import { Drawer, Form, Input, Button, Space, message } from 'antd';
+import { SaveOutlined } from '@ant-design/icons';
 import type { ConfigBackupNode } from '../../../types/automation';
 
 interface ConfigBackupPanelProps {
@@ -39,44 +39,54 @@ export const PDConfigBackupPanel: React.FC<ConfigBackupPanelProps> = ({
     }
   };
 
-  if (!visible) return null;
-
   return (
-    <div className="pd-config-panel">
-      <div className="pd-config-panel-header">
-        <span>配置备份节点配置</span>
-        <Button type="text" icon={<CloseOutlined />} onClick={onClose} />
-      </div>
-      <div className="pd-config-panel-content">
-        <Form
-          form={form}
-          layout="vertical"
-          disabled={loading}
-        >
-          <Form.Item
-            name="name"
-            label="备份名称"
-            rules={[{ required: true, message: '请输入备份名称' }]}
-          >
-            <Input placeholder="请输入备份名称" />
-          </Form.Item>
-
-          <Form.Item
-            name="description"
-            label="备份描述"
-          >
-            <Input.TextArea rows={3} placeholder="请输入备份描述" />
-          </Form.Item>
-        </Form>
-      </div>
-      <div className="pd-config-panel-footer">
+    <Drawer
+      title={
+        <Space>
+          <SaveOutlined />
+          <span>配置备份节点配置</span>
+        </Space>
+      }
+      width={400}
+      open={visible}
+      onClose={onClose}
+      extra={
         <Space>
           <Button onClick={onClose}>取消</Button>
           <Button type="primary" onClick={handleSave} loading={loading}>
             保存
           </Button>
         </Space>
-      </div>
-    </div>
+      }
+    >
+      <Form
+        form={form}
+        layout="vertical"
+        disabled={loading}
+      >
+        <Form.Item
+          name="name"
+          label="备份名称"
+          rules={[{ required: true, message: '请输入备份名称' }]}
+        >
+          <Input placeholder="请输入备份名称" />
+        </Form.Item>
+
+        <Form.Item
+          name="description"
+          label="备份描述"
+        >
+          <Input.TextArea rows={3} placeholder="请输入备份描述" />
+        </Form.Item>
+
+        <Form.Item
+          name="backupPath"
+          label="备份路径"
+          rules={[{ required: true, message: '请输入备份路径' }]}
+        >
+          <Input placeholder="请输入备份路径" />
+        </Form.Item>
+      </Form>
+    </Drawer>
   );
 }; 

@@ -366,15 +366,24 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
   }, [selectedDeviceNode, setNodes, onDirtyChange]);
 
   // 处理节点配置更新
-  const handleNodeConfigUpdate = useCallback((updatedNode: Node) => {
+  const handleNodeConfigUpdate = (nodeId: string, data: any) => {
     setNodes((nds) =>
-      nds.map((node) =>
-        node.id === updatedNode.id ? updatedNode : node
-      )
+      nds.map((node) => {
+        if (node.id === nodeId) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              ...data
+            }
+          };
+        }
+        return node;
+      })
     );
     setIsDirty(true);
     onDirtyChange?.(true);
-  }, [setNodes, onDirtyChange]);
+  };
 
   // 加载流程数据
   useEffect(() => {
@@ -516,42 +525,42 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
         visible={showTaskPanel}
         onClose={() => setShowTaskPanel(false)}
         initialData={selectedTaskNode?.data}
-        onSave={handleNodeConfigUpdate}
+        onSave={(data) => handleNodeConfigUpdate(selectedTaskNode?.id || '', data)}
       />
 
       <PDConditionPanel
         visible={showConditionPanel}
         onClose={() => setShowConditionPanel(false)}
         initialData={selectedConditionNode?.data}
-        onSave={handleNodeConfigUpdate}
+        onSave={(data) => handleNodeConfigUpdate(selectedConditionNode?.id || '', data)}
       />
 
       <PDConfigDeployPanel
         visible={showConfigDeployPanel}
         onClose={() => setShowConfigDeployPanel(false)}
         initialData={selectedConfigDeployNode?.data}
-        onSave={handleNodeConfigUpdate}
+        onSave={(data) => handleNodeConfigUpdate(selectedConfigDeployNode?.id || '', data)}
       />
 
       <PDCommandExecutePanel
         visible={showCommandExecutePanel}
         onClose={() => setShowCommandExecutePanel(false)}
         initialData={selectedCommandExecuteNode?.data}
-        onSave={handleNodeConfigUpdate}
+        onSave={(data) => handleNodeConfigUpdate(selectedCommandExecuteNode?.id || '', data)}
       />
 
       <PDConfigBackupPanel
         visible={showConfigBackupPanel}
         onClose={() => setShowConfigBackupPanel(false)}
         initialData={selectedConfigBackupNode?.data}
-        onSave={handleNodeConfigUpdate}
+        onSave={(data) => handleNodeConfigUpdate(selectedConfigBackupNode?.id || '', data)}
       />
 
       <PDStatusCheckPanel
         visible={showStatusCheckPanel}
         onClose={() => setShowStatusCheckPanel(false)}
         initialData={selectedStatusCheckNode?.data}
-        onSave={handleNodeConfigUpdate}
+        onSave={(data) => handleNodeConfigUpdate(selectedStatusCheckNode?.id || '', data)}
       />
     </div>
   );
