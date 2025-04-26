@@ -1,90 +1,93 @@
 import React, { useEffect, useState } from 'react';
-import { Drawer, Form, Input, Button, Space, message } from 'antd';
-import { DeploymentUnitOutlined } from '@ant-design/icons';
-import type { ConfigDeployNode } from '../../../types/automation';
+import { Drawer, Form, Input, Select, message, Button } from 'antd';
+import { getJobTemplates } from '../../../api/automation/job-template';
 
-interface ConfigDeployPanelProps {
+const { TextArea } = Input;
+
+interface PDConfigDeployPanelProps {
   visible: boolean;
   onClose: () => void;
-  initialData?: ConfigDeployNode;
-  onSave: (data: ConfigDeployNode) => void;
+  initialData?: any;
+  onSave: (data: any) => void;
 }
 
-export const PDConfigDeployPanel: React.FC<ConfigDeployPanelProps> = ({
+export const PDConfigDeployPanel: React.FC<PDConfigDeployPanelProps> = ({
   visible,
   onClose,
   initialData,
   onSave,
 }) => {
   const [form] = Form.useForm();
-  const [loading, setLoading] = useState(false);
+  const [jobTemplates, setJobTemplates] = useState<any[]>([]);
 
   useEffect(() => {
     if (visible) {
-      form.setFieldsValue(initialData);
+      // 获取作业模板列表
+      getJobTemplates()
+        .then((response) => {
+          setJobTemplates(response.data);
+        })
+        .catch((error) => {
+          message.error('获取作业模板失败');
+          console.error(error);
+        });
     }
-  }, [visible, initialData]);
+  }, [visible]);
 
-  const handleSave = async () => {
-    try {
-      const values = await form.validateFields();
-      onSave({
-        ...values,
-        isConfigured: true
+  const handleSave = () => {
+    form
+      .validateFields()
+      .then((values) => {
+        onSave(values);
+        form.resetFields();
+      })
+      .catch((error) => {
+        console.error('表单验证失败:', error);
       });
-      onClose();
-      message.success('配置已保存');
-    } catch (error) {
-      message.error('请检查配置信息');
-    }
   };
 
   return (
     <Drawer
-      title={
-        <Space>
-          <DeploymentUnitOutlined />
-          <span>配置下发节点配置</span>
-        </Space>
-      }
-      width={400}
-      open={visible}
+      title="配置部署"
+      placement="right"
       onClose={onClose}
-      extra={
-        <Space>
-          <Button onClick={onClose}>取消</Button>
-          <Button type="primary" onClick={handleSave} loading={loading}>
+      open={visible}
+      width={500}
+      footer={
+        <div style={{ textAlign: 'right' }}>
+          <Button onClick={onClose} style={{ marginRight: 8 }}>
+            取消
+          </Button>
+          <Button type="primary" onClick={handleSave}>
             保存
           </Button>
-        </Space>
+        </div>
       }
     >
       <Form
         form={form}
         layout="vertical"
-        disabled={loading}
+        initialValues={initialData}
       >
         <Form.Item
-          name="name"
+          name="configName"
           label="配置名称"
-          rules={[{ required: true, message: '请输入配置名称' }]}
+          rules={[{ required: true, message: '请选择配置名称' }]}
         >
-          <Input placeholder="请输入配置名称" />
+          <Select
+            placeholder="请选择配置名称"
+            options={jobTemplates.map((template) => ({
+              label: template.name,
+              value: template.name,
+            }))}
+          />
         </Form.Item>
-
-        <Form.Item
-          name="description"
-          label="配置描述"
-        >
-          <Input.TextArea rows={3} placeholder="请输入配置描述" />
-        </Form.Item>
-
         <Form.Item
           name="configContent"
           label="配置内容"
           rules={[{ required: true, message: '请输入配置内容' }]}
         >
-          <Input.TextArea rows={6} placeholder="请输入配置内容" />
+          <TextArea rows={10} placeholder="请输入配置内容" />
         </Form.Item>
       </Form>
     </Drawer>
