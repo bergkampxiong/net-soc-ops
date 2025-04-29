@@ -72,6 +72,7 @@ const CMDBQuery: React.FC = () => {
   const [vendorOptions, setVendorOptions] = useState<any[]>([]);
   const [statusOptions, setStatusOptions] = useState<any[]>([]);
   const [locationOptions, setLocationOptions] = useState<any[]>([]);
+  const [departmentOptions, setDepartmentOptions] = useState<any[]>([]);
   const [form] = Form.useForm();
   const [deleteLoading, setDeleteLoading] = useState<boolean>(false);
   const [addDeviceLoading, setAddDeviceLoading] = useState<boolean>(false);
@@ -89,22 +90,34 @@ const CMDBQuery: React.FC = () => {
     fetchReferenceData();
   }, [searchParams]);
 
-  // 获取参考数据（设备类型、厂商、状态、位置）
+  // 获取参考数据（设备类型、厂商、状态、位置、部门、系统类型）
   const fetchReferenceData = async () => {
     try {
-      const [deviceTypesRes, vendorsRes, statusesRes, locationsRes] = await Promise.all([
+      const [
+        deviceTypesRes, 
+        vendorsRes, 
+        statusesRes, 
+        locationsRes,
+        departmentsRes,
+        systemTypesRes
+      ] = await Promise.all([
         request.get('/cmdb/device-types'),
         request.get('/cmdb/vendors'),
         request.get('/cmdb/asset-statuses'),
-        request.get('/cmdb/locations')
+        request.get('/cmdb/locations'),
+        request.get('/cmdb/departments'),
+        request.get('/cmdb/system-types')
       ]);
       
       setDeviceTypeOptions(deviceTypesRes.data);
       setVendorOptions(vendorsRes.data);
       setStatusOptions(statusesRes.data);
       setLocationOptions(locationsRes.data);
+      setDepartmentOptions(departmentsRes.data);
+      setSystemTypes(systemTypesRes.data);
     } catch (error) {
       console.error('获取参考数据失败:', error);
+      message.error('获取参考数据失败');
     }
   };
 
@@ -593,41 +606,6 @@ const CMDBQuery: React.FC = () => {
       filterIcon: getFilterIcon,
     },
     {
-      title: '版本',
-      dataIndex: 'version',
-      key: 'version',
-      width: 120,
-      filterDropdown: getTextFilterDropdown('version'),
-      filterIcon: getFilterIcon,
-    },
-    {
-      title: 'CPU数量',
-      dataIndex: 'cpu_count',
-      key: 'cpu_count',
-      width: 100,
-      filterDropdown: getTextFilterDropdown('cpu_count'),
-      filterIcon: getFilterIcon,
-      render: (text: number) => text ? `${text}核` : '-',
-    },
-    {
-      title: '内存容量',
-      dataIndex: 'memory_capacity',
-      key: 'memory_capacity',
-      width: 120,
-      filterDropdown: getTextFilterDropdown('memory_capacity'),
-      filterIcon: getFilterIcon,
-      render: (text: number) => text ? `${text}GB` : '-',
-    },
-    {
-      title: '存储容量',
-      dataIndex: 'storage_capacity',
-      key: 'storage_capacity',
-      width: 120,
-      filterDropdown: getTextFilterDropdown('storage_capacity'),
-      filterIcon: getFilterIcon,
-      render: (text: number) => text ? `${text}GB` : '-',
-    },
-    {
       title: 'SN码',
       dataIndex: 'serial_number',
       key: 'serial_number',
@@ -649,6 +627,34 @@ const CMDBQuery: React.FC = () => {
       ),
       filterIcon: (filtered) => <FilterOutlined style={{ color: filtered ? '#1890ff' : undefined }} />,
       width: 130,
+    },
+    {
+      title: '版本',
+      dataIndex: 'version',
+      key: 'version',
+      width: 120,
+      render: (text: string) => text || '-',
+    },
+    {
+      title: 'CPU数量',
+      dataIndex: 'cpu_count',
+      key: 'cpu_count',
+      width: 100,
+      render: (text: number) => text ? `${text}核` : '-',
+    },
+    {
+      title: '内存容量',
+      dataIndex: 'memory_capacity',
+      key: 'memory_capacity',
+      width: 120,
+      render: (text: number) => text ? `${text}GB` : '-',
+    },
+    {
+      title: '存储容量',
+      dataIndex: 'storage_capacity',
+      key: 'storage_capacity',
+      width: 120,
+      render: (text: number) => text ? `${text}GB` : '-',
     },
     {
       title: '状态',
@@ -691,7 +697,7 @@ const CMDBQuery: React.FC = () => {
       dataIndex: ['department', 'name'],
       key: 'department',
       filterDropdown: getSelectFilterDropdown('department_id', 
-        locationOptions.map(location => ({ text: location.name, value: location.id.toString() }))
+        departmentOptions.map(dept => ({ text: dept.name, value: dept.id.toString() }))
       ),
       filterIcon: (filtered) => <FilterOutlined style={{ color: filtered ? '#1890ff' : undefined }} />,
       width: 120,
@@ -1281,9 +1287,9 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
                 label="所属部门"
               >
                 <Select placeholder="请选择部门" allowClear style={{ width: '100%' }}>
-                  <Option value={1}>IT部门</Option>
-                  <Option value={2}>研发部门</Option>
-                  <Option value={3}>运维部门</Option>
+                  {departmentOptions.map(dept => (
+                    <Option key={dept.id} value={dept.id}>{dept.name}</Option>
+                  ))}
                 </Select>
               </Form.Item>
             </Col>
@@ -1298,47 +1304,6 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
                 <Input placeholder="请输入版本号" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={6}>
-              <Form.Item
-                name="cpu_count"
-                label="CPU数量"
-              >
-                <InputNumber 
-                  style={{ width: '100%' }} 
-                  placeholder="请输入CPU数量" 
-                  min={0}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item
-                name="memory_capacity"
-                label="内存容量(GB)"
-              >
-                <InputNumber 
-                  style={{ width: '100%' }} 
-                  placeholder="请输入内存容量" 
-                  min={0}
-                  step={0.1}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item
-                name="storage_capacity"
-                label="存储容量(GB)"
-              >
-                <InputNumber 
-                  style={{ width: '100%' }} 
-                  placeholder="请输入存储容量" 
-                  min={0}
-                  step={0.1}
-                />
-              </Form.Item>
-            </Col>
-          </Row>
-          
-          <Row gutter={[32, 24]}>
             <Col span={6}>
               <Form.Item
                 name="purchase_date"
@@ -1368,6 +1333,9 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
                 />
               </Form.Item>
             </Col>
+          </Row>
+          
+          <Row gutter={[32, 24]}>
             <Col span={6}>
               <Form.Item
                 name="current_value"
@@ -1381,10 +1349,15 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
                 />
               </Form.Item>
             </Col>
-          </Row>
-          
-          <Row gutter={[32, 24]}>
-            <Col span={24}>
+            <Col span={6}>
+              <Form.Item
+                name="warranty_expiry"
+                label="保修到期"
+              >
+                <DatePicker style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
               <Form.Item
                 name="notes"
                 label="备注"
@@ -1611,66 +1584,6 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item
-                name="cpu_count"
-                label="CPU数量"
-              >
-                <InputNumber 
-                  style={{ width: '100%' }} 
-                  placeholder="请输入CPU数量" 
-                  min={0}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                name="memory_capacity"
-                label="内存容量(GB)"
-              >
-                <InputNumber 
-                  style={{ width: '100%' }} 
-                  placeholder="请输入内存容量" 
-                  min={0}
-                  step={0.1}
-                />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={[24, 24]}>
-            <Col span={8}>
-              <Form.Item
-                name="storage_capacity"
-                label="存储容量(GB)"
-              >
-                <InputNumber 
-                  style={{ width: '100%' }} 
-                  placeholder="请输入存储容量" 
-                  min={0}
-                  step={0.1}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                name="purchase_date"
-                label="购买日期"
-              >
-                <DatePicker style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                name="online_date"
-                label="上线时间"
-              >
-                <DatePicker style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={[24, 24]}>
-            <Col span={24}>
               <Form.Item
                 name="notes"
                 label="备注"
