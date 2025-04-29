@@ -80,8 +80,10 @@ request.interceptors.response.use(
     // 构造标准响应格式
     const standardResponse = {
       status: response.status,
-      data: response.data,
-      ...response.data  // 保留原有的其他字段
+      code: response.data.code || 0,
+      message: response.data.message || '',
+      data: response.data.data || response.data,
+      total: response.data.total
     } as StandardResponse<any>;
     
     // 返回原始响应，但添加标准响应格式
