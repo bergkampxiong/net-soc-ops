@@ -10,7 +10,8 @@ from schemas.category import (
     DeviceGroup as DeviceGroupSchema,
     DeviceMember as DeviceMemberSchema,
     DeviceFilter,
-    BatchAddDevices
+    BatchAddDevices,
+    BatchDeleteDevices
 )
 import httpx
 from datetime import datetime
@@ -92,8 +93,40 @@ def get_group_members(
     group_id: int,
     db: Session = Depends(get_db)
 ):
+    # 检查分组是否存在
+    group = db.query(DeviceGroup).filter(DeviceGroup.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="分组不存在")
+    
+    # 获取分组成员
     members = db.query(DeviceGroupMember).filter(DeviceGroupMember.group_id == group_id).all()
-    return members
+    
+    # 从CMDB获取设备信息
+    device_ids = [member.device_id for member in members]
+    devices = db.query(Asset).filter(Asset.id.in_(device_ids)).all()
+    device_map = {device.id: device for device in devices}
+    
+    # 获取所有位置信息
+    location_ids = [device.location_id for device in devices if device.location_id]
+    locations = db.query(Location).filter(Location.id.in_(location_ids)).all()
+    location_map = {location.id: location.name for location in locations}
+    
+    # 构建返回数据
+    result = []
+    for member in members:
+        device = device_map.get(member.device_id)
+        if device:
+            result.append({
+                "id": member.id,
+                "group_id": member.group_id,
+                "device_id": member.device_id,
+                "device_name": device.name,
+                "ip_address": device.ip_address or "",
+                "device_type": device.device_type_id,
+                "location": location_map.get(device.location_id, "")
+            })
+    
+    return result
 
 # 添加分组成员
 @router.post("/groups/{group_id}/members")
@@ -131,43 +164,74 @@ def add_group_member(
     return db_member
 
 # 批量添加分组成员
-@router.post("/groups/{group_id}/members/batch")
-def batch_add_group_members(
+@router.post("/groups/{group_id}/members/batch", response_model=List[DeviceMemberSchema])
+async def batch_add_group_members(
     group_id: int,
     batch: BatchAddDevices,
     db: Session = Depends(get_db)
 ):
-    # 检查分组是否存在
-    group = db.query(DeviceGroup).filter(DeviceGroup.id == group_id).first()
-    if not group:
-        raise HTTPException(status_code=404, detail="设备分组不存在")
-    
-    # 获取现有成员
-    existing_members = db.query(DeviceGroupMember).filter(
-        DeviceGroupMember.group_id == group_id
-    ).all()
-    existing_device_ids = {member.device_id for member in existing_members}
-    
-    # 过滤掉已存在的设备
-    new_devices = [device for device in batch.devices if device.device_id not in existing_device_ids]
-    
-    if not new_devices:
-        return {"message": "没有新设备需要添加"}
-    
-    # 批量添加新成员
-    for device in new_devices:
-        db_member = DeviceGroupMember(
-            group_id=group_id,
-            device_id=device.device_id,
-            device_name=device.device_name,
-            ip_address=device.ip_address,
-            device_type=device.device_type,
-            location=device.location
-        )
-        db.add(db_member)
-    
-    db.commit()
-    return {"message": f"成功添加 {len(new_devices)} 个设备到分组"}
+    try:
+        # 检查分组是否存在
+        group = db.query(DeviceGroup).filter(DeviceGroup.id == group_id).first()
+        if not group:
+            raise HTTPException(status_code=404, detail="分组不存在")
+        
+        # 获取现有成员
+        existing_members = db.query(DeviceGroupMember).filter(DeviceGroupMember.group_id == group_id).all()
+        existing_device_ids = {member.device_id for member in existing_members}
+        
+        # 过滤掉已存在的设备
+        new_device_ids = [device_id for device_id in batch.device_ids if device_id not in existing_device_ids]
+        
+        if not new_device_ids:
+            return []
+        
+        # 添加新成员
+        new_members = []
+        for device_id in new_device_ids:
+            try:
+                member = DeviceGroupMember(
+                    group_id=group_id,
+                    device_id=device_id
+                )
+                db.add(member)
+                new_members.append(member)
+            except Exception as e:
+                print(f"添加设备 {device_id} 到分组时出错: {str(e)}")
+                continue
+        
+        db.commit()
+        
+        # 从CMDB获取设备信息
+        devices = db.query(Asset).filter(Asset.id.in_([m.device_id for m in new_members])).all()
+        device_map = {device.id: device for device in devices}
+        
+        # 获取所有位置信息
+        location_ids = [device.location_id for device in devices if device.location_id]
+        locations = db.query(Location).filter(Location.id.in_(location_ids)).all()
+        location_map = {location.id: location.name for location in locations}
+        
+        # 构建返回数据
+        result = []
+        for member in new_members:
+            device = device_map.get(member.device_id)
+            if device:
+                result.append({
+                    "id": member.id,
+                    "group_id": member.group_id,
+                    "device_id": member.device_id,
+                    "device_name": device.name,
+                    "ip_address": device.ip_address or "",
+                    "device_type": device.device_type_id,
+                    "location": location_map.get(device.location_id, "")
+                })
+        
+        return result
+        
+    except Exception as e:
+        db.rollback()
+        print(f"批量添加分组成员时出错: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # 删除分组成员
 @router.delete("/groups/{group_id}/members/{member_id}")
@@ -187,6 +251,40 @@ def delete_group_member(
     db.delete(member)
     db.commit()
     return {"message": "分组成员删除成功"}
+
+# 批量删除分组成员
+@router.delete("/groups/{group_id}/members")
+def batch_delete_group_members(
+    group_id: int,
+    batch: BatchDeleteDevices,
+    db: Session = Depends(get_db)
+):
+    try:
+        # 检查分组是否存在
+        group = db.query(DeviceGroup).filter(DeviceGroup.id == group_id).first()
+        if not group:
+            raise HTTPException(status_code=404, detail="分组不存在")
+        
+        # 检查要删除的成员是否存在
+        existing_members = db.query(DeviceGroupMember).filter(
+            DeviceGroupMember.group_id == group_id,
+            DeviceGroupMember.device_id.in_(batch.device_ids)
+        ).all()
+        
+        if not existing_members:
+            return {"message": "没有找到要删除的成员"}
+        
+        # 删除成员
+        for member in existing_members:
+            db.delete(member)
+        
+        db.commit()
+        return {"message": "批量删除成员成功"}
+        
+    except Exception as e:
+        db.rollback()
+        print(f"批量删除分组成员时出错: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # 从CMDB获取设备列表
 @router.get("/cmdb-devices")

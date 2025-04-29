@@ -405,7 +405,7 @@ const MemberManagement: React.FC = () => {
   // 检查设备是否已在分组中
   const checkDevicesInGroup = async (groupId: number): Promise<boolean> => {
     try {
-      const response = await request.get(`/api/device/category/groups/${groupId}/members`);
+      const response = await request.get(`device/category/groups/${groupId}/members`);
       const groupMembers = response.data;
       
       // 获取组内设备的ID列表
@@ -439,15 +439,29 @@ const MemberManagement: React.FC = () => {
     }
   };
   
+  // 获取设备列表
+  const fetchDevices = async () => {
+    try {
+      const response = await request.get('/cmdb/assets');
+      setDevices(response.data);
+    } catch (error) {
+      message.error('获取设备列表失败');
+    }
+  };
+
   // 实际添加设备到分组
   const addDevicesToGroup = async (groupId: number, deviceIds: number[]) => {
     try {
-      await request.post(`/api/device/category/groups/${groupId}/members`, {
+      // 直接发送设备ID列表
+      await request.post(`device/category/groups/${groupId}/members/batch`, {
         device_ids: deviceIds
       });
+      
       message.success('添加设备到分组成功');
       setAddToGroupModalVisible(false);
       setSelectedDevices([]);
+      // 刷新设备列表
+      fetchDevices();
     } catch (error: any) {
       // 显示服务器返回的错误信息
       if (error.response && error.response.data && error.response.data.detail) {
@@ -883,7 +897,7 @@ const MemberDisplay: React.FC = () => {
         .filter(member => selectedRowKeys.includes(member.id))
         .map(member => member.device_id);
       
-      await request.delete(`/api/device/category/groups/${selectedGroup}/members`, {
+      await request.delete(`device/category/groups/${selectedGroup}/members`, {
         data: { device_ids: deviceIds }
       });
       

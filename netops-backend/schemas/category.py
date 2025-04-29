@@ -51,4 +51,7 @@ class DeviceFilter(BaseModel):
 
 # 批量添加设备请求
 class BatchAddDevices(BaseModel):
+    device_ids: List[int]
+
+class BatchDeleteDevices(BaseModel):
     device_ids: List[int] 
