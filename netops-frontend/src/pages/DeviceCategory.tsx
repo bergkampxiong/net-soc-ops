@@ -48,9 +48,8 @@ interface DeviceMember {
   device_id: number;
   device_name: string;
   ip_address: string;
+  device_type: number;
   location: string;
-  created_at: string;
-  updated_at: string;
 }
 
 interface DeviceType {
@@ -67,6 +66,13 @@ interface Location {
 
 interface Device {
   id: number;
+  name: string;
+  ip_address: string;
+  device_type: string;
+  location: string;
+}
+
+interface DeviceFilter {
   name: string;
   ip_address: string;
   device_type: string;
@@ -227,24 +233,9 @@ const MemberManagement: React.FC = () => {
   const fetchDeviceTypes = async () => {
     try {
       const response = await request.get('/cmdb/device-types');
-      console.log('获取到的设备类型列表:', response.data);
-      // 过滤掉英文选项
-      const filteredTypes = response.data.filter((type: DeviceType) => 
-        !['Server', 'Network', 'K8S Node', 'K8S Cluster'].includes(type.name)
-      );
-      setDeviceTypes(filteredTypes);
-      
-      // 创建设备类型ID到名称的映射
-      const typeMap: Record<string, string> = {};
-      filteredTypes.forEach((type: DeviceType) => {
-        // 确保ID作为字符串存储
-        const typeId = String(type.id);
-        typeMap[typeId] = type.name;
-      });
-      console.log('成员显示 - 创建设备类型映射:', typeMap);
-      setDeviceTypeMap(typeMap);
+      setDeviceTypes(response.data);
     } catch (error) {
-      console.error('获取设备类型列表失败:', error);
+      console.error('获取设备类型失败:', error);
     }
   };
 
@@ -252,18 +243,7 @@ const MemberManagement: React.FC = () => {
   const fetchLocations = async () => {
     try {
       const response = await request.get('/cmdb/locations');
-      console.log('获取到的位置列表:', response.data);
       setLocations(response.data);
-      
-      // 创建位置ID到名称的映射
-      const locMap: Record<string, string> = {};
-      response.data.forEach((location: Location) => {
-        // 确保ID作为字符串存储
-        const locationId = String(location.id);
-        locMap[locationId] = location.name;
-      });
-      console.log('成员显示 - 创建位置映射:', locMap);
-      setLocationMap(locMap);
     } catch (error) {
       console.error('获取位置列表失败:', error);
     }
@@ -1051,6 +1031,57 @@ const DeviceCategory: React.FC = () => {
     setActiveTab(key);
   };
   
+  const [groups, setGroups] = useState<DeviceGroup[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<number | null>(null);
+  const [members, setMembers] = useState<DeviceMember[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [filters, setFilters] = useState<DeviceFilter>({
+    name: '',
+    ip_address: '',
+    device_type: '',
+    location: ''
+  });
+
+  // 获取设备类型列表
+  const fetchDeviceTypes = async () => {
+    try {
+      const response = await request.get('/cmdb/device-types');
+      setDeviceTypes(response.data);
+    } catch (error) {
+      console.error('获取设备类型失败:', error);
+    }
+  };
+
+  // 获取位置列表
+  const fetchLocations = async () => {
+    try {
+      const response = await request.get('/cmdb/locations');
+      setLocations(response.data);
+    } catch (error) {
+      console.error('获取位置列表失败:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchDeviceTypes();
+    fetchLocations();
+  }, []);
+
+  const handleFilterChange = (key: keyof DeviceFilter, value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const filteredMembers = members.filter(member => {
+    return (
+      member.device_name.toLowerCase().includes(filters.name.toLowerCase()) &&
+      member.ip_address.toLowerCase().includes(filters.ip_address.toLowerCase()) &&
+      (filters.device_type === '' || member.device_type === parseInt(filters.device_type)) &&
+      (filters.location === '' || member.location === filters.location)
+    );
+  });
+
   return (
     <Layout style={{ minHeight: '100%' }}>
       <Sider width={200} theme="light">
