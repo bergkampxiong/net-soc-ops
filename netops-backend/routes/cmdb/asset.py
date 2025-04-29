@@ -36,6 +36,10 @@ def get_assets(
     location_id: Optional[int] = None,
     status_id: Optional[int] = None,
     system_type_id: Optional[int] = None,
+    version: Optional[str] = None,
+    cpu_count: Optional[int] = None,
+    memory_capacity: Optional[float] = None,
+    storage_capacity: Optional[float] = None,
     db: Session = Depends(get_cmdb_db),
 ):
     """获取资产列表，支持多种过滤条件"""
@@ -60,6 +64,14 @@ def get_assets(
         query = query.filter(AssetModel.status_id == status_id)
     if system_type_id:
         query = query.filter(AssetModel.system_type_id == system_type_id)
+    if version:
+        query = query.filter(AssetModel.version.ilike(f"%{version}%"))
+    if cpu_count:
+        query = query.filter(AssetModel.cpu_count == cpu_count)
+    if memory_capacity:
+        query = query.filter(AssetModel.memory_capacity == memory_capacity)
+    if storage_capacity:
+        query = query.filter(AssetModel.storage_capacity == storage_capacity)
     
     # 执行查询
     assets = query.offset(skip).limit(limit).all()
@@ -89,6 +101,10 @@ def create_asset(
         online_date=asset.online_date,
         warranty_expiry=asset.warranty_expiry,
         notes=asset.notes,
+        version=asset.version,
+        cpu_count=asset.cpu_count,
+        memory_capacity=asset.memory_capacity,
+        storage_capacity=asset.storage_capacity,
         created_at=datetime.now().isoformat(),
         updated_at=datetime.now().isoformat()
     )

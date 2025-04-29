@@ -22,6 +22,10 @@ class AssetBase(BaseModel):
     online_date: Optional[str] = None
     warranty_expiry: Optional[str] = None
     notes: Optional[str] = None
+    version: Optional[str] = None
+    cpu_count: Optional[int] = None
+    memory_capacity: Optional[float] = None
+    storage_capacity: Optional[float] = None
 
 class AssetCreate(AssetBase):
     pass
@@ -44,6 +48,10 @@ class AssetUpdate(BaseModel):
     online_date: Optional[str] = None
     warranty_expiry: Optional[str] = None
     notes: Optional[str] = None
+    version: Optional[str] = None
+    cpu_count: Optional[int] = None
+    memory_capacity: Optional[float] = None
+    storage_capacity: Optional[float] = None
 
 class AssetInDB(AssetBase):
     id: int

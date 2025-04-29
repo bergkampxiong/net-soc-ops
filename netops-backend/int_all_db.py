@@ -99,6 +99,35 @@ def init_system_types(db):
 def init_cmdb_data(db):
     """初始化CMDB数据"""
     try:
+        # 检查并添加version字段
+        inspector = inspect(db.get_bind())
+        if 'cmdb_assets' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('cmdb_assets')]
+            if 'version' not in columns:
+                with db.get_bind().connect() as conn:
+                    conn.execute(text("ALTER TABLE cmdb_assets ADD COLUMN version VARCHAR(50)"))
+                    conn.commit()
+                print("已添加version列到cmdb_assets表")
+            else:
+                print("cmdb_assets表已存在且包含version列")
+            
+            # 检查并添加cpu_count、memory_capacity和storage_capacity字段
+            if 'cpu_count' not in columns:
+                with db.get_bind().connect() as conn:
+                    conn.execute(text("ALTER TABLE cmdb_assets ADD COLUMN cpu_count INTEGER"))
+                    conn.commit()
+                print("已添加cpu_count列到cmdb_assets表")
+            if 'memory_capacity' not in columns:
+                with db.get_bind().connect() as conn:
+                    conn.execute(text("ALTER TABLE cmdb_assets ADD COLUMN memory_capacity FLOAT"))
+                    conn.commit()
+                print("已添加memory_capacity列到cmdb_assets表")
+            if 'storage_capacity' not in columns:
+                with db.get_bind().connect() as conn:
+                    conn.execute(text("ALTER TABLE cmdb_assets ADD COLUMN storage_capacity FLOAT"))
+                    conn.commit()
+                print("已添加storage_capacity列到cmdb_assets表")
+        
         # 检查是否已有数据
         if db.query(DeviceType).count() == 0:
             # 添加设备类型
@@ -185,6 +214,27 @@ def init_cmdb_data(db):
                     created_at=now,
                     updated_at=now
                 ))
+            
+            # 添加示例资产
+            example_asset = Asset(
+                name="示例设备",
+                asset_tag="ASSET-001",
+                ip_address="192.168.1.1",
+                serial_number="SN123456",
+                device_type_id=1,
+                vendor_id=1,
+                department_id=1,
+                location_id=1,
+                status_id=1,
+                owner="admin",
+                version="1.0.0",
+                cpu_count=4,
+                memory_capacity=16.0,
+                storage_capacity=500.0,
+                created_at=datetime.utcnow().isoformat(),
+                updated_at=datetime.utcnow().isoformat()
+            )
+            db.add(example_asset)
             
             db.commit()
             print("CMDB基础数据初始化成功")

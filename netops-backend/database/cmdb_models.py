@@ -112,6 +112,11 @@ class Asset(CMDBBase):
     online_date = Column(String(50), nullable=True)  # 上线时间
     warranty_expiry = Column(String(50), nullable=True)  # 保修到期
     notes = Column(Text, nullable=True)  # 备注
+    # 新增字段
+    version = Column(String(50), nullable=True)  # 版本
+    cpu_count = Column(Integer, nullable=True)  # CPU数量
+    memory_capacity = Column(Float, nullable=True)  # 内存容量(GB)
+    storage_capacity = Column(Float, nullable=True)  # 存储容量(GB)
     created_at = Column(String(50))
     updated_at = Column(String(50))
     
