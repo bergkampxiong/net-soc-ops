@@ -75,8 +75,8 @@ export const PDDeviceConnectPanel: React.FC<DeviceConnectPanelProps> = ({
 
     setLoading(true);
     try {
-      const ipAddressesResponse = await request.get(`/device/category/groups/${groupId}/ip-addresses`);
-      setIpAddresses(ipAddressesResponse.data);
+      const ipAddressesResponse = await request.get(`/device/category/groups/${groupId}/members`);
+      setIpAddresses(ipAddressesResponse.data.map((member: any) => member.ip_address));
     } catch (error) {
       message.error('加载IP地址列表失败');
     } finally {
