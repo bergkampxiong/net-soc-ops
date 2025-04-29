@@ -540,72 +540,100 @@ const CMDBQuery: React.FC = () => {
       title: '设备名称',
       dataIndex: 'name',
       key: 'name',
-      filterDropdown: getTextFilterDropdown('name'),
-      filterIcon: (filtered) => <FilterOutlined style={{ color: filtered ? '#1890ff' : undefined }} />,
-      ellipsis: true,
       width: 150,
+      fixed: 'left',
+      filterDropdown: getTextFilterDropdown('name'),
+      filterIcon: getFilterIcon,
+      render: (text: string, record: any) => (
+        <Space>
+          {getDeviceIcon(record.device_type?.name)}
+          <span>{text}</span>
+        </Space>
+      ),
     },
     {
       title: '资产标签',
       dataIndex: 'asset_tag',
       key: 'asset_tag',
+      width: 120,
       filterDropdown: getTextFilterDropdown('asset_tag'),
-      filterIcon: (filtered) => <FilterOutlined style={{ color: filtered ? '#1890ff' : undefined }} />,
-      width: 120,
-    },
-    {
-      title: '设备类型',
-      dataIndex: ['device_type', 'name'],
-      key: 'device_type',
-      render: (text) => text && (
-        <Tag color={deviceTypeColors[text] || 'default'}>
-          {text}
-        </Tag>
-      ),
-      filterDropdown: getSelectFilterDropdown('device_type_id', deviceTypeOptions.map(type => ({
-        text: type.name,
-        value: type.id.toString()
-      }))),
-      filterIcon: (filtered) => <FilterOutlined style={{ color: filtered ? '#1890ff' : undefined }} />,
-      width: 120,
-    },
-    {
-      title: '厂商',
-      dataIndex: ['vendor', 'name'],
-      key: 'vendor',
-      filterDropdown: getSelectFilterDropdown('vendor_id', vendorOptions.map(vendor => ({
-        text: vendor.name,
-        value: vendor.id.toString()
-      }))),
-      filterIcon: (filtered) => <FilterOutlined style={{ color: filtered ? '#1890ff' : undefined }} />,
-      width: 120,
-      ellipsis: true,
-    },
-    {
-      title: '型号',
-      dataIndex: 'model',
-      key: 'model',
-      filterDropdown: getTextFilterDropdown('model'),
-      filterIcon: (filtered) => <FilterOutlined style={{ color: filtered ? '#1890ff' : undefined }} />,
-      width: 120,
-      ellipsis: true,
+      filterIcon: getFilterIcon,
     },
     {
       title: 'IP地址',
       dataIndex: 'ip_address',
       key: 'ip_address',
+      width: 120,
       filterDropdown: getTextFilterDropdown('ip_address'),
-      filterIcon: (filtered) => <FilterOutlined style={{ color: filtered ? '#1890ff' : undefined }} />,
-      width: 130,
+      filterIcon: getFilterIcon,
+    },
+    {
+      title: '设备类型',
+      dataIndex: ['device_type', 'name'],
+      key: 'device_type',
+      width: 120,
+      filterDropdown: getSelectFilterDropdown('device_type_id', deviceTypeOptions.map(type => ({ text: type.name, value: type.id }))),
+      filterIcon: getFilterIcon,
+      render: (text: string) => <Tag color={deviceTypeColors[text] || 'default'}>{text}</Tag>,
+    },
+    {
+      title: '厂商',
+      dataIndex: ['vendor', 'name'],
+      key: 'vendor',
+      width: 120,
+      filterDropdown: getSelectFilterDropdown('vendor_id', vendorOptions.map(vendor => ({ text: vendor.name, value: vendor.id }))),
+      filterIcon: getFilterIcon,
+    },
+    {
+      title: '型号',
+      dataIndex: 'model',
+      key: 'model',
+      width: 120,
+      filterDropdown: getTextFilterDropdown('model'),
+      filterIcon: getFilterIcon,
+    },
+    {
+      title: '版本',
+      dataIndex: 'version',
+      key: 'version',
+      width: 120,
+      filterDropdown: getTextFilterDropdown('version'),
+      filterIcon: getFilterIcon,
+    },
+    {
+      title: 'CPU数量',
+      dataIndex: 'cpu_count',
+      key: 'cpu_count',
+      width: 100,
+      filterDropdown: getTextFilterDropdown('cpu_count'),
+      filterIcon: getFilterIcon,
+      render: (text: number) => text ? `${text}核` : '-',
+    },
+    {
+      title: '内存容量',
+      dataIndex: 'memory_capacity',
+      key: 'memory_capacity',
+      width: 120,
+      filterDropdown: getTextFilterDropdown('memory_capacity'),
+      filterIcon: getFilterIcon,
+      render: (text: number) => text ? `${text}GB` : '-',
+    },
+    {
+      title: '存储容量',
+      dataIndex: 'storage_capacity',
+      key: 'storage_capacity',
+      width: 120,
+      filterDropdown: getTextFilterDropdown('storage_capacity'),
+      filterIcon: getFilterIcon,
+      render: (text: number) => text ? `${text}GB` : '-',
     },
     {
       title: 'SN码',
       dataIndex: 'serial_number',
       key: 'serial_number',
-      filterDropdown: getTextFilterDropdown('serial_number'),
-      filterIcon: (filtered) => <FilterOutlined style={{ color: filtered ? '#1890ff' : undefined }} />,
       width: 150,
-      ellipsis: true,
+      filterDropdown: getTextFilterDropdown('serial_number'),
+      filterIcon: getFilterIcon,
     },
     {
       title: '系统类型',
@@ -1103,9 +1131,13 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
           form.resetFields();
         }}
         footer={null}
-        width={800}
+        width={1600}
         styles={{
-          body: { maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }
+          body: { 
+            maxHeight: 'calc(100vh - 100px)', 
+            overflowY: 'auto',
+            padding: '24px 32px'
+          }
         }}
       >
         <Form
@@ -1122,137 +1154,133 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
             auth_type: 'password'
           }}
         >
-          <Row gutter={16}>
-            <Col span={8}>
+          <Row gutter={[32, 24]}>
+            <Col span={6}>
               <Form.Item
                 name="name"
                 label="设备名称"
                 rules={[{ required: true, message: '请输入设备名称' }]}
               >
-                <Input placeholder="请输入设备名称" />
+                <Input placeholder="请输入设备名称" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col span={6}>
               <Form.Item
                 name="asset_tag"
                 label="资产标签"
                 rules={[{ required: true, message: '请输入资产标签' }]}
               >
-                <Input placeholder="请输入资产标签" />
+                <Input placeholder="请输入资产标签" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col span={6}>
               <Form.Item
                 name="ip_address"
                 label="IP地址"
                 rules={[{ required: true, message: '请输入IP地址' }]}
               >
-                <Input placeholder="请输入IP地址" />
+                <Input placeholder="请输入IP地址" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-          </Row>
-          
-          <Row gutter={16}>
-            <Col span={8}>
+            <Col span={6}>
               <Form.Item
                 name="device_type_id"
                 label="设备类型"
                 rules={[{ required: true, message: '请选择设备类型' }]}
               >
-                <Select placeholder="请选择设备类型">
+                <Select placeholder="请选择设备类型" style={{ width: '100%' }}>
                   {deviceTypeOptions.map(type => (
                     <Option key={type.id} value={type.id}>{type.name}</Option>
                   ))}
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={8}>
+          </Row>
+          
+          <Row gutter={[32, 24]}>
+            <Col span={6}>
               <Form.Item
                 name="vendor_id"
                 label="厂商"
               >
-                <Select placeholder="请选择厂商" allowClear>
+                <Select placeholder="请选择厂商" allowClear style={{ width: '100%' }}>
                   {vendorOptions.map(vendor => (
                     <Option key={vendor.id} value={vendor.id}>{vendor.name}</Option>
                   ))}
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col span={6}>
               <Form.Item
                 name="model"
                 label="型号"
               >
-                <Input placeholder="请输入设备型号" />
+                <Input placeholder="请输入设备型号" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-          </Row>
-          
-          <Row gutter={16}>
-            <Col span={8}>
+            <Col span={6}>
               <Form.Item
                 name="serial_number"
                 label="SN码"
               >
-                <Input placeholder="请输入序列号" />
+                <Input placeholder="请输入序列号" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col span={6}>
               <Form.Item
                 name="system_type_id"
                 label="系统类型"
                 rules={[{ required: true, message: '请选择系统类型' }]}
               >
-                <Select placeholder="请选择系统类型">
+                <Select placeholder="请选择系统类型" style={{ width: '100%' }}>
                   {systemTypes.map(type => (
                     <Option key={type.id} value={type.id}>{type.name}</Option>
                   ))}
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={8}>
+          </Row>
+          
+          <Row gutter={[32, 24]}>
+            <Col span={6}>
               <Form.Item
                 name="status_id"
                 label="状态"
-                initialValue={1} // 默认为"在线"
+                initialValue={1}
               >
-                <Select placeholder="请选择状态">
+                <Select placeholder="请选择状态" style={{ width: '100%' }}>
                   {statusOptions.map(status => (
                     <Option key={status.id} value={status.id}>{status.name}</Option>
                   ))}
                 </Select>
               </Form.Item>
             </Col>
-          </Row>
-          
-          <Row gutter={16}>
-            <Col span={8}>
+            <Col span={6}>
               <Form.Item
                 name="location_id"
                 label="位置"
               >
-                <Select placeholder="请选择位置" allowClear>
+                <Select placeholder="请选择位置" allowClear style={{ width: '100%' }}>
                   {locationOptions.map(location => (
                     <Option key={location.id} value={location.id}>{location.name}</Option>
                   ))}
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col span={6}>
               <Form.Item
                 name="owner"
                 label="所有者"
               >
-                <Input placeholder="请输入所有者" />
+                <Input placeholder="请输入所有者" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col span={6}>
               <Form.Item
                 name="department_id"
                 label="所属部门"
               >
-                <Select placeholder="请选择部门" allowClear>
-                  {/* 这里需要添加部门选项，如果后端有提供部门API */}
+                <Select placeholder="请选择部门" allowClear style={{ width: '100%' }}>
                   <Option value={1}>IT部门</Option>
                   <Option value={2}>研发部门</Option>
                   <Option value={3}>运维部门</Option>
@@ -1261,8 +1289,57 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
             </Col>
           </Row>
           
-          <Row gutter={16}>
-            <Col span={8}>
+          <Row gutter={[32, 24]}>
+            <Col span={6}>
+              <Form.Item
+                name="version"
+                label="版本"
+              >
+                <Input placeholder="请输入版本号" style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item
+                name="cpu_count"
+                label="CPU数量"
+              >
+                <InputNumber 
+                  style={{ width: '100%' }} 
+                  placeholder="请输入CPU数量" 
+                  min={0}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item
+                name="memory_capacity"
+                label="内存容量(GB)"
+              >
+                <InputNumber 
+                  style={{ width: '100%' }} 
+                  placeholder="请输入内存容量" 
+                  min={0}
+                  step={0.1}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item
+                name="storage_capacity"
+                label="存储容量(GB)"
+              >
+                <InputNumber 
+                  style={{ width: '100%' }} 
+                  placeholder="请输入存储容量" 
+                  min={0}
+                  step={0.1}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+          
+          <Row gutter={[32, 24]}>
+            <Col span={6}>
               <Form.Item
                 name="purchase_date"
                 label="购买日期"
@@ -1270,7 +1347,7 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
                 <DatePicker style={{ width: '100%' }} placeholder="选择购买日期" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col span={6}>
               <Form.Item
                 name="online_date"
                 label="上线时间"
@@ -1278,41 +1355,44 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
                 <DatePicker style={{ width: '100%' }} placeholder="选择上线时间" />
               </Form.Item>
             </Col>
-            <Col span={8}>
-              <Form.Item
-                name="warranty_expiry"
-                label="保修到期"
-              >
-                <DatePicker style={{ width: '100%' }} placeholder="选择保修到期日期" />
-              </Form.Item>
-            </Col>
-          </Row>
-          
-          <Row gutter={16}>
-            <Col span={12}>
+            <Col span={6}>
               <Form.Item
                 name="purchase_cost"
                 label="购买成本"
               >
-                <Input prefix="¥" placeholder="请输入购买成本" />
+                <InputNumber 
+                  style={{ width: '100%' }} 
+                  placeholder="请输入购买成本" 
+                  min={0}
+                  step={0.1}
+                />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col span={6}>
               <Form.Item
                 name="current_value"
                 label="当前价值"
               >
-                <Input prefix="¥" placeholder="请输入当前价值" />
+                <InputNumber 
+                  style={{ width: '100%' }} 
+                  placeholder="请输入当前价值" 
+                  min={0}
+                  step={0.1}
+                />
               </Form.Item>
             </Col>
           </Row>
           
-          <Form.Item
-            name="notes"
-            label="备注"
-          >
-            <Input.TextArea rows={4} placeholder="请输入备注信息" />
-          </Form.Item>
+          <Row gutter={[32, 24]}>
+            <Col span={24}>
+              <Form.Item
+                name="notes"
+                label="备注"
+              >
+                <Input.TextArea rows={4} placeholder="请输入备注信息" style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
           
           <Form.Item>
             <Row justify="end">
@@ -1347,9 +1427,13 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
           setCurrentDevice(null);
         }}
         footer={null}
-        width={1200}
+        width={1600}
         styles={{
-          body: { maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }
+          body: { 
+            maxHeight: 'calc(100vh - 100px)', 
+            overflowY: 'auto',
+            padding: '24px 32px'
+          }
         }}
       >
         <Form
@@ -1513,6 +1597,74 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
                 label="SN码"
               >
                 <Input placeholder="请输入SN码" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={[24, 24]}>
+            <Col span={8}>
+              <Form.Item
+                name="version"
+                label="版本"
+              >
+                <Input placeholder="请输入版本号" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                name="cpu_count"
+                label="CPU数量"
+              >
+                <InputNumber 
+                  style={{ width: '100%' }} 
+                  placeholder="请输入CPU数量" 
+                  min={0}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                name="memory_capacity"
+                label="内存容量(GB)"
+              >
+                <InputNumber 
+                  style={{ width: '100%' }} 
+                  placeholder="请输入内存容量" 
+                  min={0}
+                  step={0.1}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={[24, 24]}>
+            <Col span={8}>
+              <Form.Item
+                name="storage_capacity"
+                label="存储容量(GB)"
+              >
+                <InputNumber 
+                  style={{ width: '100%' }} 
+                  placeholder="请输入存储容量" 
+                  min={0}
+                  step={0.1}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                name="purchase_date"
+                label="购买日期"
+              >
+                <DatePicker style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                name="online_date"
+                label="上线时间"
+              >
+                <DatePicker style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>
