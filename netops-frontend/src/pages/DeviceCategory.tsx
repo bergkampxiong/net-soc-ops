@@ -226,7 +226,7 @@ const MemberManagement: React.FC = () => {
   // 获取设备类型列表
   const fetchDeviceTypes = async () => {
     try {
-      const response = await request.get('/api/device/category/device-types');
+      const response = await request.get('/cmdb/device-types');
       console.log('获取到的设备类型列表:', response.data);
       // 过滤掉英文选项
       const filteredTypes = response.data.filter((type: DeviceType) => 
@@ -251,7 +251,7 @@ const MemberManagement: React.FC = () => {
   // 获取位置列表
   const fetchLocations = async () => {
     try {
-      const response = await request.get('/api/device/category/locations');
+      const response = await request.get('/cmdb/locations');
       console.log('获取到的位置列表:', response.data);
       setLocations(response.data);
       
@@ -330,7 +330,7 @@ const MemberManagement: React.FC = () => {
     setLoading(true);
     try {
       console.log('查询参数:', values);
-      const response = await request.get('/api/device/category/cmdb-devices', {
+      const response = await request.get('/cmdb/assets', {
         params: {
           name: values.name,
           ip_address: values.ip_address,
@@ -653,7 +653,7 @@ const MemberDisplay: React.FC = () => {
   // 获取设备类型列表
   const fetchDeviceTypes = async () => {
     try {
-      const response = await request.get('/api/device/category/device-types');
+      const response = await request.get('/cmdb/device-types');
       console.log('获取到的设备类型列表:', response.data);
       // 过滤掉英文选项
       const filteredTypes = response.data.filter((type: DeviceType) => 
@@ -678,7 +678,7 @@ const MemberDisplay: React.FC = () => {
   // 获取位置列表
   const fetchLocations = async () => {
     try {
-      const response = await request.get('/api/device/category/locations');
+      const response = await request.get('/cmdb/locations');
       console.log('获取到的位置列表:', response.data);
       setLocations(response.data);
       
