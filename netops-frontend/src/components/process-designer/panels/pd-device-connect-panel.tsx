@@ -49,8 +49,8 @@ export const PDDeviceConnectPanel: React.FC<DeviceConnectPanelProps> = ({
 
       // 如果有初始数据，加载对应的IP地址列表
       if (initialData?.deviceGroupId) {
-        const ipAddressesResponse = await request.get(`/device/category/groups/${initialData.deviceGroupId}/ip-addresses`);
-        setIpAddresses(ipAddressesResponse.data);
+        const ipAddressesResponse = await request.get(`/api/device/category/groups/${initialData.deviceGroupId}/members`);
+        setIpAddresses(ipAddressesResponse.data.map((member: any) => member.ip_address));
       }
 
       // 设置表单初始值
@@ -75,7 +75,7 @@ export const PDDeviceConnectPanel: React.FC<DeviceConnectPanelProps> = ({
 
     setLoading(true);
     try {
-      const ipAddressesResponse = await request.get(`/device/category/groups/${groupId}/members`);
+      const ipAddressesResponse = await request.get(`/api/device/category/groups/${groupId}/members`);
       setIpAddresses(ipAddressesResponse.data.map((member: any) => member.ip_address));
     } catch (error) {
       message.error('加载IP地址列表失败');
