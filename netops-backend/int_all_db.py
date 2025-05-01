@@ -384,6 +384,52 @@ def init_ldap_config(engine):
         print(f"LDAP配置表初始化失败: {str(e)}")
         raise
 
+def init_process_management_tables(engine):
+    """初始化流程管理模块的表"""
+    try:
+        print("正在创建流程管理模块的表...")
+        
+        # 创建流程定义表
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS process_definitions (
+                    id VARCHAR(36) PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    version INTEGER NOT NULL DEFAULT 1,
+                    status VARCHAR(20) NOT NULL DEFAULT 'draft',
+                    nodes JSONB NOT NULL DEFAULT '[]',
+                    edges JSONB NOT NULL DEFAULT '[]',
+                    variables JSONB NOT NULL DEFAULT '{}',
+                    created_by VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_by VARCHAR(255) NOT NULL,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    deleted_at TIMESTAMP
+                );
+            """))
+            
+            # 创建流程版本表
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS process_definition_versions (
+                    id VARCHAR(36) PRIMARY KEY,
+                    process_id VARCHAR(36) NOT NULL REFERENCES process_definitions(id),
+                    version INTEGER NOT NULL,
+                    nodes JSONB NOT NULL DEFAULT '[]',
+                    edges JSONB NOT NULL DEFAULT '[]',
+                    variables JSONB NOT NULL DEFAULT '{}',
+                    created_by VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+            """))
+            
+            conn.commit()
+        
+        print("流程管理模块的表创建完成")
+    except Exception as e:
+        print(f"流程管理模块的表初始化失败: {str(e)}")
+        raise
+
 def init_databases():
     """初始化所有数据库表"""
     try:
@@ -409,6 +455,7 @@ def init_databases():
         # 初始化其他表
         init_device_connection_tables(engine)
         init_credential_tables(engine)
+        init_process_management_tables(engine)
         
         # 创建数据库会话
         SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
