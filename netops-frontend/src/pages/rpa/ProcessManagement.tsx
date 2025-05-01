@@ -191,6 +191,14 @@ const ProcessManagement: React.FC = () => {
               禁用
             </Button>
           )}
+          {record.status === 'disabled' && (
+            <Button
+              type="link"
+              onClick={() => handlePublish(record.id)}
+            >
+              重新发布
+            </Button>
+          )}
           <Popconfirm
             title="确定要删除吗？"
             onConfirm={() => handleDelete(record.id)}

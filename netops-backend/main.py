@@ -23,7 +23,6 @@ from routes import auth, users, audit, ldap, security, config_management, config
 from routes.cmdb import router as cmdb_router
 from routes.device import router as device_router, connections, ssh_connections
 from routes.job_config_router import router as job_config_router
-from app.api.process_designer import router as process_designer_router
 from app.api import process_management
 
 # 导入连接管理器
@@ -92,8 +91,7 @@ app.include_router(config_generator_router, prefix="/api/config-generator", tags
 app.include_router(job_config_router, prefix="/api")
 app.include_router(connections.router)
 app.include_router(ssh_connections.router, prefix="/api")
-app.include_router(process_designer_router)
-app.include_router(process_management.router)
+app.include_router(process_management.router, prefix="")
 
 # 定期清理任务
 def cleanup_expired_records():

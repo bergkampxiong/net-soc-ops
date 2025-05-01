@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from ..models.process_management import ProcessDefinition, ProcessDefinitionVersion
 from ..schemas.process_management import ProcessDefinitionCreate, ProcessDefinitionUpdate
 
-router = APIRouter(prefix="/process-definitions", tags=["流程管理"])
+router = APIRouter(prefix="/api/process-definitions", tags=["流程管理"])
 
 # 临时存储（后续替换为数据库）
 process_definitions = {}
@@ -72,15 +72,19 @@ async def update_process_definition(process_id: str, process: ProcessDefinitionU
     
     # 更新流程定义
     updated_process = ProcessDefinition(
-        **existing_process.dict(),
-        name=process.name or existing_process.name,
-        description=process.description or existing_process.description,
-        nodes=process.nodes or existing_process.nodes,
-        edges=process.edges or existing_process.edges,
-        variables=process.variables or existing_process.variables,
+        id=existing_process.id,
+        name=process.name if process.name is not None else existing_process.name,
+        description=process.description if process.description is not None else existing_process.description,
         version=existing_process.version + 1,
+        status=existing_process.status,
+        nodes=process.nodes if process.nodes is not None else existing_process.nodes,
+        edges=process.edges if process.edges is not None else existing_process.edges,
+        variables=process.variables if process.variables is not None else existing_process.variables,
+        created_by=existing_process.created_by,
+        created_at=existing_process.created_at,
         updated_by="admin",  # TODO: 从当前用户获取
-        updated_at=now
+        updated_at=now,
+        deleted_at=existing_process.deleted_at
     )
     
     process_definitions[process_id] = updated_process
