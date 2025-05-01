@@ -32,6 +32,8 @@ import {
   PDStatusCheckNode,
 } from './nodes';
 import './styles/pd-flow-designer.css';
+import { message, Modal } from 'antd';
+import { processCodeGeneratorApi } from '../../api/process-designer';
 
 const nodeTypes = {
   start: PDStartNode,
@@ -61,6 +63,7 @@ export const PDFlowDesigner: React.FC<PDFlowDesignerProps> = ({
   const [showValidationPanel, setShowValidationPanel] = useState(false);
   const [history, setHistory] = useState<Array<{ nodes: Node[]; edges: Edge[] }>>([{ nodes, edges }]);
   const [historyIndex, setHistoryIndex] = useState(0);
+  const [isValid, setIsValid] = useState(false);
 
   // 处理节点变化
   const handleNodesChange = useCallback(
@@ -183,14 +186,48 @@ export const PDFlowDesigner: React.FC<PDFlowDesignerProps> = ({
   }, [initialData, nodes, edges, onSave]);
 
   // 处理验证
-  const handleValidate = useCallback(() => {
-    setShowValidationPanel(true);
-  }, []);
+  const handleValidate = useCallback(async () => {
+    try {
+      const response = await processCodeGeneratorApi.validate(initialData.id);
+      const { isValid, errors } = response.data.data;
+      setIsValid(isValid);
+      if (isValid) {
+        message.success('流程验证通过');
+      } else {
+        message.error('流程验证失败：' + errors.join(', '));
+      }
+    } catch (error) {
+      message.error('验证失败');
+    }
+  }, [initialData.id]);
 
-  // 处理执行
-  const handleExecute = useCallback(() => {
-    // TODO: 实现执行功能
-  }, []);
+  // 处理代码生成
+  const handleExecute = useCallback(async () => {
+    if (!isValid) {
+      message.warning('请先通过流程验证');
+      return;
+    }
+
+    try {
+      const response = await processCodeGeneratorApi.generate(initialData.id);
+      const code = response.data.data;
+      
+      // 创建下载链接
+      const blob = new Blob([code], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${initialData.name}_generated.py`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      message.success('代码生成成功');
+    } catch (error) {
+      message.error('代码生成失败');
+    }
+  }, [initialData.id, initialData.name, isValid]);
 
   // 处理拖拽开始
   const handleDragStart = useCallback((event: React.DragEvent, nodeType: string) => {

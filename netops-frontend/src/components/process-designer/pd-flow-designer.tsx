@@ -42,6 +42,7 @@ import { useNavigate } from 'react-router-dom';
 import { message } from 'antd';
 import 'reactflow/dist/style.css';
 import './styles/pd-flow-designer.css';
+import { processCodeGeneratorApi } from '../../api/process-code-generator';
 
 // 导入所有节点组件
 import { PDStartNode } from './nodes/pd-start-node';
@@ -341,8 +342,26 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
     message.success('验证通过');
   };
 
-  const handleExecute = () => {
-    message.success('开始执行');
+  const handleExecute = async () => {
+    try {
+      const response = await processCodeGeneratorApi.generate(processId || '');
+      const code = response.data.data;
+      
+      // 创建下载链接
+      const blob = new Blob([code], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `process_${processId}_generated.py`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      message.success('代码生成成功');
+    } catch (error) {
+      message.error('代码生成失败');
+    }
   };
 
   // 处理设备连接配置保存
@@ -446,8 +465,8 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
           <Button icon={<CheckOutlined />} onClick={handleValidate}>
             验证
           </Button>
-          <Button icon={<PlayCircleOutlined />} onClick={handleExecute}>
-            执行
+          <Button icon={<CodeOutlined />} onClick={handleExecute}>
+            代码生成
           </Button>
         </Space>
       </div>

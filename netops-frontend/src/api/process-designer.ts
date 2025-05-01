@@ -74,4 +74,16 @@ export const processInstanceApi = {
   terminate: (id: string) => {
     return request.post<ApiResponse<ProcessInstance>>(`process-instances/${id}/terminate`);
   },
+};
+
+export const processCodeGeneratorApi = {
+  // 生成代码
+  generate: (id: string) => {
+    return request.post<ApiResponse<string>>(`process-definitions/${id}/generate-code`);
+  },
+
+  // 验证流程
+  validate: (id: string) => {
+    return request.post<ApiResponse<{ isValid: boolean; errors: string[] }>>(`process-definitions/${id}/validate`);
+  },
 }; 

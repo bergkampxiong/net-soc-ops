@@ -10,6 +10,7 @@ import {
   ZoomOutOutlined,
   FullscreenOutlined,
   FullscreenExitOutlined,
+  CodeOutlined,
 } from '@ant-design/icons';
 import type { PDToolbarConfig } from '../../../types/process-designer/pd-types';
 
@@ -60,9 +61,9 @@ export const PDToolbar: React.FC<PDToolbarConfig> = ({
           title="验证"
         />
         <Button
-          icon={<PlayCircleOutlined />}
+          icon={<CodeOutlined />}
           onClick={onExecute}
-          title="执行"
+          title="代码生成"
         />
         <Button
           icon={<ZoomInOutlined />}
