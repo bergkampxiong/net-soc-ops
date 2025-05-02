@@ -17,7 +17,7 @@ import ReactFlow, {
   MarkerType,
   ConnectionMode,
 } from 'reactflow';
-import { Button, Space, Divider, Modal, Form, Input } from 'antd';
+import { Button, Space, Divider, Modal, Form, Input, message } from 'antd';
 import {
   ArrowLeftOutlined,
   SaveOutlined,
@@ -39,10 +39,10 @@ import {
   CheckCircleOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { message } from 'antd';
 import 'reactflow/dist/style.css';
 import './styles/pd-flow-designer.css';
-import { processCodeGeneratorApi } from '../../api/process-code-generator';
+import request from '../../utils/request';
+import { processCodeGeneratorApi, processDefinitionApi } from '../../api/process-designer';
 import { saveProcessDesign, updateProcessDesign, ProcessDesignerSaveRequest } from '../../api/process-designer';
 
 // 导入所有节点组件
@@ -511,7 +511,8 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
         data: {
           ...selectedConfigDeployNode.data,
           ...data,
-          configured: true
+          configured: true,
+          isConfigured: true
         }
       };
       setNodes((nds) =>
@@ -594,13 +595,31 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
   // 加载流程数据
   useEffect(() => {
     if (processId && processId !== previousProcessId.current) {
-      // TODO: 替换为实际的API调用
-      // 模拟加载流程数据
-      setNodes(initialNodes);
-      setEdges([]);
-      setIsDirty(false);
-      onDirtyChange?.(false);
-      previousProcessId.current = processId;
+      const loadProcessData = async () => {
+        try {
+          const response = await processDefinitionApi.getDetail(processId);
+          const processDefinition = response.data.data;
+          
+          if (processDefinition.nodes && processDefinition.edges) {
+            setNodes(processDefinition.nodes);
+            setEdges(processDefinition.edges);
+          } else {
+            setNodes(initialNodes);
+            setEdges([]);
+          }
+          
+          setIsDirty(false);
+          onDirtyChange?.(false);
+          previousProcessId.current = processId;
+        } catch (error) {
+          console.error('加载流程数据失败:', error);
+          message.error('加载流程数据失败');
+          setNodes(initialNodes);
+          setEdges([]);
+        }
+      };
+
+      loadProcessData();
     }
   }, [processId, setNodes, setEdges, onDirtyChange]);
 

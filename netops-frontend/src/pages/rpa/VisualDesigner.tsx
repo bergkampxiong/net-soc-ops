@@ -1,5 +1,6 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Layout, Card } from 'antd';
+import { useParams } from 'react-router-dom';
 import PDFlowDesigner from '../../components/process-designer/pd-flow-designer';
 import '../../components/process-designer/styles/pd-flow-designer.css';
 import '../../components/process-designer/styles/pd-process-manager.css';
@@ -7,7 +8,7 @@ import '../../components/process-designer/styles/pd-process-manager.css';
 const { Content } = Layout;
 
 const VisualDesigner: React.FC = () => {
-  const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
+  const { id } = useParams<{ id: string }>();
   const [isDirty, setIsDirty] = useState(false);
 
   const handleDirtyChange = (newIsDirty: boolean) => {
@@ -20,7 +21,7 @@ const VisualDesigner: React.FC = () => {
         <div className="pd-process-manager-container">
           <Card className="pd-flow-designer-card" bordered={false}>
             <PDFlowDesigner 
-              processId={selectedProcessId} 
+              processId={id || null} 
               onDirtyChange={handleDirtyChange}
             />
           </Card>
