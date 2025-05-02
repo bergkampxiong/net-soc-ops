@@ -17,7 +17,7 @@ import ReactFlow, {
   MarkerType,
   ConnectionMode,
 } from 'reactflow';
-import { Button, Space, Divider } from 'antd';
+import { Button, Space, Divider, Modal, Form, Input } from 'antd';
 import {
   ArrowLeftOutlined,
   SaveOutlined,
@@ -43,6 +43,7 @@ import { message } from 'antd';
 import 'reactflow/dist/style.css';
 import './styles/pd-flow-designer.css';
 import { processCodeGeneratorApi } from '../../api/process-code-generator';
+import { saveProcessDesign, updateProcessDesign, ProcessDesignerSaveRequest } from '../../api/process-designer';
 
 // 导入所有节点组件
 import { PDStartNode } from './nodes/pd-start-node';
@@ -140,6 +141,16 @@ const initialNodes = [
   }
 ];
 
+interface NodeData {
+  label: string;
+  icon: React.ReactNode;
+  configured?: boolean;
+}
+
+interface CustomNode extends Node {
+  data: NodeData;
+}
+
 interface PDFlowDesignerProps {
   processId: string | null;
   onDirtyChange?: (isDirty: boolean) => void;
@@ -169,6 +180,9 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
   const [selectedCommandExecuteNode, setSelectedCommandExecuteNode] = useState<Node | null>(null);
   const [selectedConfigBackupNode, setSelectedConfigBackupNode] = useState<Node | null>(null);
   const [selectedStatusCheckNode, setSelectedStatusCheckNode] = useState<Node | null>(null);
+  const [saveModalVisible, setSaveModalVisible] = useState(false);
+  const [saveForm] = Form.useForm();
+  const [isSaving, setIsSaving] = useState(false);
 
   // 处理键盘删除事件
   const onKeyDown = useCallback((event: KeyboardEvent) => {
@@ -325,16 +339,75 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
     [reactFlowInstance, setNodes, onDirtyChange]
   );
 
-  // 保存流程
+  // 验证流程完整性
+  const validateProcess = () => {
+    // 检查是否有开始节点
+    const hasStartNode = nodes.some(node => node.type === 'start');
+    if (!hasStartNode) {
+      message.error('流程必须包含开始节点');
+      return false;
+    }
+
+    // 检查是否有结束节点
+    const hasEndNode = nodes.some(node => node.type === 'end');
+    if (!hasEndNode) {
+      message.error('流程必须包含结束节点');
+      return false;
+    }
+
+    // 检查所有节点是否配置完整
+    const unconfiguredNodes = nodes.filter(node => {
+      if (node.type === 'start' || node.type === 'end') return false;
+      return !(node as CustomNode).data?.configured;
+    });
+
+    if (unconfiguredNodes.length > 0) {
+      message.error(`以下节点未完成配置：${unconfiguredNodes.map(n => n.data?.label).join(', ')}`);
+      return false;
+    }
+
+    return true;
+  };
+
+  // 处理保存
   const handleSave = async () => {
+    if (!validateProcess()) {
+      return;
+    }
+
+    setSaveModalVisible(true);
+    saveForm.resetFields();
+  };
+
+  // 处理保存确认
+  const handleSaveConfirm = async () => {
     try {
-      // TODO: 替换为实际的API调用
-      // await saveProcess(processId, { nodes, edges });
+      const values = await saveForm.validateFields();
+      setIsSaving(true);
+
+      const saveData: ProcessDesignerSaveRequest = {
+        name: values.name,
+        description: values.description,
+        nodes,
+        edges,
+        variables: {}, // TODO: 从节点配置中收集变量
+      };
+
+      if (processId) {
+        await updateProcessDesign(processId, saveData);
+        message.success('更新成功');
+      } else {
+        await saveProcessDesign(saveData);
+        message.success('保存成功');
+      }
+
       setIsDirty(false);
       onDirtyChange?.(false);
-      message.success('保存成功');
+      setSaveModalVisible(false);
     } catch (error) {
       message.error('保存失败');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -371,7 +444,8 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
         ...selectedDeviceNode,
         data: {
           ...selectedDeviceNode.data,
-          ...data
+          ...data,
+          configured: true
         }
       };
       setNodes((nds) =>
@@ -379,30 +453,143 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
           node.id === selectedDeviceNode.id ? updatedNode : node
         )
       );
+      setShowDeviceConnectPanel(false);
       setIsDirty(true);
       onDirtyChange?.(true);
     }
   }, [selectedDeviceNode, setNodes, onDirtyChange]);
 
-  // 处理节点配置更新
-  const handleNodeConfigUpdate = (nodeId: string, data: any) => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === nodeId) {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              ...data
-            }
-          };
+  // 处理任务节点配置保存
+  const handleTaskSave = useCallback((data: any) => {
+    if (selectedTaskNode) {
+      const updatedNode = {
+        ...selectedTaskNode,
+        data: {
+          ...selectedTaskNode.data,
+          ...data,
+          configured: true
         }
-        return node;
-      })
-    );
-    setIsDirty(true);
-    onDirtyChange?.(true);
-  };
+      };
+      setNodes((nds) =>
+        nds.map((node) =>
+          node.id === selectedTaskNode.id ? updatedNode : node
+        )
+      );
+      setShowTaskPanel(false);
+      setIsDirty(true);
+      onDirtyChange?.(true);
+    }
+  }, [selectedTaskNode, setNodes, onDirtyChange]);
+
+  // 处理条件节点配置保存
+  const handleConditionSave = useCallback((data: any) => {
+    if (selectedConditionNode) {
+      const updatedNode = {
+        ...selectedConditionNode,
+        data: {
+          ...selectedConditionNode.data,
+          ...data,
+          configured: true
+        }
+      };
+      setNodes((nds) =>
+        nds.map((node) =>
+          node.id === selectedConditionNode.id ? updatedNode : node
+        )
+      );
+      setShowConditionPanel(false);
+      setIsDirty(true);
+      onDirtyChange?.(true);
+    }
+  }, [selectedConditionNode, setNodes, onDirtyChange]);
+
+  // 处理配置下发节点配置保存
+  const handleConfigDeploySave = useCallback((data: any) => {
+    if (selectedConfigDeployNode) {
+      const updatedNode = {
+        ...selectedConfigDeployNode,
+        data: {
+          ...selectedConfigDeployNode.data,
+          ...data,
+          configured: true
+        }
+      };
+      setNodes((nds) =>
+        nds.map((node) =>
+          node.id === selectedConfigDeployNode.id ? updatedNode : node
+        )
+      );
+      setShowConfigDeployPanel(false);
+      setIsDirty(true);
+      onDirtyChange?.(true);
+    }
+  }, [selectedConfigDeployNode, setNodes, onDirtyChange]);
+
+  // 处理命令执行节点配置保存
+  const handleCommandExecuteSave = useCallback((data: any) => {
+    if (selectedCommandExecuteNode) {
+      const updatedNode = {
+        ...selectedCommandExecuteNode,
+        data: {
+          ...selectedCommandExecuteNode.data,
+          ...data,
+          configured: true
+        }
+      };
+      setNodes((nds) =>
+        nds.map((node) =>
+          node.id === selectedCommandExecuteNode.id ? updatedNode : node
+        )
+      );
+      setShowCommandExecutePanel(false);
+      setIsDirty(true);
+      onDirtyChange?.(true);
+    }
+  }, [selectedCommandExecuteNode, setNodes, onDirtyChange]);
+
+  // 处理配置备份节点配置保存
+  const handleConfigBackupSave = useCallback((data: any) => {
+    if (selectedConfigBackupNode) {
+      const updatedNode = {
+        ...selectedConfigBackupNode,
+        data: {
+          ...selectedConfigBackupNode.data,
+          ...data,
+          configured: true
+        }
+      };
+      setNodes((nds) =>
+        nds.map((node) =>
+          node.id === selectedConfigBackupNode.id ? updatedNode : node
+        )
+      );
+      setShowConfigBackupPanel(false);
+      setIsDirty(true);
+      onDirtyChange?.(true);
+    }
+  }, [selectedConfigBackupNode, setNodes, onDirtyChange]);
+
+  // 处理状态检查节点配置保存
+  const handleStatusCheckSave = useCallback((data: any) => {
+    if (selectedStatusCheckNode) {
+      const updatedNode = {
+        ...selectedStatusCheckNode,
+        data: {
+          ...selectedStatusCheckNode.data,
+          ...data,
+          configured: true
+        }
+      };
+      setNodes((nds) =>
+        nds.map((node) =>
+          node.id === selectedStatusCheckNode.id ? updatedNode : node
+        )
+      );
+      setShowStatusCheckPanel(false);
+      setIsDirty(true);
+      onDirtyChange?.(true);
+    }
+  }, [selectedStatusCheckNode, setNodes, onDirtyChange]);
 
   // 加载流程数据
   useEffect(() => {
@@ -529,6 +716,39 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
             <Background color="#e5e5e5" gap={20} size={1} />
             <Controls />
             <MiniMap />
+            <Panel position="top-right">
+              <Space>
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  onClick={handleSave}
+                  disabled={!isDirty}
+                >
+                  保存
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (processId) {
+                      // TODO: 替换为实际的API调用
+                      // 重新加载流程数据
+                      setNodes(initialNodes);
+                      setEdges([]);
+                      setIsDirty(false);
+                      onDirtyChange?.(false);
+                    }
+                  }}
+                  disabled={!isDirty}
+                >
+                  重置
+                </Button>
+                <Button icon={<CheckOutlined />} onClick={handleValidate}>
+                  验证
+                </Button>
+                <Button icon={<CodeOutlined />} onClick={handleExecute}>
+                  代码生成
+                </Button>
+              </Space>
+            </Panel>
           </ReactFlow>
         </div>
       </div>
@@ -544,43 +764,68 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
         visible={showTaskPanel}
         onClose={() => setShowTaskPanel(false)}
         initialData={selectedTaskNode?.data}
-        onSave={(data) => handleNodeConfigUpdate(selectedTaskNode?.id || '', data)}
+        onSave={handleTaskSave}
       />
 
       <PDConditionPanel
         visible={showConditionPanel}
         onClose={() => setShowConditionPanel(false)}
         initialData={selectedConditionNode?.data}
-        onSave={(data) => handleNodeConfigUpdate(selectedConditionNode?.id || '', data)}
+        onSave={handleConditionSave}
       />
 
       <PDConfigDeployPanel
         visible={showConfigDeployPanel}
         onClose={() => setShowConfigDeployPanel(false)}
         initialData={selectedConfigDeployNode?.data}
-        onSave={(data) => handleNodeConfigUpdate(selectedConfigDeployNode?.id || '', data)}
+        onSave={handleConfigDeploySave}
       />
 
       <PDCommandExecutePanel
         visible={showCommandExecutePanel}
         onClose={() => setShowCommandExecutePanel(false)}
         initialData={selectedCommandExecuteNode?.data}
-        onSave={(data) => handleNodeConfigUpdate(selectedCommandExecuteNode?.id || '', data)}
+        onSave={handleCommandExecuteSave}
       />
 
       <PDConfigBackupPanel
         visible={showConfigBackupPanel}
         onClose={() => setShowConfigBackupPanel(false)}
         initialData={selectedConfigBackupNode?.data}
-        onSave={(data) => handleNodeConfigUpdate(selectedConfigBackupNode?.id || '', data)}
+        onSave={handleConfigBackupSave}
       />
 
       <PDStatusCheckPanel
         visible={showStatusCheckPanel}
         onClose={() => setShowStatusCheckPanel(false)}
         initialData={selectedStatusCheckNode?.data}
-        onSave={(data) => handleNodeConfigUpdate(selectedStatusCheckNode?.id || '', data)}
+        onSave={handleStatusCheckSave}
       />
+
+      {/* 保存对话框 */}
+      <Modal
+        title={processId ? '更新流程' : '保存流程'}
+        open={saveModalVisible}
+        onOk={handleSaveConfirm}
+        onCancel={() => setSaveModalVisible(false)}
+        confirmLoading={isSaving}
+      >
+        <Form form={saveForm} layout="vertical">
+          <Form.Item
+            name="name"
+            label="流程名称"
+            rules={[{ required: true, message: '请输入流程名称' }]}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item
+            name="description"
+            label="流程描述"
+          >
+            <Input.TextArea rows={4} />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 };

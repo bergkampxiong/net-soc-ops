@@ -86,4 +86,41 @@ export const processCodeGeneratorApi = {
   validate: (id: string) => {
     return request.post<ApiResponse<{ isValid: boolean; errors: string[] }>>(`process-definitions/${id}/validate`);
   },
+};
+
+// 流程设计器数据结构
+export interface ProcessDesignerData {
+  nodes: any[];
+  edges: any[];
+  variables: Record<string, any>;
+}
+
+// 流程设计器保存请求数据
+export interface ProcessDesignerSaveRequest {
+  name: string;
+  description?: string;
+  nodes: any[];
+  edges: any[];
+  variables: Record<string, any>;
+}
+
+/**
+ * 保存流程设计
+ * @param data 流程设计数据
+ * @returns 保存后的流程定义
+ */
+export const saveProcessDesign = async (data: ProcessDesignerSaveRequest): Promise<ProcessDefinition> => {
+  const response = await request.post<ProcessDefinition>('/process-definitions', data);
+  return response.data;
+};
+
+/**
+ * 更新流程设计
+ * @param id 流程ID
+ * @param data 流程设计数据
+ * @returns 更新后的流程定义
+ */
+export const updateProcessDesign = async (id: string, data: ProcessDesignerSaveRequest): Promise<ProcessDefinition> => {
+  const response = await request.put<ProcessDefinition>(`/process-definitions/${id}`, data);
+  return response.data;
 }; 
