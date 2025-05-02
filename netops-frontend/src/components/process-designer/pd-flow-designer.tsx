@@ -716,39 +716,6 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
             <Background color="#e5e5e5" gap={20} size={1} />
             <Controls />
             <MiniMap />
-            <Panel position="top-right">
-              <Space>
-                <Button
-                  type="primary"
-                  icon={<SaveOutlined />}
-                  onClick={handleSave}
-                  disabled={!isDirty}
-                >
-                  保存
-                </Button>
-                <Button
-                  onClick={() => {
-                    if (processId) {
-                      // TODO: 替换为实际的API调用
-                      // 重新加载流程数据
-                      setNodes(initialNodes);
-                      setEdges([]);
-                      setIsDirty(false);
-                      onDirtyChange?.(false);
-                    }
-                  }}
-                  disabled={!isDirty}
-                >
-                  重置
-                </Button>
-                <Button icon={<CheckOutlined />} onClick={handleValidate}>
-                  验证
-                </Button>
-                <Button icon={<CodeOutlined />} onClick={handleExecute}>
-                  代码生成
-                </Button>
-              </Space>
-            </Panel>
           </ReactFlow>
         </div>
       </div>

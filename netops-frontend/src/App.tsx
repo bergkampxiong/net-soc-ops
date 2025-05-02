@@ -19,6 +19,7 @@ import ChangePassword from './pages/ChangePassword';
 import DeviceManagement from './pages/DeviceManagement';
 import DeviceCategory from './pages/DeviceCategory';
 import CredentialManagement from './pages/CredentialManagement';
+import VisualDesigner from './pages/rpa/VisualDesigner';
 
 // 样式
 import './styles/App.css';
@@ -80,6 +81,7 @@ const App: React.FC = () => {
             <Route path="credentials" element={<CredentialManagement />} />
           </Route>
           <Route path="rpa/*" element={<RPA />} />
+          <Route path="rpa/process-orchestration/visual-designer/:id" element={<VisualDesigner />} />
           <Route path="aiops" element={<AIOPS />} />
           <Route path="system" element={
             <AdminRoute>

@@ -4,7 +4,7 @@ import VisualDesigner from '../pages/rpa/VisualDesigner';
 
 const routes: RouteObject[] = [
   {
-    path: '/rpa/process-orchestration/visual-designer',
+    path: '/rpa/process-orchestration/visual-designer/:id',
     element: <VisualDesigner />
   }
 ];

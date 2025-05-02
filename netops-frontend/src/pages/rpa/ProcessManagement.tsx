@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Space, Modal, Form, Input, message, Tag, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, HistoryOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, HistoryOutlined, EyeOutlined, RollbackOutlined, CloudUploadOutlined, StopOutlined } from '@ant-design/icons';
 import { 
   ProcessDefinition, 
   getProcessDefinitions, 
@@ -13,6 +13,7 @@ import {
   rollbackProcessVersion
 } from '../../api/process-management';
 import { useNavigate } from 'react-router-dom';
+import moment from 'moment';
 
 const { TextArea } = Input;
 
@@ -121,10 +122,28 @@ const ProcessManagement: React.FC = () => {
     }
   };
 
+  // 处理编辑流程
+  const handleEdit = (record: ProcessDefinition) => {
+    navigate(`/rpa/process-orchestration/visual-designer/${record.id}`);
+  };
+
+  // 处理查看流程
+  const handleView = (record: ProcessDefinition) => {
+    navigate(`/rpa/process-orchestration/visual-designer/${record.id}`, {
+      state: { mode: 'view' }
+    });
+  };
+
+  // 处理查看历史版本
+  const handleViewHistory = (record: ProcessDefinition) => {
+    setCurrentProcessId(record.id);
+    setVersionsVisible(true);
+  };
+
   // 表格列定义
   const columns = [
     {
-      title: '名称',
+      title: '流程名称',
       dataIndex: 'name',
       key: 'name',
     },
@@ -143,41 +162,57 @@ const ProcessManagement: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => {
-        const color = status === 'published' ? 'success' : status === 'disabled' ? 'error' : 'default';
-        return <Tag color={color}>{status}</Tag>;
+        const statusMap = {
+          draft: { text: '草稿', color: 'default' },
+          published: { text: '已发布', color: 'success' },
+          disabled: { text: '已禁用', color: 'error' },
+        };
+        const statusInfo = statusMap[status as keyof typeof statusMap];
+        return <Tag color={statusInfo.color}>{statusInfo.text}</Tag>;
       },
+    },
+    {
+      title: '创建人',
+      dataIndex: 'created_by',
+      key: 'created_by',
     },
     {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
+      render: (text: string) => moment(text).format('YYYY-MM-DD HH:mm:ss'),
     },
     {
       title: '操作',
       key: 'action',
       render: (_: any, record: ProcessDefinition) => (
-        <Space size="middle">
+        <Space>
           <Button
             type="link"
             icon={<EditOutlined />}
-            onClick={() => {
-              setEditingId(record.id);
-              form.setFieldsValue(record);
-              setModalVisible(true);
-            }}
+            onClick={() => handleEdit(record)}
+            disabled={record.status !== 'draft'}
           >
             编辑
           </Button>
           <Button
             type="link"
-            icon={<HistoryOutlined />}
-            onClick={() => handleViewVersions(record.id)}
+            icon={<EyeOutlined />}
+            onClick={() => handleView(record)}
           >
-            版本
+            查看
+          </Button>
+          <Button
+            type="link"
+            icon={<HistoryOutlined />}
+            onClick={() => handleViewHistory(record)}
+          >
+            历史版本
           </Button>
           {record.status === 'draft' && (
             <Button
               type="link"
+              icon={<CloudUploadOutlined />}
               onClick={() => handlePublish(record.id)}
             >
               发布
@@ -186,6 +221,7 @@ const ProcessManagement: React.FC = () => {
           {record.status === 'published' && (
             <Button
               type="link"
+              icon={<StopOutlined />}
               onClick={() => handleDisable(record.id)}
             >
               禁用
@@ -194,19 +230,20 @@ const ProcessManagement: React.FC = () => {
           {record.status === 'disabled' && (
             <Button
               type="link"
+              icon={<CloudUploadOutlined />}
               onClick={() => handlePublish(record.id)}
             >
               重新发布
             </Button>
           )}
-          <Popconfirm
-            title="确定要删除吗？"
-            onConfirm={() => handleDelete(record.id)}
+          <Button
+            type="link"
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() => handleDelete(record.id)}
           >
-            <Button type="link" danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
-          </Popconfirm>
+            删除
+          </Button>
         </Space>
       ),
     },
