@@ -77,7 +77,14 @@ export const PDConfigDeployPanel: React.FC<PDConfigDeployPanelProps> = ({
           message.error('请先选择配置名称');
           return;
         }
-        onSave(values);
+        onSave({
+          ...values,
+          // 确保配置内容被保存
+          configContent: values.configContent,
+          // 标记为已配置
+          isConfigured: true,
+          configured: true
+        });
         onClose(); // 保存后关闭面板
       })
       .catch((error) => {

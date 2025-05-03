@@ -143,8 +143,9 @@ const initialNodes = [
 
 interface NodeData {
   label: string;
-  icon: React.ReactNode;
+  isConfigured?: boolean;
   configured?: boolean;
+  [key: string]: any;
 }
 
 interface CustomNode extends Node {
@@ -385,10 +386,24 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
       const values = await saveForm.validateFields();
       setIsSaving(true);
 
+      // 确保节点的数据被正确保存
+      const nodesWithData = nodes.map(node => {
+        const nodeData = (node as CustomNode).data || {};
+        const config = {
+          ...nodeData,
+          isConfigured: (nodeData as any).isConfigured || false,
+          configured: (nodeData as any).configured || false
+        };
+        return {
+          ...node,
+          data: config
+        };
+      });
+
       const saveData: ProcessDesignerSaveRequest = {
         name: values.name,
         description: values.description,
-        nodes,
+        nodes: nodesWithData,
         edges,
         variables: {}, // TODO: 从节点配置中收集变量
       };
@@ -406,6 +421,7 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
       setSaveModalVisible(false);
     } catch (error) {
       message.error('保存失败');
+      console.error('保存失败:', error);
     } finally {
       setIsSaving(false);
     }
@@ -601,7 +617,16 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
           const processDefinition = response.data.data;
           
           if (processDefinition.nodes && processDefinition.edges) {
-            setNodes(processDefinition.nodes);
+            // 确保节点数据被正确加载
+            const nodesWithData = processDefinition.nodes.map((node: any) => ({
+              ...node,
+              data: {
+                ...node.data,
+                isConfigured: node.data?.isConfigured || false,
+                configured: node.data?.configured || false
+              }
+            }));
+            setNodes(nodesWithData);
             setEdges(processDefinition.edges);
           } else {
             setNodes(initialNodes);

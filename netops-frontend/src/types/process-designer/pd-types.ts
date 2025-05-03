@@ -22,6 +22,8 @@ export interface PDNodeData {
   type: PDNodeType;
   label: string;
   description?: string;
+  isConfigured?: boolean;
+  configured?: boolean;
   config: {
     parameters?: Record<string, any>;
     conditions?: Record<string, any>;

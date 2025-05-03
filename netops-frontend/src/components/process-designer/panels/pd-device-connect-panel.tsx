@@ -88,14 +88,38 @@ export const PDDeviceConnectPanel: React.FC<DeviceConnectPanelProps> = ({
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
+      
+      // 获取选中的SSH配置的完整信息
+      const selectedSSHConfig = sshConfigs.find(config => config.id === values.sshConfigId);
+      if (!selectedSSHConfig) {
+        message.error('未找到选中的SSH配置');
+        return;
+      }
+      
+      // 获取选中的设备分组的完整信息
+      const selectedDeviceGroup = deviceGroups.find(group => group.id === values.deviceGroupId);
+      if (!selectedDeviceGroup) {
+        message.error('未找到选中的设备分组');
+        return;
+      }
+      
       onSave({
         ...values,
-        isConfigured: true  // 标记为已配置
+        // 保存SSH配置的完整信息
+        sshConfig: selectedSSHConfig,
+        // 保存设备分组的完整信息
+        deviceGroup: selectedDeviceGroup,
+        // 保存选中的设备IP地址
+        selectedDevices: ipAddresses,
+        // 标记为已配置
+        isConfigured: true,
+        configured: true
       });
       onClose();
       message.success('配置已保存');
     } catch (error) {
       message.error('请检查配置信息');
+      console.error('保存配置失败:', error);
     }
   };
 

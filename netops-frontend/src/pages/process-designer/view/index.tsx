@@ -25,7 +25,18 @@ export const ProcessView: React.FC = () => {
     try {
       setLoading(true);
       const response = await processDefinitionApi.getDetail(id);
-      setProcessDefinition(response.data.data);
+      const processData = response.data.data;
+      if (processData.nodes) {
+        processData.nodes = processData.nodes.map((node: any) => ({
+          ...node,
+          data: {
+            ...node.data,
+            isConfigured: node.data?.isConfigured || false,
+            configured: node.data?.configured || false
+          }
+        }));
+      }
+      setProcessDefinition(processData);
     } catch (error) {
       message.error('获取流程定义失败');
       navigate('/process-designer');
