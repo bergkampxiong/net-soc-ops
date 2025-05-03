@@ -190,7 +190,7 @@ const ProcessManagement: React.FC = () => {
             type="link"
             icon={<EditOutlined />}
             onClick={() => handleEdit(record)}
-            disabled={record.status !== 'draft'}
+            disabled={record.status === 'published'}
           >
             编辑
           </Button>

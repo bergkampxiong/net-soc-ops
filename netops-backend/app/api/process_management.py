@@ -237,13 +237,59 @@ async def disable_process_definition(process_id: str, db: Session = Depends(get_
     return {"message": "流程定义已禁用"}
 
 @router.get("/{process_id}/versions", response_model=List[ProcessDefinitionVersion])
-async def get_process_versions(process_id: str):
+async def get_process_versions(process_id: str, db: Session = Depends(get_db)):
     """获取流程版本历史"""
-    # This endpoint is no longer available in the new implementation
-    raise HTTPException(status_code=404, detail="此功能已移除")
+    # 获取流程版本历史
+    result = db.execute(text("""
+        SELECT * FROM process_definition_versions 
+        WHERE process_id = :process_id
+        ORDER BY version DESC
+    """), {'process_id': process_id})
+    
+    versions = []
+    for row in result.mappings():
+        row_dict = dict(row)
+        # 将 datetime 对象转换为 ISO 格式字符串
+        row_dict['created_at'] = row_dict['created_at'].isoformat() if row_dict['created_at'] else None
+        versions.append(ProcessDefinitionVersion(**row_dict))
+    
+    return versions
 
 @router.post("/{process_id}/rollback/{version}")
-async def rollback_process_version(process_id: str, version: int):
+async def rollback_process_version(process_id: str, version: int, db: Session = Depends(get_db)):
     """回滚到指定版本"""
-    # This endpoint is no longer available in the new implementation
-    raise HTTPException(status_code=404, detail="此功能已移除") 
+    # 获取指定版本的流程定义
+    result = db.execute(text("""
+        SELECT * FROM process_definition_versions 
+        WHERE process_id = :process_id AND version = :version
+    """), {'process_id': process_id, 'version': version})
+    
+    version_data = result.mappings().first()
+    if not version_data:
+        raise HTTPException(status_code=404, detail="指定版本不存在")
+    
+    now = datetime.now().isoformat()
+    
+    # 更新流程定义
+    db.execute(text("""
+        UPDATE process_definitions 
+        SET nodes = :nodes,
+            edges = :edges,
+            variables = :variables,
+            version = :version,
+            updated_by = :updated_by,
+            updated_at = :updated_at
+        WHERE id = :id
+    """), {
+        'id': process_id,
+        'nodes': version_data['nodes'],
+        'edges': version_data['edges'],
+        'variables': version_data['variables'],
+        'version': version,
+        'updated_by': 'admin',  # TODO: 从当前用户获取
+        'updated_at': now
+    })
+    
+    db.commit()
+    
+    return {"message": "回滚成功"} 
