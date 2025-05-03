@@ -133,6 +133,12 @@ const ProcessManagement: React.FC = () => {
     setVersionsVisible(true);
   };
 
+  // 处理新建流程
+  const handleCreate = () => {
+    // 直接跳转到可视化流程设计器
+    navigate('/rpa/process-orchestration/visual-designer');
+  };
+
   // 表格列定义
   const columns = [
     {
@@ -242,11 +248,7 @@ const ProcessManagement: React.FC = () => {
           <Button
             type="primary"
             icon={<PlusOutlined />}
-            onClick={() => {
-              setEditingId(null);
-              form.resetFields();
-              setModalVisible(true);
-            }}
+            onClick={handleCreate}
           >
             新建流程
           </Button>
