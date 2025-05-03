@@ -29,19 +29,14 @@ export interface ProcessDefinitionVersion {
   created_at: string;
 }
 
-// 创建流程定义
-export async function createProcessDefinition(data: Partial<ProcessDefinition>) {
-  return request.post('/process-definitions', data);
-}
-
 // 获取流程定义列表
 export async function getProcessDefinitions() {
   return request.get('/process-definitions');
 }
 
-// 获取流程定义详情
-export async function getProcessDefinition(id: string) {
-  return request.get(`/process-definitions/${id}`);
+// 创建流程定义
+export async function createProcessDefinition(data: Partial<ProcessDefinition>) {
+  return request.post('/process-definitions', data);
 }
 
 // 更新流程定义
@@ -69,7 +64,7 @@ export async function getProcessVersions(id: string) {
   return request.get(`/process-definitions/${id}/versions`);
 }
 
-// 回滚到指定版本
+// 回滚流程版本
 export async function rollbackProcessVersion(id: string, version: number) {
   return request.post(`/process-definitions/${id}/rollback/${version}`);
 } 

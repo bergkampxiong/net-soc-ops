@@ -127,13 +127,6 @@ const ProcessManagement: React.FC = () => {
     navigate(`/rpa/process-orchestration/visual-designer/${record.id}`);
   };
 
-  // 处理查看流程
-  const handleView = (record: ProcessDefinition) => {
-    navigate(`/rpa/process-orchestration/visual-designer/${record.id}`, {
-      state: { mode: 'view' }
-    });
-  };
-
   // 处理查看历史版本
   const handleViewHistory = (record: ProcessDefinition) => {
     setCurrentProcessId(record.id);
@@ -194,13 +187,6 @@ const ProcessManagement: React.FC = () => {
             disabled={record.status !== 'draft'}
           >
             编辑
-          </Button>
-          <Button
-            type="link"
-            icon={<EyeOutlined />}
-            onClick={() => handleView(record)}
-          >
-            查看
           </Button>
           <Button
             type="link"
