@@ -430,6 +430,43 @@ def init_process_management_tables(engine):
         print(f"流程管理模块的表初始化失败: {str(e)}")
         raise
 
+def init_process_management_data(db):
+    """初始化流程管理数据"""
+    try:
+        # 检查是否已有数据
+        if db.execute(text("SELECT COUNT(*) FROM process_definitions")).scalar() == 0:
+            # 添加示例流程
+            now = datetime.utcnow().isoformat()
+            db.execute(text("""
+                INSERT INTO process_definitions (
+                    id, name, description, version, status, nodes, edges, variables,
+                    created_by, created_at, updated_by, updated_at
+                ) VALUES (
+                    :id, :name, :description, :version, :status, :nodes, :edges, :variables,
+                    :created_by, :created_at, :updated_by, :updated_at
+                )
+            """), {
+                'id': '00000000-0000-0000-0000-000000000001',
+                'name': '示例流程',
+                'description': '这是一个示例流程',
+                'version': 1,
+                'status': 'draft',
+                'nodes': '[]',
+                'edges': '[]',
+                'variables': '{}',
+                'created_by': 'admin',
+                'created_at': now,
+                'updated_by': 'admin',
+                'updated_at': now
+            })
+            
+            db.commit()
+            print("流程管理数据初始化成功")
+    except Exception as e:
+        print(f"流程管理数据初始化失败: {str(e)}")
+        db.rollback()
+        raise
+
 def init_databases():
     """初始化所有数据库表"""
     try:
@@ -467,6 +504,9 @@ def init_databases():
             
             # 初始化CMDB数据
             init_cmdb_data(db)
+            
+            # 初始化流程管理数据
+            init_process_management_data(db)
             
             print("数据库初始化完成")
         finally:
