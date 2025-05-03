@@ -153,13 +153,17 @@ interface CustomNode extends Node {
 }
 
 interface PDFlowDesignerProps {
-  processId: string | null;
+  processId?: string | null;
   onDirtyChange?: (isDirty: boolean) => void;
+  initialData?: {
+    nodes: Node[];
+    edges: Edge[];
+  };
 }
 
-const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange }) => {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange, initialData }) => {
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialData?.nodes || initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialData?.edges || []);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const navigate = useNavigate();
@@ -618,19 +622,47 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
           
           if (processDefinition.nodes && processDefinition.edges) {
             // 确保节点数据被正确加载
-            const nodesWithData = processDefinition.nodes.map((node: any) => ({
-              ...node,
-              data: {
-                ...node.data,
-                isConfigured: node.data?.isConfigured || false,
-                configured: node.data?.configured || false
+            const nodesWithData = processDefinition.nodes.map((node: any) => {
+              // 保持原始节点类型
+              const nodeType = node.type;
+              const nodeData = node.data || {};
+              
+              return {
+                id: node.id,
+                type: nodeType,
+                position: node.position || { x: 0, y: 0 },
+                data: {
+                  ...nodeData,
+                  label: nodeData.label || '未命名节点',
+                  isConfigured: nodeData.isConfigured || false,
+                  configured: nodeData.configured || false,
+                  // 保留原始配置数据
+                  ...(nodeData.sshConfig && { sshConfig: nodeData.sshConfig }),
+                  ...(nodeData.deviceGroup && { deviceGroup: nodeData.deviceGroup }),
+                  ...(nodeData.selectedDevices && { selectedDevices: nodeData.selectedDevices }),
+                  ...(nodeData.configName && { configName: nodeData.configName }),
+                  ...(nodeData.configContent && { configContent: nodeData.configContent })
+                }
+              };
+            });
+            
+            // 确保边数据正确
+            const edgesWithData = processDefinition.edges.map((edge: any) => ({
+              id: edge.id,
+              source: edge.source,
+              target: edge.target,
+              type: 'smoothstep',
+              style: { strokeWidth: 1.5, stroke: '#1890ff' },
+              markerEnd: {
+                type: MarkerType.ArrowClosed,
+                color: '#1890ff',
+                width: 20,
+                height: 20
               }
             }));
+            
             setNodes(nodesWithData);
-            setEdges(processDefinition.edges);
-          } else {
-            setNodes(initialNodes);
-            setEdges([]);
+            setEdges(edgesWithData);
           }
           
           setIsDirty(false);
@@ -639,14 +671,18 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
         } catch (error) {
           console.error('加载流程数据失败:', error);
           message.error('加载流程数据失败');
-          setNodes(initialNodes);
-          setEdges([]);
         }
       };
 
       loadProcessData();
+    } else if (initialData) {
+      // 如果提供了initialData，直接使用它来初始化节点和边
+      setNodes(initialData.nodes);
+      setEdges(initialData.edges);
+      setIsDirty(false);
+      onDirtyChange?.(false);
     }
-  }, [processId, setNodes, setEdges, onDirtyChange]);
+  }, [processId, initialData, setNodes, setEdges, onDirtyChange]);
 
   // 监听页面刷新或关闭
   useEffect(() => {
@@ -842,11 +878,11 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange 
 };
 
 // 导出包装后的组件
-const PDFlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange }) => {
+const PDFlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange, initialData }) => {
   return (
     <div style={{ width: '100%', height: '100%' }}>
       <ReactFlowProvider>
-        <FlowDesigner processId={processId} onDirtyChange={onDirtyChange} />
+        <FlowDesigner processId={processId} onDirtyChange={onDirtyChange} initialData={initialData} />
       </ReactFlowProvider>
     </div>
   );
