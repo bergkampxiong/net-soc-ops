@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from typing import List, Optional
 from datetime import datetime
 from uuid import uuid4
@@ -9,6 +9,7 @@ from sqlalchemy import text
 from ..models.process_management import ProcessDefinition, ProcessDefinitionVersion
 from ..schemas.process_management import ProcessDefinitionCreate, ProcessDefinitionUpdate
 from database.session import get_db
+from ..process_designer.code_generator import CodeGenerator
 
 router = APIRouter(prefix="/api/process-definitions", tags=["流程管理"])
 
@@ -292,4 +293,33 @@ async def rollback_process_version(process_id: str, version: int, db: Session = 
     
     db.commit()
     
-    return {"message": "回滚成功"} 
+    return {"message": "回滚成功"}
+
+@router.post("/{process_id}/generate-code")
+async def generate_code(process_id: str, db: Session = Depends(get_db)):
+    """生成流程代码"""
+    try:
+        # 获取流程定义
+        result = db.execute(text("""
+            SELECT * FROM process_definitions 
+            WHERE id = :id AND deleted_at IS NULL
+        """), {'id': process_id})
+        
+        process = result.mappings().first()
+        if not process:
+            raise HTTPException(status_code=404, detail="流程定义不存在")
+        
+        # 创建代码生成器实例
+        generator = CodeGenerator(process)
+        # 生成代码
+        code = generator.generate_code()
+        
+        # 设置响应头，指定文件名和内容类型
+        headers = {
+            "Content-Disposition": f"attachment; filename=process_{process_id}.py",
+            "Content-Type": "text/plain; charset=utf-8"
+        }
+        
+        return Response(content=code, headers=headers)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) 

@@ -74,7 +74,7 @@ export const processInstanceApi = {
   terminate: (id: string) => {
     return request.post<ApiResponse<ProcessInstance>>(`process-instances/${id}/terminate`);
   },
-};
+}; 
 
 export const processCodeGeneratorApi = {
   // 生成代码

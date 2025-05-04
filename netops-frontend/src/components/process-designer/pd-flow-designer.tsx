@@ -438,10 +438,9 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
   const handleExecute = async () => {
     try {
       const response = await processCodeGeneratorApi.generate(processId || '');
-      const code = response.data.data;
       
       // 创建下载链接
-      const blob = new Blob([code], { type: 'text/plain' });
+      const blob = new Blob([String(response.data)], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
