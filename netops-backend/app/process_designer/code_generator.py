@@ -1,6 +1,7 @@
 from typing import Dict, List, Any
 from netmiko import ConnectHandler
 from utils.connection_pool_manager import ConnectionPoolManager
+import logging
 
 class CodeGenerator:
     def __init__(self, process_definition: Dict[str, Any]):
@@ -38,6 +39,34 @@ class CodeGenerator:
 
     def generate_code(self) -> str:
         """生成Python代码"""
+        # 从流程定义中提取设备连接信息
+        device_nodes = [node for node in self.nodes if node['type'] == 'deviceConnect']
+        device_list = []
+        for node in device_nodes:
+            device_config = node['data']
+            ssh_config = device_config.get('sshConfig', {})
+            selected_devices = device_config.get('selectedDevices', [])
+            
+            for device_ip in selected_devices:
+                device_info = {
+                    "name": device_ip,
+                    "device_type": ssh_config.get("device_type", ""),
+                    "host": device_ip,
+                    "port": ssh_config.get("port", 22),
+                    "username": ssh_config.get("username", ""),
+                    "password": ssh_config.get("password", ""),
+                    "secret": ssh_config.get("enable_secret", "")
+                }
+                device_list.append(device_info)
+
+        # 从流程定义中提取配置内容
+        config_nodes = [node for node in self.nodes if node['type'] == 'configDeploy']
+        config_content = []
+        if config_nodes:
+            config_data = config_nodes[0]['data']
+            config_content = config_data.get('configContent', '').splitlines()
+
+        # 生成代码
         code = [
             '#!/usr/bin/env python',
             '# -*- coding: utf-8 -*-',
@@ -49,106 +78,81 @@ class CodeGenerator:
             'class ProcessExecutor:',
             '    def __init__(self):',
             '        self.connection_pool = ConnectionPoolManager()',
+            '        # 设备信息列表，便于批量扩展',
+            '        self.device_list = [',
+        ]
+
+        # 添加设备列表
+        for device in device_list:
+            code.extend([
+                '            {',
+                f'                "name": "{device["name"]}",',
+                f'                "device_type": "{device["device_type"]}",',
+                f'                "host": "{device["host"]}",',
+                f'                "port": {device["port"]},',
+                f'                "username": "{device["username"]}",',
+                f'                "password": "{device["password"]}",',
+                f'                "secret": "{device["secret"]}"',
+                '            },',
+            ])
+
+        code.extend([
+            '        ]',
+            '        # 公共连接参数',
+            '        self.common_params = {',
+            '            "global_delay_factor": 1,',
+            '            "auth_timeout": 20,',
+            '            "banner_timeout": 20,',
+            '            "fast_cli": False,',
+            '            "session_timeout": 60,',
+            '            "conn_timeout": 10,',
+            '            "keepalive": 10,',
+            '            "verbose": False',
+            '        }',
+            '        # 公共配置内容',
+            '        self.config = [',
+        ])
+
+        # 添加配置内容
+        for line in config_content:
+            if line.strip():  # 跳过空行
+                code.append(f'            "{line}",')
+
+        code.extend([
+            '        ]',
             '',
             '    def execute(self):',
+            '        connections = {}',
             '        try:',
-            '            # 设备连接',
+            '            # 连接所有设备',
             '            connections = self._connect_devices()',
-            '',
-            '            # 执行配置下发',
+            '            # 下发配置',
             '            self._deploy_configs(connections)',
-            '',
             '        finally:',
             '            # 关闭所有连接',
             '            self._close_connections(connections)',
             '',
             '    def _connect_devices(self) -> Dict[str, Any]:',
             '        connections = {}',
-            '        try:',
-        ]
-
-        # 添加设备连接代码
-        device_nodes = [node for node in self.nodes if node['type'] == 'deviceConnect']
-        for node in device_nodes:
-            device_config = node['data']
-            ssh_config = device_config.get('sshConfig', {})
-            selected_devices = device_config.get('selectedDevices', [])
-            
-            for device_ip in selected_devices:
-                code.extend([
-                    f'            # 连接设备 {device_ip}',
-                    '            try:',
-                    '                device = {',
-                    f'                    "device_type": "{ssh_config.get("device_type", "")}",',
-                    f'                    "host": "{device_ip}",',
-                    f'                    "port": {ssh_config.get("port", 22)},',
-                    f'                    "username": "{ssh_config.get("username", "")}",',
-                    f'                    "password": "{ssh_config.get("password", "")}",',
-                    f'                    "global_delay_factor": {ssh_config.get("global_delay_factor", 1)},',
-                    f'                    "auth_timeout": {ssh_config.get("auth_timeout", 20)},',
-                    f'                    "banner_timeout": {ssh_config.get("banner_timeout", 20)},',
-                    f'                    "fast_cli": {ssh_config.get("fast_cli", False)},',
-                    f'                    "session_timeout": {ssh_config.get("session_timeout", 60)},',
-                    f'                    "conn_timeout": {ssh_config.get("conn_timeout", 10)},',
-                    f'                    "keepalive": {ssh_config.get("keepalive", 10)},',
-                    f'                    "verbose": {ssh_config.get("verbose", False)}',
-                    '                }',
-                    '',
-                    '                # 如果是思科设备，添加enable密码',
-                    '                if device["device_type"].startswith("cisco_"):',
-                    f'                    device["secret"] = "{ssh_config.get("enable_secret", "")}"',
-                    '',
-                    '                connection = self.connection_pool.get_connection(device)',
-                    f'                connections["{device_ip}"] = connection',
-                    '            except Exception as e:',
-                    f'                print(f"连接设备 {device_ip} 失败: {{str(e)}}")',
-                    '                raise',
-                ])
-
-        code.extend([
-            '            return connections',
-            '        except Exception as e:',
-            '            print(f"设备连接失败: {str(e)}")',
-            '            raise',
+            '        for device_info in self.device_list:',
+            '            device_params = {**device_info, **self.common_params}',
+            '            try:',
+            '                connection = self.connection_pool.get_connection(device_params)',
+            '                connections[device_info["name"]] = connection',
+            '            except Exception as e:',
+            '                print(f"连接设备 {device_info[\'name\']} 失败: {str(e)}")',
+            '        if not connections:',
+            '            raise Exception("所有设备连接失败")',
+            '        return connections',
             '',
             '    def _deploy_configs(self, connections: Dict[str, Any]):',
-            '        try:',
-        ])
-
-        # 添加配置下发代码
-        config_nodes = [node for node in self.nodes if node['type'] == 'configDeploy']
-        for node in config_nodes:
-            config_data = node['data']
-            config_content = config_data.get('configContent', '')
-            
-            # 获取需要下发配置的设备列表
-            device_nodes = [node for node in self.nodes if node['type'] == 'deviceConnect']
-            selected_devices = []
-            for device_node in device_nodes:
-                selected_devices.extend(device_node['data'].get('selectedDevices', []))
-            
-            for device_ip in selected_devices:
-                code.extend([
-                    f'            # 下发配置到设备 {device_ip}',
-                    '            try:',
-                    f'                connection = connections["{device_ip}"]',
-                    f'                config = """{config_content}"""',
-                    '',
-                    '                # 下发配置',
-                    '                output = connection.send_config_set(config.splitlines())',
-                    '                print(f"配置下发成功: {output}")',
-                    '',
-                    '                # 保存配置',
-                    '                connection.save_config()',
-                    '            except Exception as e:',
-                    f'                print(f"配置下发失败: {{str(e)}}")',
-                    '                raise',
-                ])
-
-        code.extend([
-            '        except Exception as e:',
-            '            print(f"配置下发失败: {str(e)}")',
-            '            raise',
+            '        for name, connection in connections.items():',
+            '            try:',
+            '                output = connection.send_config_set(self.config)',
+            '                print(f"设备 {name} 配置下发成功: {output}")',
+            '                connection.save_config()',
+            '            except Exception as e:',
+            '                print(f"设备 {name} 配置下发失败: {str(e)}")',
             '',
             '    def _close_connections(self, connections: Dict[str, Any]):',
             '        for name, connection in connections.items():',
