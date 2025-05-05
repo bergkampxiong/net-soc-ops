@@ -4,6 +4,7 @@ from typing import List
 import logging
 from database.session import get_db
 from database.device_connection_models import DeviceConnection
+from database.category_models import Credential
 from schemas.device_connection import SSHConnectionCreate, SSHConnectionUpdate, SSHConnectionResponse
 from datetime import datetime
 
@@ -26,13 +27,24 @@ async def get_device_connections(
         # 构造响应数据
         response_data = []
         for conn in connections:
+            # 获取关联的凭证信息
+            credential = db.query(Credential).filter(Credential.id == conn.credential_id).first()
+            if credential:
+                username = credential.username
+                password = credential.password
+                enable_secret = credential.enable_password
+            else:
+                username = None
+                password = None
+                enable_secret = None
+
             response_data.append({
                 "id": conn.id,
                 "name": conn.name,
                 "device_type": conn.device_type,
                 "credential_id": str(conn.credential_id),  # 确保是字符串
                 "port": conn.port,
-                "enable_secret": conn.enable_secret,
+                "enable_secret": enable_secret,  # 使用凭证中的enable_password
                 "global_delay_factor": conn.global_delay_factor,
                 "auth_timeout": conn.auth_timeout,
                 "banner_timeout": conn.banner_timeout,
@@ -45,8 +57,8 @@ async def get_device_connections(
                 "created_at": conn.created_at or datetime.now(),  # 确保有值
                 "updated_at": conn.updated_at or datetime.now(),  # 确保有值
                 "is_active": conn.is_active,
-                "username": None,  # 这些字段从凭证中获取
-                "password": None   # 这些字段从凭证中获取
+                "username": username,  # 使用凭证中的username
+                "password": password   # 使用凭证中的password
             })
         return response_data
     except Exception as e:
@@ -95,6 +107,17 @@ async def create_device_connection(
             )
         
         try:
+            # 获取关联的凭证信息
+            credential = db.query(Credential).filter(Credential.id == db_connection.credential_id).first()
+            if credential:
+                username = credential.username
+                password = credential.password
+                enable_secret = credential.enable_password
+            else:
+                username = None
+                password = None
+                enable_secret = None
+
             # 构造响应数据
             response_data = {
                 "id": db_connection.id,
@@ -102,7 +125,7 @@ async def create_device_connection(
                 "device_type": db_connection.device_type,
                 "credential_id": str(db_connection.credential_id),  # 确保是字符串
                 "port": db_connection.port,
-                "enable_secret": db_connection.enable_secret,
+                "enable_secret": enable_secret,  # 使用凭证中的enable_password
                 "global_delay_factor": db_connection.global_delay_factor,
                 "auth_timeout": db_connection.auth_timeout,
                 "banner_timeout": db_connection.banner_timeout,
@@ -115,8 +138,8 @@ async def create_device_connection(
                 "created_at": db_connection.created_at or datetime.now(),  # 确保有值
                 "updated_at": db_connection.updated_at or datetime.now(),  # 确保有值
                 "is_active": db_connection.is_active,
-                "username": None,  # 这些字段从凭证中获取，但不在请求中
-                "password": None   # 这些字段从凭证中获取，但不在请求中
+                "username": username,  # 使用凭证中的username
+                "password": password   # 使用凭证中的password
             }
             return response_data
         except Exception as response_error:
@@ -129,7 +152,7 @@ async def create_device_connection(
                 "device_type": db_connection.device_type,
                 "credential_id": str(db_connection.credential_id),
                 "port": db_connection.port,
-                "enable_secret": db_connection.enable_secret,
+                "enable_secret": enable_secret,
                 "global_delay_factor": db_connection.global_delay_factor,
                 "auth_timeout": db_connection.auth_timeout,
                 "banner_timeout": db_connection.banner_timeout,
@@ -142,8 +165,8 @@ async def create_device_connection(
                 "is_active": db_connection.is_active,
                 "created_at": datetime.now(),
                 "updated_at": datetime.now(),
-                "username": None,
-                "password": None
+                "username": username,
+                "password": password
             }
     except HTTPException:
         raise
@@ -167,7 +190,42 @@ async def get_device_connection(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"SSH连接配置 {connection_id} 不存在"
             )
-        return connection
+
+        # 获取关联的凭证信息
+        credential = db.query(Credential).filter(Credential.id == connection.credential_id).first()
+        if credential:
+            username = credential.username
+            password = credential.password
+            enable_secret = credential.enable_password
+        else:
+            username = None
+            password = None
+            enable_secret = None
+
+        # 构造响应数据
+        response_data = {
+            "id": connection.id,
+            "name": connection.name,
+            "device_type": connection.device_type,
+            "credential_id": str(connection.credential_id),
+            "port": connection.port,
+            "enable_secret": enable_secret,  # 使用凭证中的enable_password
+            "global_delay_factor": connection.global_delay_factor,
+            "auth_timeout": connection.auth_timeout,
+            "banner_timeout": connection.banner_timeout,
+            "fast_cli": connection.fast_cli,
+            "session_timeout": connection.session_timeout,
+            "conn_timeout": connection.conn_timeout,
+            "keepalive": connection.keepalive,
+            "verbose": connection.verbose,
+            "description": connection.description,
+            "created_at": connection.created_at or datetime.now(),
+            "updated_at": connection.updated_at or datetime.now(),
+            "is_active": connection.is_active,
+            "username": username,  # 使用凭证中的username
+            "password": password   # 使用凭证中的password
+        }
+        return response_data
     except HTTPException:
         raise
     except Exception as e:
@@ -205,14 +263,25 @@ async def update_device_connection(
         db.commit()
         db.refresh(db_connection)
 
+        # 获取关联的凭证信息
+        credential = db.query(Credential).filter(Credential.id == db_connection.credential_id).first()
+        if credential:
+            username = credential.username
+            password = credential.password
+            enable_secret = credential.enable_password
+        else:
+            username = None
+            password = None
+            enable_secret = None
+
         # 构造响应数据
         response_data = {
             "id": db_connection.id,
             "name": db_connection.name,
             "device_type": db_connection.device_type,
-            "credential_id": str(db_connection.credential_id),  # 转换为字符串
+            "credential_id": str(db_connection.credential_id),
             "port": db_connection.port,
-            "enable_secret": db_connection.enable_secret,
+            "enable_secret": enable_secret,  # 使用凭证中的enable_password
             "global_delay_factor": db_connection.global_delay_factor,
             "auth_timeout": db_connection.auth_timeout,
             "banner_timeout": db_connection.banner_timeout,
@@ -222,11 +291,11 @@ async def update_device_connection(
             "keepalive": db_connection.keepalive,
             "verbose": db_connection.verbose,
             "description": db_connection.description,
-            "created_at": db_connection.created_at or datetime.now(),  # 确保有值
-            "updated_at": db_connection.updated_at or datetime.now(),  # 确保有值
+            "created_at": db_connection.created_at or datetime.now(),
+            "updated_at": db_connection.updated_at or datetime.now(),
             "is_active": db_connection.is_active,
-            "username": None,  # 这些字段从凭证中获取
-            "password": None   # 这些字段从凭证中获取
+            "username": username,  # 使用凭证中的username
+            "password": password   # 使用凭证中的password
         }
         return response_data
     except HTTPException:
