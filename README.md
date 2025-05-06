@@ -1,143 +1,154 @@
-# NetOps 网络自动化平台
+# NetOps网络自动化平台
 
 ## 项目简介
 NetOps是一个现代化的网络自动化平台，提供网络设备管理、配置管理、自动化运维等功能。支持LDAP认证和细粒度的权限管理。
 
-## 主要功能
-- 网络设备管理
-  - 设备连接管理
-  - 设备配置管理
-  - 设备状态监控
-- 配置管理
-  - 配置模板管理
-  - 配置版本控制
-  - 配置备份恢复
-- 自动化运维
-  - 任务调度
-  - 批量操作
-  - 自动化脚本
-- 资产管理
-  - CMDB管理
-  - 资产分类
-  - 资产关系
-- 用户认证和授权
-  - LDAP集成
-  - 角色管理
-  - 细粒度权限控制
-- 审计日志
-  - 操作日志
-  - 登录日志
-  - 系统日志
+## 功能特点
 
-## 技术栈
-- 后端：Python FastAPI
-- 前端：React TypeScript
-- 数据库：PostgreSQL
-- 缓存：Redis
-- 任务队列：Celery
-- 认证：LDAP/JWT
+### 1. CMDB资产管理
+- 数据查询：灵活的资产查询和过滤功能
+- ADS自动发现：自动发现和更新网络设备
+- 资产盘点：定期资产盘点和差异分析
+- 模型管理：自定义资产模型和属性
+
+### 2. 设备管理
+- 设备分类：多维度设备分类管理
+- 凭证管理：安全的设备访问凭证管理
+
+### 3. 自动化RPA
+#### 3.1 原子功能组件库
+- 设备连接组件：统一的设备连接管理
+- 配置管理组件：设备配置的备份和恢复
+- 配置生成组件：基于模板的配置生成
+- 数据采集组件：自动化数据采集
+- 安全审计组件：配置合规性检查
+- 告警与报告组件：异常检测和报告生成
+
+#### 3.2 流程编排引擎
+- 可视化流程设计器：拖拽式流程设计
+- 流程管理：流程版本控制和发布管理
+
+#### 3.3 任务作业管理
+- 作业执行控制：手动和自动执行管理
+- 作业调度管理：灵活的调度策略配置
+- 任务队列管理：优先级和并发控制
+- 作业监控与报告：实时监控和报告生成
+
+#### 3.4 系统集成
+- 监控系统集成：与主流监控系统对接
+- 工单系统集成：与工单系统无缝集成
+
+### 4. AIOPS智能运维
+- 智能告警：基于机器学习的异常检测
+- 根因分析：自动化的故障根因分析
+- 预测性维护：设备健康状态预测
+
+## 技术架构
+
+### 前端技术栈
+- React 18
+- TypeScript
+- Ant Design 5.x
+- React Router 6
+- Axios
+- ECharts
+
+### 后端技术栈
+- Python 3.9+
+- FastAPI
+- SQLAlchemy
+- PostgreSQL
+- Redis
+- APScheduler
+
+### 部署架构
+- Docker容器化部署
+- Nginx反向代理
+- Gunicorn应用服务器
+- Supervisor进程管理
 
 ## 快速开始
 
-### 环境要求
-- Python 3.9+
-- Node.js v22.14.0+
-- PostgreSQL 13+
-- Redis 6+
-- LDAP服务器（可选）
-
-### 安装步骤
-
-1. 克隆代码库
+1. 克隆仓库
 ```bash
-git clone <repository_url>
+git clone https://github.com/your-username/netops.git
 cd netops
 ```
 
-2. 安装后端
+2. 安装依赖
 ```bash
+# 后端依赖
 cd netops-backend
 python -m venv venv
-source venv/bin/activate  # Linux/macOS
-# 或
-venv\Scripts\activate     # Windows
-
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-```
 
-3. 配置数据库和LDAP
-- 修改 `database/config.py` 中的数据库连接信息
-- 修改 `auth/ldap_config.py` 中的LDAP配置信息
-- CMDB使用与netops相同的数据库，无需单独配置
-
-4. 初始化数据库
-```bash
-python int_all_db.py
-```
-
-5. 安装前端
-```bash
+# 前端依赖
 cd ../netops-frontend
 npm install
 ```
 
-6. 启动服务
+3. 配置环境
 ```bash
-# 后端服务
-cd ../netops-backend
-python main.py
+# 复制环境配置文件
+cp .env.example .env
+# 编辑.env文件，配置必要的环境变量
+```
 
-# Celery Worker（后台任务）
-celery -A tasks worker --loglevel=info
+4. 启动服务
+```bash
+# 启动后端服务
+cd netops-backend
+python run.py
 
-# Celery Beat（定时任务）
-celery -A tasks beat --loglevel=info
-
-# 前端服务
+# 启动前端服务
 cd ../netops-frontend
 npm start
 ```
 
-## 访问系统
-- 前端界面：http://localhost:3000
-- 后端API文档：http://localhost:8000/docs
+5. 访问系统
+打开浏览器访问 http://localhost:3000
 
-默认登录信息：
-- 用户名：admin
-- 密码：admin123
+## 详细安装说明
 
-## 项目结构
-```
-netops/
-├── netops-backend/          # 后端代码
-│   ├── app/                # 应用代码
-│   ├── auth/               # 认证相关
-│   │   ├── ldap_auth.py   # LDAP认证
-│   │   └── jwt_auth.py    # JWT认证
-│   ├── database/           # 数据库相关
-│   ├── models/             # 数据模型
-│   ├── routes/             # API路由
-│   ├── utils/              # 工具函数
-│   └── tests/              # 测试代码
-└── netops-frontend/        # 前端代码
-    ├── src/               # 源代码
-    │   ├── components/    # 组件
-    │   ├── pages/        # 页面
-    │   ├── utils/        # 工具函数
-    │   └── services/     # API服务
-    ├── public/            # 静态资源
-    └── tests/             # 测试代码
-```
+请参考 [INSTALL.md](INSTALL.md) 获取详细的安装和配置说明。
 
 ## 开发指南
-详细的开发指南请参考 [INSTALL.md](INSTALL.md)
+
+### 代码规范
+- 前端遵循 [Airbnb JavaScript Style Guide](https://github.com/airbnb/javascript)
+- 后端遵循 [PEP 8](https://www.python.org/dev/peps/pep-0008/)
+- 使用ESLint和Pylint进行代码检查
+
+### 提交规范
+- feat: 新功能
+- fix: 修复bug
+- docs: 文档更新
+- style: 代码格式调整
+- refactor: 代码重构
+- test: 测试用例
+- chore: 构建过程或辅助工具的变动
+
+### 分支管理
+- master: 主分支，保持稳定
+- develop: 开发分支
+- feature/*: 功能分支
+- hotfix/*: 紧急修复分支
 
 ## 贡献指南
+
 1. Fork 项目
-2. 创建特性分支
+2. 创建功能分支
 3. 提交更改
 4. 推送到分支
 5. 创建 Pull Request
 
 ## 许可证
-MIT License 
+
+本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
+
+## 联系方式
+
+- 项目维护者：[Your Name]
+- 邮箱：[your.email@example.com]
+- 项目主页：[https://github.com/your-username/netops] 

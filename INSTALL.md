@@ -1,178 +1,305 @@
-# NetOps 网络自动化平台安装说明
+# NetOps安装指南
+
+本文档提供了NetOps网络自动化平台的详细安装和配置说明。
 
 ## 环境要求
+
+### 系统要求
+- 操作系统：Linux (推荐 Ubuntu 20.04 LTS 或 CentOS 8)
+- CPU：4核或以上
+- 内存：8GB或以上
+- 磁盘空间：50GB或以上
+
+### 软件要求
 - Python 3.9+
 - Node.js v22.14.0+
 - PostgreSQL 13+
 - Redis 6+
-- LDAP服务器（可选）
+- Nginx 1.18+
+- Docker 20.10+ (可选)
+- LDAP服务器 (可选)
 
-## 快速安装步骤
+## 安装步骤
 
-### 1. 后端安装
+### 1. 系统准备
 
-1. 克隆代码并进入后端目录：
+#### 1.1 安装系统依赖
 ```bash
-git clone <repository_url>
-cd netops-backend
+# Ubuntu
+sudo apt update
+sudo apt install -y build-essential python3-dev python3-pip python3-venv \
+    postgresql postgresql-contrib redis-server nginx \
+    git curl wget
+
+# CentOS
+sudo yum update
+sudo yum install -y gcc python3-devel python3-pip python3-virtualenv \
+    postgresql-server postgresql-contrib redis nginx \
+    git curl wget
 ```
 
-2. 创建并激活虚拟环境：
+#### 1.2 配置Python环境
 ```bash
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-# 或
-venv\Scripts\activate     # Windows
+# 创建Python虚拟环境
+python3 -m venv venv
+source venv/bin/activate
+
+# 升级pip
+pip install --upgrade pip
 ```
 
-3. 安装依赖：
+### 2. 数据库配置
+
+#### 2.1 PostgreSQL配置
 ```bash
+# 启动PostgreSQL服务
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+
+# 创建数据库和用户
+sudo -u postgres psql
+postgres=# CREATE DATABASE netops;
+postgres=# CREATE USER netops WITH PASSWORD 'your_password';
+postgres=# GRANT ALL PRIVILEGES ON DATABASE netops TO netops;
+postgres=# \q
+```
+
+#### 2.2 Redis配置
+```bash
+# 启动Redis服务
+sudo systemctl start redis
+sudo systemctl enable redis
+
+# 配置Redis密码
+sudo nano /etc/redis/redis.conf
+# 添加或修改以下行：
+# requirepass your_redis_password
+```
+
+### 3. 后端安装
+
+#### 3.1 克隆代码
+```bash
+git clone https://github.com/your-username/netops.git
+cd netops/netops-backend
+```
+
+#### 3.2 安装依赖
+```bash
+# 激活虚拟环境
+source ../venv/bin/activate
+
+# 安装依赖
 pip install -r requirements.txt
 ```
 
-4. 配置数据库连接：
-   - 打开 `database/config.py` 文件
-   - 修改数据库和Redis连接信息：
-     ```python
-     DATABASE_CONFIG = {
-         "host": "172.18.40.80",  # 数据库服务器地址
-         "port": 5432,            # 数据库端口
-         "database": "netops",    # 数据库名称
-         "user": "amber",         # 数据库用户名
-         "password": "amberman@2025!",  # 数据库密码
-     }
-
-     REDIS_CONFIG = {
-         "host": "172.18.40.80",  # Redis服务器地址
-         "port": 6379,            # Redis端口
-         "db": 0,                 # Redis数据库编号
-     }
-     ```
-   - 注意：CMDB数据库使用与netops相同的数据库，无需单独配置
-
-5. 配置LDAP（可选）：
-   - 打开 `auth/ldap_config.py` 文件
-   - 修改LDAP配置信息：
-     ```python
-     LDAP_CONFIG = {
-         "server_url": "ldap://your-ldap-server",  # LDAP服务器地址
-         "bind_dn": "cn=admin,dc=example,dc=com",  # 管理员DN
-         "bind_password": "admin_password",        # 管理员密码
-         "search_base": "dc=example,dc=com",       # 搜索基础DN
-         "use_ssl": False,                         # 是否使用SSL
-         "admin_group_dn": "cn=admins,dc=example,dc=com",  # 管理员组DN
-         "auditor_group_dn": "cn=auditors,dc=example,dc=com"  # 审计员组DN
-     }
-     ```
-
-6. 初始化数据库：
+#### 3.3 配置环境变量
 ```bash
-# 运行初始化脚本
-python int_all_db.py
+# 复制环境配置文件
+cp .env.example .env
+
+# 编辑配置文件
+nano .env
+
+# 主要配置项：
+DATABASE_URL=postgresql://netops:your_password@localhost:5432/netops
+REDIS_URL=redis://:your_redis_password@localhost:6379/0
+SECRET_KEY=your_secret_key
+LDAP_SERVER=ldap://your_ldap_server
+LDAP_BASE_DN=dc=example,dc=com
 ```
 
-7. 启动后端服务：
+#### 3.4 初始化数据库
 ```bash
-# 启动API服务
-python main.py
+# 创建数据库表
+python init_db.py
 
-# 启动Celery Worker（后台任务）
-celery -A tasks worker --loglevel=info
-
-# 启动Celery Beat（定时任务）
-celery -A tasks beat --loglevel=info
+# 创建初始管理员用户
+python create_admin.py
 ```
 
-### 2. 前端安装
+### 4. 前端安装
 
-1. 进入前端目录：
+#### 4.1 安装Node.js
 ```bash
-cd netops-frontend
+# 使用nvm安装Node.js
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+source ~/.bashrc
+nvm install 22.14.0
+nvm use 22.14.0
 ```
 
-2. 安装依赖：
+#### 4.2 安装前端依赖
 ```bash
+cd ../netops-frontend
 npm install
 ```
 
-3. 配置环境变量：
-   - 复制 `.env.example` 为 `.env`
-   - 修改API地址和其他配置
-
-4. 启动开发服务器：
+#### 4.3 配置环境变量
 ```bash
-npm start
+# 复制环境配置文件
+cp .env.example .env
+
+# 编辑配置文件
+nano .env
+
+# 主要配置项：
+REACT_APP_API_URL=http://localhost:8000
+REACT_APP_WS_URL=ws://localhost:8000
+```
+
+### 5. Nginx配置
+
+#### 5.1 配置Nginx
+```bash
+sudo nano /etc/nginx/sites-available/netops
+
+# 添加以下配置
+server {
+    listen 80;
+    server_name your_domain.com;
+
+    # 前端静态文件
+    location / {
+        root /path/to/netops-frontend/build;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 后端API代理
+    location /api {
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # WebSocket代理
+    location /ws {
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host $host;
+    }
+}
+```
+
+#### 5.2 启用配置
+```bash
+sudo ln -s /etc/nginx/sites-available/netops /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+### 6. 启动服务
+
+#### 6.1 使用Supervisor管理进程
+```bash
+# 安装Supervisor
+sudo apt install supervisor
+
+# 配置Supervisor
+sudo nano /etc/supervisor/conf.d/netops.conf
+
+# 添加以下配置
+[program:netops-backend]
+command=/path/to/venv/bin/python run.py
+directory=/path/to/netops-backend
+user=netops
+autostart=true
+autorestart=true
+stderr_logfile=/var/log/netops/backend.err.log
+stdout_logfile=/var/log/netops/backend.out.log
+
+[program:netops-celery]
+command=/path/to/venv/bin/celery -A tasks worker --loglevel=info
+directory=/path/to/netops-backend
+user=netops
+autostart=true
+autorestart=true
+stderr_logfile=/var/log/netops/celery.err.log
+stdout_logfile=/var/log/netops/celery.out.log
+```
+
+#### 6.2 启动服务
+```bash
+# 创建日志目录
+sudo mkdir -p /var/log/netops
+sudo chown -R netops:netops /var/log/netops
+
+# 重新加载Supervisor配置
+sudo supervisorctl reread
+sudo supervisorctl update
+
+# 启动服务
+sudo supervisorctl start netops-backend
+sudo supervisorctl start netops-celery
+```
+
+### 7. 构建前端
+```bash
+cd ../netops-frontend
+npm run build
 ```
 
 ## 访问系统
-- 前端界面：http://localhost:3000
-- 后端API文档：http://localhost:8000/docs
 
-默认登录信息：
-- 用户名：admin
-- 密码：admin123
-
-## 用户管理
-
-### LDAP用户
-1. 在系统设置中配置LDAP服务器信息
-2. 创建LDAP用户时，系统会自动同步用户信息
-3. 用户角色和权限可以在系统中单独设置
-
-### 本地用户
-1. 使用管理员账号登录系统
-2. 进入用户管理页面
-3. 点击"创建用户"按钮
-4. 填写用户信息并设置角色和权限
-
-## 权限管理
-系统支持以下权限级别：
-- 超级管理员（superuser）：拥有所有权限
-- 管理员（admin）：可以管理用户和系统设置
-- 操作员（operator）：可以执行日常运维任务
-- 审计员（auditor）：可以查看审计日志
-
-每个角色还可以设置细粒度的权限：
-- 设备管理权限
-- 配置管理权限
-- 凭据管理权限
-- 审计日志权限
-
-## 数据库管理
-
-### 数据库初始化
-系统使用统一的数据库初始化脚本，该脚本会：
-1. 创建所有必要的数据库表
-2. 初始化基础数据（设备类型、厂商、位置等）
-3. 创建管理员账户
-4. 初始化LDAP配置表
-
-如需重新初始化数据库，请运行：
-```bash
-python int_all_db.py
-```
+- 前端界面：http://your_domain.com
+- 后端API文档：http://your_domain.com/api/docs
+- 默认管理员账号：
+  - 用户名：admin
+  - 密码：admin123
 
 ## 常见问题
 
-1. 数据库连接失败
-   - 检查数据库服务器是否可访问
-   - 验证数据库用户名和密码是否正确
-   - 确认数据库名称是否存在
+### 1. 数据库连接问题
+- 检查PostgreSQL服务是否运行
+- 验证数据库连接信息是否正确
+- 确认数据库用户权限
 
-2. LDAP连接失败
-   - 检查LDAP服务器地址是否正确
-   - 验证管理员DN和密码是否正确
-   - 确认搜索基础DN是否正确
-   - 检查防火墙是否允许LDAP连接
+### 2. Redis连接问题
+- 检查Redis服务是否运行
+- 验证Redis密码是否正确
+- 确认Redis端口是否开放
 
-3. 初始化失败
-   - 检查数据库用户是否有创建表的权限
-   - 查看错误日志获取详细信息
+### 3. 前端构建问题
+- 清除node_modules并重新安装
+- 检查Node.js版本是否兼容
+- 查看构建日志获取详细错误信息
 
-4. 服务启动失败
-   - 检查端口是否被占用
-   - 确认所有依赖是否正确安装
-   - 查看服务日志获取错误信息
+### 4. 后端服务问题
+- 检查日志文件
+- 验证环境变量配置
+- 确认依赖包版本兼容性
 
-## 技术支持
-如有问题，请联系系统管理员或提交Issue。 
+## 安全建议
+
+1. 修改默认密码
+2. 配置SSL证书
+3. 启用防火墙
+4. 定期备份数据
+5. 更新安全补丁
+
+## 维护指南
+
+### 日常维护
+1. 检查日志文件
+2. 监控系统资源
+3. 备份数据库
+4. 清理临时文件
+
+### 更新部署
+1. 备份当前版本
+2. 拉取最新代码
+3. 更新依赖包
+4. 执行数据库迁移
+5. 重启服务
+
+## 联系支持
+
+如有问题，请通过以下方式获取支持：
+- 提交Issue：https://github.com/your-username/netops/issues
+- 邮件支持：support@example.com
+- 文档中心：https://docs.example.com 
