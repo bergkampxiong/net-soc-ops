@@ -1,5 +1,8 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import JobList from './job-execution/JobList';
+import JobDetail from './job-execution/JobDetail';
+import JobForm from './job-execution/JobForm';
 
 // 导入组件
 import AtomicComponents from './AtomicComponents';
@@ -60,6 +63,12 @@ const RPARouter: React.FC = () => {
         <Route path="monitoring-integration" element={<MonitoringIntegration />} />
         <Route path="ticket-integration" element={<TicketIntegration />} />
       </Route>
+      
+      {/* 作业执行控制路由 */}
+      <Route path="job-execution/jobs" element={<JobList />} />
+      <Route path="job-execution/jobs/new" element={<JobForm />} />
+      <Route path="job-execution/jobs/:id" element={<JobDetail />} />
+      <Route path="job-execution/jobs/:id/edit" element={<JobForm />} />
     </Routes>
   );
 };

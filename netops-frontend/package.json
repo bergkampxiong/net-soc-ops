@@ -35,9 +35,9 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "PORT=8080 react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
+    "start": "craco start",
+    "build": "craco build",
+    "test": "craco test",
     "eject": "react-scripts eject",
     "proxy": "node proxy-server.js",
     "start-all": "concurrently \"npm run proxy\" \"npm run start\""
@@ -70,6 +70,7 @@
     "postcss": "^8.4.31"
   },
   "devDependencies": {
+    "@craco/craco": "^7.1.0",
     "concurrently": "^9.1.2"
   }
 }

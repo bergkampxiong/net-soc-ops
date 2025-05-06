@@ -101,7 +101,7 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
 });
 
 // 启动服务器
-const PORT = 3000;
+const PORT = 8081;
 server.listen(PORT, () => {
   console.log(`代理服务器运行在 http://localhost:${PORT}`);
 }); 

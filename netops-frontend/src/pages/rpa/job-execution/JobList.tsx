@@ -3,11 +3,11 @@ import { Table, Card, Button, Space, Tag, message, Modal, Form, Input, Select, D
 import { PlusOutlined, ReloadOutlined, DeleteOutlined, PlayCircleOutlined, PauseCircleOutlined, StopOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import request from '@/utils/request';
-import type { Job } from './job-execution/types';
+import type { Job } from './types';
 
 const { RangePicker } = DatePicker;
 
-const JobExecution: React.FC = () => {
+const JobList: React.FC = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -295,4 +295,4 @@ const JobExecution: React.FC = () => {
   );
 };
 
-export default JobExecution; 
+export default JobList; 

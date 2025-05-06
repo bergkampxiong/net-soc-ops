@@ -24,6 +24,7 @@ from database.models import User, UsedTOTP, RefreshToken
 from database.category_models import Base as CategoryBase, Credential, CredentialType
 from database.config_management_models import Base as ConfigBase
 from database.device_connection_models import DeviceConnection
+from app.models.job import Job, JobExecution
 
 # 创建密码哈希上下文
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -507,6 +508,12 @@ def init_databases():
             
             # 初始化流程管理数据
             init_process_management_data(db)
+            
+            # 创建作业执行控制相关表
+            Base.metadata.create_all(bind=engine, tables=[
+                Job.__table__,
+                JobExecution.__table__
+            ])
             
             print("数据库初始化完成")
         finally:

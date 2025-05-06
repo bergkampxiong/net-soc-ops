@@ -1,0 +1,365 @@
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import {
+  Card,
+  Descriptions,
+  Button,
+  Space,
+  Table,
+  Tag,
+  message,
+  Modal,
+  Tabs,
+  Typography,
+} from 'antd';
+import {
+  PlayCircleOutlined,
+  PauseCircleOutlined,
+  StopOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  RollbackOutlined,
+} from '@ant-design/icons';
+import request from '../../../utils/request';
+import type { Job, JobExecution } from './types';
+
+const { Title } = Typography;
+const { TabPane } = Tabs;
+
+const JobDetail: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const [job, setJob] = useState<Job | null>(null);
+  const [executions, setExecutions] = useState<JobExecution[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [executionLoading, setExecutionLoading] = useState(false);
+
+  // 获取作业详情
+  const fetchJobDetail = async () => {
+    try {
+      setLoading(true);
+      const response = await request.get(`/jobs/${id}`);
+      setJob(response.data);
+    } catch (error) {
+      message.error('获取作业详情失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 获取执行历史
+  const fetchExecutions = async () => {
+    try {
+      setExecutionLoading(true);
+      const response = await request.get(`/jobs/${id}/executions`);
+      setExecutions(response.data);
+    } catch (error) {
+      message.error('获取执行历史失败');
+    } finally {
+      setExecutionLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchJobDetail();
+    fetchExecutions();
+  }, [id]);
+
+  // 执行历史表格列定义
+  const executionColumns = [
+    {
+      title: '执行ID',
+      dataIndex: 'id',
+      key: 'id',
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status: string) => {
+        const statusMap = {
+          running: { color: 'processing', text: '执行中' },
+          completed: { color: 'success', text: '已完成' },
+          failed: { color: 'error', text: '失败' },
+        };
+        const { color, text } = statusMap[status as keyof typeof statusMap] || { color: 'default', text: status };
+        return <Tag color={color}>{text}</Tag>;
+      },
+    },
+    {
+      title: '开始时间',
+      dataIndex: 'start_time',
+      key: 'start_time',
+      render: (time: string) => new Date(time).toLocaleString(),
+    },
+    {
+      title: '结束时间',
+      dataIndex: 'end_time',
+      key: 'end_time',
+      render: (time: string) => time ? new Date(time).toLocaleString() : '-',
+    },
+    {
+      title: '执行结果',
+      dataIndex: 'result',
+      key: 'result',
+      render: (result: any) => result ? JSON.stringify(result) : '-',
+    },
+    {
+      title: '错误信息',
+      dataIndex: 'error_message',
+      key: 'error_message',
+      render: (error: string) => error || '-',
+    },
+    {
+      title: '操作',
+      key: 'action',
+      render: (_: any, record: JobExecution) => (
+        <Space size="middle">
+          <Button
+            type="link"
+            onClick={() => handleViewLogs(record)}
+            disabled={!record.logs}
+          >
+            查看日志
+          </Button>
+          {record.status === 'failed' && (
+            <Button
+              type="link"
+              onClick={() => handleRetry(record.id)}
+            >
+              重试
+            </Button>
+          )}
+        </Space>
+      ),
+    },
+  ];
+
+  // 操作处理函数
+  const handleExecute = async () => {
+    try {
+      await request.post(`/jobs/${id}/execute`);
+      message.success('作业已开始执行');
+      fetchJobDetail();
+      fetchExecutions();
+    } catch (error) {
+      message.error('执行作业失败');
+    }
+  };
+
+  const handlePause = async () => {
+    try {
+      await request.post(`/jobs/${id}/pause`);
+      message.success('作业已暂停');
+      fetchJobDetail();
+    } catch (error) {
+      message.error('暂停作业失败');
+    }
+  };
+
+  const handleResume = async () => {
+    try {
+      await request.post(`/jobs/${id}/resume`);
+      message.success('作业已恢复');
+      fetchJobDetail();
+    } catch (error) {
+      message.error('恢复作业失败');
+    }
+  };
+
+  const handleTerminate = async () => {
+    try {
+      await request.post(`/jobs/${id}/terminate`);
+      message.success('作业已终止');
+      fetchJobDetail();
+    } catch (error) {
+      message.error('终止作业失败');
+    }
+  };
+
+  const handleDelete = () => {
+    Modal.confirm({
+      title: '确认删除',
+      content: '确定要删除该作业吗？',
+      onOk: async () => {
+        try {
+          await request.delete(`/jobs/${id}`);
+          message.success('删除成功');
+          navigate('/rpa/job-execution/jobs');
+        } catch (error) {
+          message.error('删除失败');
+        }
+      },
+    });
+  };
+
+  const handleViewLogs = (execution: JobExecution) => {
+    Modal.info({
+      title: '执行日志',
+      width: 800,
+      content: (
+        <pre style={{ maxHeight: '500px', overflow: 'auto' }}>
+          {execution.logs}
+        </pre>
+      ),
+    });
+  };
+
+  const handleRetry = async (executionId: number) => {
+    try {
+      await request.post(`/jobs/${id}/retry/${executionId}`);
+      message.success('作业已开始重试');
+      fetchJobDetail();
+      fetchExecutions();
+    } catch (error) {
+      message.error('重试作业失败');
+    }
+  };
+
+  if (!job) {
+    return null;
+  }
+
+  return (
+    <div>
+      <Card
+        title={
+          <Space>
+            <Title level={4}>{job.name}</Title>
+            <Tag color="blue">{job.job_type}</Tag>
+            <Tag
+              color={
+                job.status === 'active'
+                  ? 'success'
+                  : job.status === 'paused'
+                  ? 'warning'
+                  : job.status === 'terminated'
+                  ? 'error'
+                  : 'default'
+              }
+            >
+              {job.status === 'active'
+                ? '运行中'
+                : job.status === 'paused'
+                ? '已暂停'
+                : job.status === 'terminated'
+                ? '已终止'
+                : '已创建'}
+            </Tag>
+          </Space>
+        }
+        extra={
+          <Space>
+            <Button
+              type="primary"
+              icon={<PlayCircleOutlined />}
+              onClick={handleExecute}
+              disabled={job.status === 'active'}
+            >
+              执行
+            </Button>
+            {job.status === 'active' ? (
+              <Button
+                icon={<PauseCircleOutlined />}
+                onClick={handlePause}
+              >
+                暂停
+              </Button>
+            ) : (
+              <Button
+                icon={<PlayCircleOutlined />}
+                onClick={handleResume}
+                disabled={job.status !== 'paused'}
+              >
+                恢复
+              </Button>
+            )}
+            <Button
+              danger
+              icon={<StopOutlined />}
+              onClick={handleTerminate}
+              disabled={job.status === 'terminated'}
+            >
+              终止
+            </Button>
+            <Button
+              icon={<EditOutlined />}
+              onClick={() => navigate(`/rpa/job-execution/jobs/${id}/edit`)}
+            >
+              编辑
+            </Button>
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              onClick={handleDelete}
+            >
+              删除
+            </Button>
+            <Button
+              icon={<RollbackOutlined />}
+              onClick={() => navigate('/rpa/job-execution/jobs')}
+            >
+              返回
+            </Button>
+          </Space>
+        }
+      >
+        <Tabs defaultActiveKey="basic">
+          <TabPane tab="基本信息" key="basic">
+            <Descriptions bordered>
+              <Descriptions.Item label="作业名称">{job.name}</Descriptions.Item>
+              <Descriptions.Item label="作业类型">{job.job_type}</Descriptions.Item>
+              <Descriptions.Item label="状态">
+                {job.status === 'active'
+                  ? '运行中'
+                  : job.status === 'paused'
+                  ? '已暂停'
+                  : job.status === 'terminated'
+                  ? '已终止'
+                  : '已创建'}
+              </Descriptions.Item>
+              <Descriptions.Item label="创建时间">
+                {new Date(job.created_at).toLocaleString()}
+              </Descriptions.Item>
+              <Descriptions.Item label="更新时间">
+                {new Date(job.updated_at).toLocaleString()}
+              </Descriptions.Item>
+              <Descriptions.Item label="最后执行时间">
+                {job.last_run_at ? new Date(job.last_run_at).toLocaleString() : '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="下次执行时间">
+                {job.next_run_at ? new Date(job.next_run_at).toLocaleString() : '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="创建人">{job.created_by}</Descriptions.Item>
+              <Descriptions.Item label="更新人">{job.updated_by}</Descriptions.Item>
+              <Descriptions.Item label="描述" span={3}>
+                {job.description || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="执行参数" span={3}>
+                <pre>{JSON.stringify(job.parameters || {}, null, 2)}</pre>
+              </Descriptions.Item>
+              <Descriptions.Item label="调度配置" span={3}>
+                <pre>{JSON.stringify(job.schedule_config || {}, null, 2)}</pre>
+              </Descriptions.Item>
+            </Descriptions>
+          </TabPane>
+          <TabPane tab="执行历史" key="executions">
+            <Table
+              columns={executionColumns}
+              dataSource={executions}
+              rowKey="id"
+              loading={executionLoading}
+              pagination={{
+                showSizeChanger: true,
+                showQuickJumper: true,
+                showTotal: (total) => `共 ${total} 条`,
+              }}
+            />
+          </TabPane>
+        </Tabs>
+      </Card>
+    </div>
+  );
+};
+
+export default JobDetail; 
