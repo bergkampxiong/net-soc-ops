@@ -230,29 +230,6 @@ const Layout: React.FC = () => {
               key: 'rpa/process-orchestration/process-management',
               label: '流程管理',
             },
-            {
-              key: 'rpa/process-orchestration/process-execution',
-              label: '流程调度与执行',
-            },
-          ],
-        },
-        {
-          key: 'rpa-monitoring-analysis',
-          label: '执行监控与分析',
-          icon: <BarChartOutlined />,
-          children: [
-            {
-              key: 'rpa/monitoring-analysis/realtime-dashboard',
-              label: '实时监控仪表盘',
-            },
-            {
-              key: 'rpa/monitoring-analysis/execution-history',
-              label: '执行历史分析',
-            },
-            {
-              key: 'rpa/monitoring-analysis/custom-reports',
-              label: '自定义报表与仪表盘',
-            },
           ],
         },
         {
@@ -275,6 +252,25 @@ const Layout: React.FC = () => {
             {
               key: 'rpa/task-job-management/job-monitoring',
               label: '作业监控与报告',
+            },
+          ],
+        },
+        {
+          key: 'rpa-monitoring-analysis',
+          label: '执行监控与分析',
+          icon: <BarChartOutlined />,
+          children: [
+            {
+              key: 'rpa/monitoring-analysis/realtime-dashboard',
+              label: '实时监控仪表盘',
+            },
+            {
+              key: 'rpa/monitoring-analysis/execution-history',
+              label: '执行历史分析',
+            },
+            {
+              key: 'rpa/monitoring-analysis/custom-reports',
+              label: '自定义报表与仪表盘',
             },
           ],
         },

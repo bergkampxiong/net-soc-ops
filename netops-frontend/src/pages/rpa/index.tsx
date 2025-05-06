@@ -13,18 +13,17 @@ import AlertReporting from './AlertReporting';
 import ProcessOrchestration from './ProcessOrchestration';
 import VisualDesigner from './VisualDesigner';
 import ProcessManagement from './ProcessManagement';
-import ProcessExecution from './ProcessExecution';
-
-import MonitoringAnalysis from './MonitoringAnalysis';
-import RealtimeDashboard from './RealtimeDashboard';
-import ExecutionHistory from './ExecutionHistory';
-import CustomReports from './CustomReports';
 
 import TaskJobManagement from './TaskJobManagement';
 import JobExecution from './JobExecution';
 import JobScheduling from './JobScheduling';
 import TaskQueue from './TaskQueue';
 import JobMonitoring from './JobMonitoring';
+
+import MonitoringAnalysis from './MonitoringAnalysis';
+import RealtimeDashboard from './RealtimeDashboard';
+import ExecutionHistory from './ExecutionHistory';
+import CustomReports from './CustomReports';
 
 import SystemIntegration from './SystemIntegration';
 import MonitoringIntegration from './MonitoringIntegration';
@@ -51,15 +50,6 @@ const RPARouter: React.FC = () => {
         <Route index element={<Navigate to="visual-designer" />} />
         <Route path="visual-designer" element={<VisualDesigner />} />
         <Route path="process-management" element={<ProcessManagement />} />
-        <Route path="process-execution" element={<ProcessExecution />} />
-      </Route>
-      
-      {/* 执行监控与分析 */}
-      <Route path="monitoring-analysis" element={<MonitoringAnalysis />}>
-        <Route index element={<Navigate to="realtime-dashboard" />} />
-        <Route path="realtime-dashboard" element={<RealtimeDashboard />} />
-        <Route path="execution-history" element={<ExecutionHistory />} />
-        <Route path="custom-reports" element={<CustomReports />} />
       </Route>
       
       {/* 任务作业管理 */}
@@ -71,14 +61,20 @@ const RPARouter: React.FC = () => {
         <Route path="job-monitoring" element={<JobMonitoring />} />
       </Route>
       
+      {/* 执行监控与分析 */}
+      <Route path="monitoring-analysis" element={<MonitoringAnalysis />}>
+        <Route index element={<Navigate to="realtime-dashboard" />} />
+        <Route path="realtime-dashboard" element={<RealtimeDashboard />} />
+        <Route path="execution-history" element={<ExecutionHistory />} />
+        <Route path="custom-reports" element={<CustomReports />} />
+      </Route>
+      
       {/* 系统集成 */}
       <Route path="system-integration" element={<SystemIntegration />}>
         <Route index element={<Navigate to="monitoring-integration" />} />
         <Route path="monitoring-integration" element={<MonitoringIntegration />} />
         <Route path="ticket-integration" element={<TicketIntegration />} />
       </Route>
-      
-      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 };
