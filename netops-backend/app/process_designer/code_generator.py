@@ -1,6 +1,6 @@
 from typing import Dict, List, Any
 from netmiko import ConnectHandler
-from utils.connection_pool_manager import ConnectionPoolManager
+from utils.device_connection_manager import DeviceConnectionManager
 import logging
 
 class CodeGenerator:
@@ -73,11 +73,11 @@ class CodeGenerator:
             '',
             'from typing import Dict, List, Any',
             'from netmiko import ConnectHandler',
-            'from utils.connection_pool_manager import ConnectionPoolManager',
+            'from utils.device_connection_manager import DeviceConnectionManager',
             '',
             'class ProcessExecutor:',
             '    def __init__(self):',
-            '        self.connection_pool = ConnectionPoolManager()',
+            '        self.connection_manager = DeviceConnectionManager()',
             '        # 设备信息列表，便于批量扩展',
             '        self.device_list = [',
         ]
@@ -137,7 +137,7 @@ class CodeGenerator:
             '        for device_info in self.device_list:',
             '            device_params = {**device_info, **self.common_params}',
             '            try:',
-            '                connection = self.connection_pool.get_connection(device_params)',
+            '                connection = self.connection_manager.get_connection(device_params)',
             '                connections[device_info["name"]] = connection',
             '            except Exception as e:',
             '                print(f"连接设备 {device_info[\'name\']} 失败: {str(e)}")',
@@ -157,7 +157,7 @@ class CodeGenerator:
             '    def _close_connections(self, connections: Dict[str, Any]):',
             '        for name, connection in connections.items():',
             '            try:',
-            '                self.connection_pool.release_connection(connection)',
+            '                self.connection_manager.release_connection(connection)',
             '            except Exception as e:',
             '                print(f"关闭设备 {name} 连接失败: {str(e)}")',
             '',
