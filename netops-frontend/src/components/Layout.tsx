@@ -256,25 +256,6 @@ const Layout: React.FC = () => {
           ],
         },
         {
-          key: 'rpa-monitoring-analysis',
-          label: '执行监控与分析',
-          icon: <BarChartOutlined />,
-          children: [
-            {
-              key: 'rpa/monitoring-analysis/realtime-dashboard',
-              label: '实时监控仪表盘',
-            },
-            {
-              key: 'rpa/monitoring-analysis/execution-history',
-              label: '执行历史分析',
-            },
-            {
-              key: 'rpa/monitoring-analysis/custom-reports',
-              label: '自定义报表与仪表盘',
-            },
-          ],
-        },
-        {
           key: 'rpa-system-integration',
           label: '系统集成',
           icon: <ApiOutlined />,

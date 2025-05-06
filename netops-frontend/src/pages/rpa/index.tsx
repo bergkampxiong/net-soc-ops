@@ -20,11 +20,6 @@ import JobScheduling from './JobScheduling';
 import TaskQueue from './TaskQueue';
 import JobMonitoring from './JobMonitoring';
 
-import MonitoringAnalysis from './MonitoringAnalysis';
-import RealtimeDashboard from './RealtimeDashboard';
-import ExecutionHistory from './ExecutionHistory';
-import CustomReports from './CustomReports';
-
 import SystemIntegration from './SystemIntegration';
 import MonitoringIntegration from './MonitoringIntegration';
 import TicketIntegration from './TicketIntegration';
@@ -59,14 +54,6 @@ const RPARouter: React.FC = () => {
         <Route path="job-scheduling" element={<JobScheduling />} />
         <Route path="task-queue" element={<TaskQueue />} />
         <Route path="job-monitoring" element={<JobMonitoring />} />
-      </Route>
-      
-      {/* 执行监控与分析 */}
-      <Route path="monitoring-analysis" element={<MonitoringAnalysis />}>
-        <Route index element={<Navigate to="realtime-dashboard" />} />
-        <Route path="realtime-dashboard" element={<RealtimeDashboard />} />
-        <Route path="execution-history" element={<ExecutionHistory />} />
-        <Route path="custom-reports" element={<CustomReports />} />
       </Route>
       
       {/* 系统集成 */}
