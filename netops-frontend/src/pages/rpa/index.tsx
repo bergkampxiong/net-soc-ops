@@ -17,7 +17,6 @@ import ProcessManagement from './ProcessManagement';
 import TaskJobManagement from './TaskJobManagement';
 import JobExecution from './JobExecution';
 import JobScheduling from './JobScheduling';
-import TaskQueue from './TaskQueue';
 import JobMonitoring from './JobMonitoring';
 
 import SystemIntegration from './SystemIntegration';
@@ -52,7 +51,6 @@ const RPARouter: React.FC = () => {
         <Route index element={<Navigate to="job-execution" />} />
         <Route path="job-execution" element={<JobExecution />} />
         <Route path="job-scheduling" element={<JobScheduling />} />
-        <Route path="task-queue" element={<TaskQueue />} />
         <Route path="job-monitoring" element={<JobMonitoring />} />
       </Route>
       
