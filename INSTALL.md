@@ -249,8 +249,8 @@ npm run build
 - 前端界面：http://your_domain.com
 - 后端API文档：http://your_domain.com/api/docs
 - 默认管理员账号：
-  - 用户名：admin
-  - 密码：admin123
+- 用户名：admin
+- 密码：admin123
 
 ## 常见问题
 

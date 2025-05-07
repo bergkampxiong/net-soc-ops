@@ -24,6 +24,7 @@ from routes.cmdb import router as cmdb_router
 from routes.device import router as device_router, connections, ssh_connections
 from routes.job_config_router import router as job_config_router
 from app.api import process_management
+from app.api.job import router as job_router  # 添加job路由导入
 
 # 导入连接管理器
 from utils.device_connection_manager import device_connection_manager
@@ -92,6 +93,7 @@ app.include_router(job_config_router, prefix="/api")
 app.include_router(connections.router)
 app.include_router(ssh_connections.router, prefix="/api")
 app.include_router(process_management.router, prefix="")
+app.include_router(job_router, prefix="/api")  # 添加job路由注册
 
 # 定期清理任务
 def cleanup_expired_records():
