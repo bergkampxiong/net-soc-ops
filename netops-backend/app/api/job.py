@@ -63,7 +63,7 @@ def pause_job(job_id: int, db: Session = Depends(get_db)):
     """暂停作业"""
     success = JobService(db).pause_job(job_id)
     if not success:
-        raise HTTPException(status_code=404, detail="作业不存在")
+        raise HTTPException(status_code=404, detail="作业不存在或状态不正确")
     return {"message": "作业已暂停"}
 
 @router.post("/jobs/{job_id}/resume")
@@ -71,7 +71,7 @@ def resume_job(job_id: int, db: Session = Depends(get_db)):
     """恢复作业"""
     success = JobService(db).resume_job(job_id)
     if not success:
-        raise HTTPException(status_code=404, detail="作业不存在")
+        raise HTTPException(status_code=404, detail="作业不存在或状态不正确")
     return {"message": "作业已恢复"}
 
 @router.post("/jobs/{job_id}/terminate")
@@ -79,7 +79,7 @@ def terminate_job(job_id: int, db: Session = Depends(get_db)):
     """终止作业"""
     success = JobService(db).terminate_job(job_id)
     if not success:
-        raise HTTPException(status_code=404, detail="作业不存在")
+        raise HTTPException(status_code=404, detail="作业不存在或状态不正确")
     return {"message": "作业已终止"}
 
 @router.get("/jobs/{job_id}/executions", response_model=List[JobExecutionResponse])

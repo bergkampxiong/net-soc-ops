@@ -1,177 +1,77 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Card,
-  Form,
-  Input,
-  Select,
-  Button,
-  Space,
-  message,
-  Divider,
-  TimePicker,
-  InputNumber,
-  Switch,
-} from 'antd';
-import { RollbackOutlined } from '@ant-design/icons';
-import request from '../../../utils/request';
+import React, { useEffect } from 'react';
+import { Form, Input, Select, Button, Card, Space, TimePicker, InputNumber, Switch } from 'antd';
+import { useNavigate, useParams } from 'react-router-dom';
+import request from '@/utils/request';
 import type { JobFormData } from './types';
 
 const { TextArea } = Input;
 const { Option } = Select;
 
 const JobForm: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const [form] = Form.useForm();
-  const [loading, setLoading] = useState(false);
-  const [scheduleType, setScheduleType] = useState<'manual' | 'cron' | 'interval'>('manual');
-
-  // 获取作业详情
-  const fetchJobDetail = async () => {
-    if (!id) return;
-    try {
-      setLoading(true);
-      const response = await request.get(`/jobs/${id}`);
-      const job = response.data;
-      form.setFieldsValue({
-        ...job,
-        schedule_config: {
-          type: job.schedule_config?.type || 'manual',
-          cron_expression: job.schedule_config?.cron_expression,
-          interval_seconds: job.schedule_config?.interval_seconds,
-          start_time: job.schedule_config?.start_time,
-          end_time: job.schedule_config?.end_time,
-          timezone: job.schedule_config?.timezone,
-        },
-      });
-      setScheduleType(job.schedule_config?.type || 'manual');
-    } catch (error) {
-      message.error('获取作业详情失败');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
+  const isEdit = !!id;
 
   useEffect(() => {
-    if (id) {
-      fetchJobDetail();
+    if (isEdit) {
+      fetchJob();
     }
   }, [id]);
 
-  // 提交表单
-  const handleSubmit = async (values: JobFormData) => {
+  const fetchJob = async () => {
     try {
-      setLoading(true);
-      if (id) {
-        await request.put(`/jobs/${id}`, values);
-        message.success('更新作业成功');
-      } else {
-        await request.post('/jobs', values);
-        message.success('创建作业成功');
-      }
-      navigate('/rpa/job-execution/jobs');
+      const response = await request.get(`/jobs/${id}`);
+      form.setFieldsValue(response.data);
     } catch (error) {
-      message.error(id ? '更新作业失败' : '创建作业失败');
-    } finally {
-      setLoading(false);
+      console.error('获取作业详情失败:', error);
     }
   };
 
-  // 渲染调度配置表单
-  const renderScheduleConfig = () => {
-    switch (scheduleType) {
-      case 'cron':
-        return (
-          <>
-            <Form.Item
-              label="Cron表达式"
-              name={['schedule_config', 'cron_expression']}
-              rules={[{ required: true, message: '请输入Cron表达式' }]}
-            >
-              <Input placeholder="例如: 0 0 * * *" />
-            </Form.Item>
-            <Form.Item
-              label="时区"
-              name={['schedule_config', 'timezone']}
-              initialValue="Asia/Shanghai"
-            >
-              <Select>
-                <Option value="Asia/Shanghai">Asia/Shanghai</Option>
-                <Option value="UTC">UTC</Option>
-              </Select>
-            </Form.Item>
-          </>
-        );
-      case 'interval':
-        return (
-          <>
-            <Form.Item
-              label="间隔时间(秒)"
-              name={['schedule_config', 'interval_seconds']}
-              rules={[{ required: true, message: '请输入间隔时间' }]}
-            >
-              <InputNumber min={1} />
-            </Form.Item>
-            <Form.Item
-              label="开始时间"
-              name={['schedule_config', 'start_time']}
-            >
-              <TimePicker format="HH:mm:ss" />
-            </Form.Item>
-            <Form.Item
-              label="结束时间"
-              name={['schedule_config', 'end_time']}
-            >
-              <TimePicker format="HH:mm:ss" />
-            </Form.Item>
-          </>
-        );
-      default:
-        return null;
+  const handleSubmit = async (values: JobFormData) => {
+    try {
+      if (isEdit) {
+        await request.put(`/jobs/${id}`, values);
+      } else {
+        await request.post('/jobs', values);
+      }
+      navigate('/rpa/task-job-management/job-execution');
+    } catch (error) {
+      console.error('保存作业失败:', error);
     }
   };
 
   return (
-    <Card
-      title={id ? '编辑作业' : '新建作业'}
-      extra={
-        <Button
-          icon={<RollbackOutlined />}
-          onClick={() => navigate('/rpa/job-execution/jobs')}
-        >
-          返回
-        </Button>
-      }
-    >
+    <Card title={isEdit ? '编辑作业' : '新建作业'}>
       <Form
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
         initialValues={{
           schedule_config: {
+            enabled: false,
             type: 'manual',
           },
         }}
       >
         <Form.Item
-          label="作业名称"
           name="name"
+          label="作业名称"
           rules={[{ required: true, message: '请输入作业名称' }]}
         >
           <Input placeholder="请输入作业名称" />
         </Form.Item>
 
         <Form.Item
-          label="作业描述"
           name="description"
+          label="作业描述"
         >
           <TextArea rows={4} placeholder="请输入作业描述" />
         </Form.Item>
 
         <Form.Item
-          label="作业类型"
           name="job_type"
+          label="作业类型"
           rules={[{ required: true, message: '请选择作业类型' }]}
         >
           <Select placeholder="请选择作业类型">
@@ -181,41 +81,153 @@ const JobForm: React.FC = () => {
           </Select>
         </Form.Item>
 
-        <Divider>调度配置</Divider>
-
         <Form.Item
-          label="执行方式"
-          name={['schedule_config', 'type']}
-          rules={[{ required: true, message: '请选择执行方式' }]}
+          name={['schedule_config', 'enabled']}
+          label="启用调度"
+          valuePropName="checked"
         >
-          <Select onChange={(value) => setScheduleType(value)}>
-            <Option value="manual">手动执行</Option>
-            <Option value="cron">Cron调度</Option>
-            <Option value="interval">间隔执行</Option>
-          </Select>
+          <Switch />
         </Form.Item>
 
-        {renderScheduleConfig()}
-
-        <Divider>高级配置</Divider>
-
         <Form.Item
-          label="执行参数"
-          name="parameters"
-          tooltip="JSON格式的执行参数"
+          noStyle
+          shouldUpdate={(prevValues, currentValues) =>
+            prevValues.schedule_config?.enabled !== currentValues.schedule_config?.enabled
+          }
         >
-          <TextArea
-            rows={4}
-            placeholder='{"key": "value"}'
-          />
+          {({ getFieldValue }) =>
+            getFieldValue(['schedule_config', 'enabled']) && (
+              <>
+                <Form.Item
+                  name={['schedule_config', 'type']}
+                  label="调度类型"
+                  rules={[{ required: true, message: '请选择调度类型' }]}
+                >
+                  <Select placeholder="请选择调度类型">
+                    <Option value="manual">手动执行</Option>
+                    <Option value="cron">Cron表达式</Option>
+                    <Option value="interval">间隔时间</Option>
+                    <Option value="calendar">日历规则</Option>
+                  </Select>
+                </Form.Item>
+
+                <Form.Item
+                  noStyle
+                  shouldUpdate={(prevValues, currentValues) =>
+                    prevValues.schedule_config?.type !== currentValues.schedule_config?.type
+                  }
+                >
+                  {({ getFieldValue }) => {
+                    const scheduleType = getFieldValue(['schedule_config', 'type']);
+                    switch (scheduleType) {
+                      case 'cron':
+                        return (
+                          <Form.Item
+                            name={['schedule_config', 'cron_expression']}
+                            label="Cron表达式"
+                            rules={[{ required: true, message: '请输入Cron表达式' }]}
+                          >
+                            <Input placeholder="请输入Cron表达式" />
+                          </Form.Item>
+                        );
+                      case 'interval':
+                        return (
+                          <Form.Item
+                            name={['schedule_config', 'interval_seconds']}
+                            label="间隔时间(秒)"
+                            rules={[{ required: true, message: '请输入间隔时间' }]}
+                          >
+                            <InputNumber min={1} />
+                          </Form.Item>
+                        );
+                      case 'calendar':
+                        return (
+                          <>
+                            <Form.Item
+                              name={['schedule_config', 'calendar_rules']}
+                              label="日历规则"
+                              rules={[{ required: true, message: '请设置日历规则' }]}
+                            >
+                              <Select mode="multiple" placeholder="请选择执行日期">
+                                <Option value="monday">周一</Option>
+                                <Option value="tuesday">周二</Option>
+                                <Option value="wednesday">周三</Option>
+                                <Option value="thursday">周四</Option>
+                                <Option value="friday">周五</Option>
+                                <Option value="saturday">周六</Option>
+                                <Option value="sunday">周日</Option>
+                              </Select>
+                            </Form.Item>
+                            <Form.Item
+                              name={['schedule_config', 'time']}
+                              label="执行时间"
+                              rules={[{ required: true, message: '请选择执行时间' }]}
+                            >
+                              <TimePicker format="HH:mm" />
+                            </Form.Item>
+                          </>
+                        );
+                      default:
+                        return null;
+                    }
+                  }}
+                </Form.Item>
+
+                <Form.Item
+                  name={['schedule_config', 'timezone']}
+                  label="时区"
+                  initialValue="Asia/Shanghai"
+                >
+                  <Select>
+                    <Option value="Asia/Shanghai">中国标准时间 (UTC+8)</Option>
+                    <Option value="UTC">世界标准时间 (UTC)</Option>
+                  </Select>
+                </Form.Item>
+
+                <Form.Item
+                  name={['schedule_config', 'retry_policy']}
+                  label="重试策略"
+                >
+                  <Space>
+                    <Form.Item
+                      name={['schedule_config', 'retry_policy', 'max_retries']}
+                      noStyle
+                    >
+                      <InputNumber min={0} placeholder="最大重试次数" />
+                    </Form.Item>
+                    <Form.Item
+                      name={['schedule_config', 'retry_policy', 'retry_interval']}
+                      noStyle
+                    >
+                      <InputNumber min={1} placeholder="重试间隔(秒)" />
+                    </Form.Item>
+                  </Space>
+                </Form.Item>
+
+                <Form.Item
+                  name={['schedule_config', 'timeout']}
+                  label="超时时间(秒)"
+                >
+                  <InputNumber min={1} />
+                </Form.Item>
+
+                <Form.Item
+                  name={['schedule_config', 'concurrent_limit']}
+                  label="并发限制"
+                >
+                  <InputNumber min={1} />
+                </Form.Item>
+              </>
+            )
+          }
         </Form.Item>
 
         <Form.Item>
           <Space>
-            <Button type="primary" htmlType="submit" loading={loading}>
-              {id ? '更新' : '创建'}
+            <Button type="primary" htmlType="submit">
+              {isEdit ? '保存' : '创建'}
             </Button>
-            <Button onClick={() => navigate('/rpa/job-execution/jobs')}>
+            <Button onClick={() => navigate('/rpa/task-job-management/job-execution')}>
               取消
             </Button>
           </Space>

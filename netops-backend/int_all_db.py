@@ -468,35 +468,29 @@ def init_process_management_data(db):
         db.rollback()
         raise
 
-def init_databases():
-    """初始化所有数据库表"""
+def init_job_tables(engine):
+    """初始化作业执行控制相关表"""
     try:
-        print("开始初始化数据库...")
+        # 创建作业相关表
+        Base.metadata.create_all(bind=engine, tables=[Job.__table__, JobExecution.__table__])
+        print("作业执行控制相关表创建成功")
+    except Exception as e:
+        print(f"作业执行控制相关表创建失败: {str(e)}")
+        raise
+
+def init_databases():
+    """初始化所有数据库"""
+    try:
         # 获取数据库URL
         database_url = get_database_url()
         
         # 创建数据库引擎
         engine = create_engine(database_url)
         
-        # 创建所有表
-        Base.metadata.create_all(engine)
-        CMDBBase.metadata.create_all(engine)
-        CategoryBase.metadata.create_all(engine)
-        ConfigBase.metadata.create_all(engine)
-        
-        # 初始化LDAP模板表
-        init_ldap_templates(engine)
-        
-        # 初始化LDAP配置表
-        init_ldap_config(engine)
-        
-        # 初始化其他表
-        init_device_connection_tables(engine)
-        init_credential_tables(engine)
-        init_process_management_tables(engine)
+        # 创建会话工厂
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
         
         # 创建数据库会话
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
         db = SessionLocal()
         
         try:
@@ -506,16 +500,29 @@ def init_databases():
             # 初始化CMDB数据
             init_cmdb_data(db)
             
+            # 初始化设备连接表
+            init_device_connection_tables(engine)
+            
+            # 初始化凭证表
+            init_credential_tables(engine)
+            
+            # 初始化LDAP模板
+            init_ldap_templates(engine)
+            
+            # 初始化LDAP配置
+            init_ldap_config(engine)
+            
+            # 初始化流程管理表
+            init_process_management_tables(engine)
+            
             # 初始化流程管理数据
             init_process_management_data(db)
             
-            # 创建作业执行控制相关表
-            Base.metadata.create_all(bind=engine, tables=[
-                Job.__table__,
-                JobExecution.__table__
-            ])
+            # 初始化作业执行控制表
+            init_job_tables(engine)
             
-            print("数据库初始化完成")
+            print("所有数据库初始化完成")
+            
         finally:
             db.close()
             

@@ -11,6 +11,7 @@ import {
   Modal,
   Tabs,
   Typography,
+  Timeline,
 } from 'antd';
 import {
   PlayCircleOutlined,
@@ -19,9 +20,10 @@ import {
   EditOutlined,
   DeleteOutlined,
   RollbackOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
-import request from '../../../utils/request';
-import type { Job, JobExecution } from './types';
+import request from '@/utils/request';
+import type { JobListItem, JobExecution } from './types';
 
 const { Title } = Typography;
 const { TabPane } = Tabs;
@@ -29,7 +31,7 @@ const { TabPane } = Tabs;
 const JobDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [job, setJob] = useState<Job | null>(null);
+  const [job, setJob] = useState<JobListItem | null>(null);
   const [executions, setExecutions] = useState<JobExecution[]>([]);
   const [loading, setLoading] = useState(false);
   const [executionLoading, setExecutionLoading] = useState(false);

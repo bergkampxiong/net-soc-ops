@@ -2,13 +2,27 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
+class ScheduleConfig(BaseModel):
+    """调度配置模型"""
+    enabled: bool = False
+    type: str  # manual, cron, interval, calendar
+    cron_expression: Optional[str] = None
+    interval_seconds: Optional[int] = None
+    calendar_rules: Optional[List[Dict[str, str]]] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    timezone: Optional[str] = None
+    retry_policy: Optional[Dict[str, Any]] = None
+    timeout: Optional[int] = None
+    concurrent_limit: Optional[int] = None
+
 class JobBase(BaseModel):
     """作业基础模型"""
     name: str
     description: Optional[str] = None
     job_type: str
     parameters: Optional[Dict[str, Any]] = None
-    schedule_config: Optional[Dict[str, Any]] = None
+    schedule_config: Optional[ScheduleConfig] = None
 
 class JobCreate(JobBase):
     """创建作业模型"""
@@ -33,7 +47,7 @@ class JobResponse(JobBase):
         orm_mode = True
 
 class JobExecutionBase(BaseModel):
-    """作业执行记录基础模型"""
+    """作业执行基础模型"""
     job_id: int
     status: str
     start_time: datetime
@@ -47,7 +61,7 @@ class JobExecutionCreate(JobExecutionBase):
     pass
 
 class JobExecutionResponse(JobExecutionBase):
-    """作业执行记录响应模型"""
+    """作业执行响应模型"""
     id: int
     created_at: datetime
     updated_at: datetime

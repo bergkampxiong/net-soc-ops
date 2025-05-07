@@ -3,7 +3,7 @@ import { Table, Card, Button, Space, Tag, message, Modal, Form, Input, Select, D
 import { PlusOutlined, ReloadOutlined, DeleteOutlined, PlayCircleOutlined, PauseCircleOutlined, StopOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import request from '@/utils/request';
-import type { Job } from './job-execution/types';
+import type { Job, JobSearchParams } from './job-execution/types';
 
 const { RangePicker } = DatePicker;
 
@@ -15,10 +15,15 @@ const JobExecution: React.FC = () => {
   const navigate = useNavigate();
 
   // 获取作业列表
-  const fetchJobs = async (params: any = {}) => {
+  const fetchJobs = async (params: Partial<JobSearchParams> = {}) => {
     try {
       setLoading(true);
-      const response = await request.get('/jobs', { params });
+      const searchParams = {
+        page: 1,
+        page_size: 10,
+        ...params
+      };
+      const response = await request.get('/jobs', { params: searchParams });
       setJobs(response.data);
     } catch (error) {
       message.error('获取作业列表失败');
@@ -60,6 +65,16 @@ const JobExecution: React.FC = () => {
         const { color, text } = statusMap[status as keyof typeof statusMap] || { color: 'default', text: status };
         return <Tag color={color}>{text}</Tag>;
       },
+    },
+    {
+      title: '调度状态',
+      dataIndex: ['schedule_config', 'enabled'],
+      key: 'schedule_status',
+      render: (enabled: boolean) => (
+        <Tag color={enabled ? 'success' : 'default'}>
+          {enabled ? '已启用' : '未启用'}
+        </Tag>
+      ),
     },
     {
       title: '最后执行时间',
@@ -190,7 +205,7 @@ const JobExecution: React.FC = () => {
   };
 
   const handleSearch = (values: any) => {
-    const params: any = {};
+    const params: Partial<JobSearchParams> = {};
     if (values.name) params.name = values.name;
     if (values.job_type) params.job_type = values.job_type;
     if (values.status) params.status = values.status;
@@ -277,18 +292,13 @@ const JobExecution: React.FC = () => {
       </div>
 
       <Table
+        rowKey="id"
         columns={columns}
         dataSource={jobs}
-        rowKey="id"
         loading={loading}
         rowSelection={{
           selectedRowKeys,
           onChange: setSelectedRowKeys,
-        }}
-        pagination={{
-          showSizeChanger: true,
-          showQuickJumper: true,
-          showTotal: (total) => `共 ${total} 条`,
         }}
       />
     </Card>

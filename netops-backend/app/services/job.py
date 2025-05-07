@@ -3,8 +3,9 @@ from sqlalchemy import desc
 from typing import List, Optional
 from datetime import datetime
 from app.models.job import Job, JobExecution
-from app.schemas.job import JobCreate, JobUpdate
+from app.schemas.job import JobCreate, JobUpdate, JobExecutionCreate
 from celery import shared_task
+from fastapi import HTTPException
 
 class JobService:
     def __init__(self, db: Session):
@@ -41,7 +42,8 @@ class JobService:
             description=job.description,
             job_type=job.job_type,
             parameters=job.parameters,
-            schedule_config=job.schedule_config,
+            schedule_config=job.schedule_config.dict() if job.schedule_config else None,
+            status="created",
             created_by="system",  # TODO: 从当前用户获取
             updated_by="system"   # TODO: 从当前用户获取
         )
@@ -56,10 +58,16 @@ class JobService:
         if not db_job:
             return None
             
-        for key, value in job.dict(exclude_unset=True).items():
+        update_data = job.dict(exclude_unset=True)
+        if "schedule_config" in update_data and update_data["schedule_config"]:
+            update_data["schedule_config"] = update_data["schedule_config"].dict()
+            
+        for key, value in update_data.items():
             setattr(db_job, key, value)
             
         db_job.updated_by = "system"  # TODO: 从当前用户获取
+        db_job.updated_at = datetime.utcnow()
+        
         self.db.commit()
         self.db.refresh(db_job)
         return db_job
@@ -75,7 +83,7 @@ class JobService:
         return True
 
     def execute_job(self, job_id: int) -> bool:
-        """立即执行作业"""
+        """执行作业"""
         db_job = self.get_job(job_id)
         if not db_job:
             return False
@@ -87,42 +95,50 @@ class JobService:
             start_time=datetime.utcnow()
         )
         self.db.add(execution)
-        self.db.commit()
         
-        # 异步执行作业
-        execute_job_task.delay(job_id, execution.id)
+        # 更新作业状态
+        db_job.status = "active"
+        db_job.last_run_at = datetime.utcnow()
+        
+        self.db.commit()
         return True
 
     def pause_job(self, job_id: int) -> bool:
         """暂停作业"""
         db_job = self.get_job(job_id)
-        if not db_job:
+        if not db_job or db_job.status != "active":
             return False
             
         db_job.status = "paused"
+        db_job.updated_at = datetime.utcnow()
         db_job.updated_by = "system"  # TODO: 从当前用户获取
+        
         self.db.commit()
         return True
 
     def resume_job(self, job_id: int) -> bool:
         """恢复作业"""
         db_job = self.get_job(job_id)
-        if not db_job:
+        if not db_job or db_job.status != "paused":
             return False
             
         db_job.status = "active"
+        db_job.updated_at = datetime.utcnow()
         db_job.updated_by = "system"  # TODO: 从当前用户获取
+        
         self.db.commit()
         return True
 
     def terminate_job(self, job_id: int) -> bool:
         """终止作业"""
         db_job = self.get_job(job_id)
-        if not db_job:
+        if not db_job or db_job.status == "terminated":
             return False
             
         db_job.status = "terminated"
+        db_job.updated_at = datetime.utcnow()
         db_job.updated_by = "system"  # TODO: 从当前用户获取
+        
         self.db.commit()
         return True
 
@@ -133,12 +149,14 @@ class JobService:
         limit: int = 10
     ) -> List[JobExecution]:
         """获取作业执行历史"""
-        return self.db.query(JobExecution)\
-            .filter(JobExecution.job_id == job_id)\
-            .order_by(desc(JobExecution.start_time))\
-            .offset(skip)\
-            .limit(limit)\
+        return (
+            self.db.query(JobExecution)
+            .filter(JobExecution.job_id == job_id)
+            .order_by(desc(JobExecution.start_time))
+            .offset(skip)
+            .limit(limit)
             .all()
+        )
 
 @shared_task
 def execute_job_task(job_id: int, execution_id: int):
