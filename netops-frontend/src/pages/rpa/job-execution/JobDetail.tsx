@@ -320,28 +320,22 @@ const JobDetail: React.FC = () => {
                   ? '已终止'
                   : '已创建'}
               </Descriptions.Item>
+              <Descriptions.Item label="最后执行时间">
+                {job.last_run_at ? new Date(job.last_run_at).toLocaleString() : '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="创建人">{job.created_by}</Descriptions.Item>
+              <Descriptions.Item label="更新人">{job.updated_by}</Descriptions.Item>
               <Descriptions.Item label="创建时间">
                 {new Date(job.created_at).toLocaleString()}
               </Descriptions.Item>
               <Descriptions.Item label="更新时间">
                 {new Date(job.updated_at).toLocaleString()}
               </Descriptions.Item>
-              <Descriptions.Item label="最后执行时间">
-                {job.last_run_at ? new Date(job.last_run_at).toLocaleString() : '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="下次执行时间">
-                {job.next_run_at ? new Date(job.next_run_at).toLocaleString() : '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="创建人">{job.created_by}</Descriptions.Item>
-              <Descriptions.Item label="更新人">{job.updated_by}</Descriptions.Item>
               <Descriptions.Item label="描述" span={3}>
                 {job.description || '-'}
               </Descriptions.Item>
               <Descriptions.Item label="执行参数" span={3}>
                 <pre>{JSON.stringify(job.parameters || {}, null, 2)}</pre>
-              </Descriptions.Item>
-              <Descriptions.Item label="调度配置" span={3}>
-                <pre>{JSON.stringify(job.schedule_config || {}, null, 2)}</pre>
               </Descriptions.Item>
             </Descriptions>
           </TabPane>

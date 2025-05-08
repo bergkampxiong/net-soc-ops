@@ -242,10 +242,6 @@ const Layout: React.FC = () => {
               label: '作业执行控制',
             },
             {
-              key: 'rpa/task-job-management/job-scheduling',
-              label: '作业调度管理',
-            },
-            {
               key: 'rpa/task-job-management/job-monitoring',
               label: '作业监控与报告',
             },
