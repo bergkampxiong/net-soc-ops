@@ -67,25 +67,9 @@ const JobExecution: React.FC = () => {
       },
     },
     {
-      title: '调度状态',
-      dataIndex: ['schedule_config', 'enabled'],
-      key: 'schedule_status',
-      render: (enabled: boolean) => (
-        <Tag color={enabled ? 'success' : 'default'}>
-          {enabled ? '已启用' : '未启用'}
-        </Tag>
-      ),
-    },
-    {
       title: '最后执行时间',
       dataIndex: 'last_run_at',
       key: 'last_run_at',
-      render: (time: string) => time ? new Date(time).toLocaleString() : '-',
-    },
-    {
-      title: '下次执行时间',
-      dataIndex: 'next_run_at',
-      key: 'next_run_at',
       render: (time: string) => time ? new Date(time).toLocaleString() : '-',
     },
     {
@@ -217,7 +201,7 @@ const JobExecution: React.FC = () => {
   };
 
   return (
-    <Card>
+      <Card>
       <Form
         form={searchForm}
         onFinish={handleSearch}
@@ -301,7 +285,7 @@ const JobExecution: React.FC = () => {
           onChange: setSelectedRowKeys,
         }}
       />
-    </Card>
+      </Card>
   );
 };
 

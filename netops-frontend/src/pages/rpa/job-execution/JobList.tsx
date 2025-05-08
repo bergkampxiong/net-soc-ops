@@ -68,12 +68,6 @@ const JobList: React.FC = () => {
       render: (time: string) => time ? new Date(time).toLocaleString() : '-',
     },
     {
-      title: '下次执行时间',
-      dataIndex: 'next_run_at',
-      key: 'next_run_at',
-      render: (time: string) => time ? new Date(time).toLocaleString() : '-',
-    },
-    {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',

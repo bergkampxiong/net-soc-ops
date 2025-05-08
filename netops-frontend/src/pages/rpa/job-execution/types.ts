@@ -4,10 +4,27 @@ export type JobType = 'network_config' | 'device_check' | 'data_collection';
 // 作业状态
 export type JobStatus = 'created' | 'active' | 'paused' | 'completed' | 'failed' | 'terminated';
 
+// 调度类型
+export type ScheduleType = 'manual' | 'cron' | 'interval' | 'calendar';
+
 // 重试策略
 export interface RetryPolicy {
   max_retries: number;
   retry_interval: number;
+}
+
+// 调度配置
+export interface ScheduleConfig {
+  enabled: boolean;
+  type: ScheduleType;
+  cron_expression?: string;
+  interval_seconds?: number;
+  calendar_rules?: string[];
+  time?: string;
+  timezone: string;
+  retry_policy?: RetryPolicy;
+  timeout?: number;
+  concurrent_limit?: number;
 }
 
 // 作业表单数据
@@ -16,7 +33,7 @@ export interface JobFormData {
   description?: string;
   job_type: JobType;
   parameters?: Record<string, any>;
-  retry_policy?: RetryPolicy;
+  schedule_config: ScheduleConfig;
 }
 
 // 作业执行记录
@@ -40,10 +57,13 @@ export interface JobListItem {
   description?: string;
   job_type: JobType;
   status: JobStatus;
+  schedule_status: 'enabled' | 'disabled';
   parameters?: Record<string, any>;
+  schedule_config: ScheduleConfig;
   created_at: string;
   updated_at: string;
   last_run_at?: string;
+  next_run_at?: string;
   created_by: string;
   updated_by: string;
 }
@@ -53,6 +73,7 @@ export interface JobSearchParams {
   name?: string;
   job_type?: JobType;
   status?: JobStatus;
+  schedule_status?: 'enabled' | 'disabled';
   start_time?: string;
   end_time?: string;
   page: number;
