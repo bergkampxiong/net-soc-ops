@@ -31,20 +31,23 @@
 
 ```bash
 cd <项目根目录>/netops-backend
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-**数据库**：不设置环境变量时，默认使用当前目录下的 SQLite 数据库文件。表结构在**首次执行 `python main.py` 时自动创建**，无需单独执行 `init_db`。
+**数据库**：不设置环境变量时，默认使用当前目录下的 SQLite。表结构在**首次执行 `python3 main.py` 时自动创建**，无需单独执行 `init_db`。
 
 **创建管理员**（首次使用建议执行）：
 ```bash
-python create_admin.py
+python3 create_admin.py
 ```
 按脚本提示使用默认账号（如 admin / admin123）登录。
 
 **启动**：
 ```bash
-python main.py
+source venv/bin/activate
+python3 main.py
 ```
 服务默认 http://localhost:8000。
 
@@ -53,14 +56,11 @@ python main.py
 ```bash
 cd <项目根目录>/netops-frontend
 npm install
-npm run start
+npm run start-all
 ```
-默认 http://localhost:3000。
+`start-all` 会同时启动代理和前端开发服务，前端请求的 `/api` 会通过代理转发到后端。默认访问端口以终端输出为准（如 3000 或代理端口）。
 
-**对接后端**：前端请求带 `/api` 前缀，需指向后端地址。可任选其一：
-
-- 在 `netops-frontend/package.json` 中配置 `"proxy": "http://localhost:8000"`（Create React App 会将 `/api` 代理到该地址），然后 `npm run start`；或
-- 使用项目内代理：先启动后端，再在 frontend 目录执行 `npm run start-all`（会同时起代理与前端，具体以项目脚本为准）。
+**一键启动前后端**：在项目根目录执行 `./scripts/start-dev.sh` 可先起后端（venv + python3 main.py），再起前端（npm run start-all），Ctrl+C 会一并停止。详见 [README.md](README.md) 快速开始。
 
 ### 2.3 使用 SQLite 时的备份/恢复（可选）
 
