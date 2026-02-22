@@ -23,6 +23,7 @@ def ldap_authenticate(username: str, password: str, db: Session) -> Tuple[Option
     Returns:
         Tuple[Optional[User], Optional[str]]: (用户对象, 错误信息)
     """
+    conn = None
     try:
         # 获取LDAP配置
         ldap_config = db.query(LDAPConfig).first()
@@ -142,7 +143,8 @@ def ldap_authenticate(username: str, password: str, db: Session) -> Tuple[Option
     except Exception as e:
         return None, f"LDAP认证失败：{str(e)}"
     finally:
-        try:
-            conn.unbind_s()
-        except:
-            pass 
+        if conn is not None:
+            try:
+                conn.unbind_s()
+            except Exception:
+                pass

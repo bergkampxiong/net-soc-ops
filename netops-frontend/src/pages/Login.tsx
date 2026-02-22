@@ -20,10 +20,12 @@ interface LoginResponse {
 
 const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
+  const [loginError, setLoginError] = useState<string>('');
   const [loginType, setLoginType] = useState<'local' | 'ldap'>('local');
   const navigate = useNavigate();
 
   const onFinish = async (values: LoginFormValues) => {
+    setLoginError('');
     try {
       setLoading(true);
       console.log('Logging in with username:', values.username);
@@ -84,9 +86,13 @@ const Login: React.FC = () => {
           navigate('/');
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('登录时出错:', error);
-      message.error('登录失败，请稍后重试');
+      // 优先展示后端返回的错误信息（如用户名或密码错误、LDAP认证失败等）
+      const backendMsg = error?.response?.data?.detail ?? error?.response?.data?.message;
+      const msg = typeof backendMsg === 'string' ? backendMsg : '登录失败，请稍后重试';
+      setLoginError(msg);
+      message.error(msg);
     } finally {
       setLoading(false);
     }
@@ -154,6 +160,13 @@ const Login: React.FC = () => {
             </div>
           </Form.Item>
           
+          {loginError ? (
+            <Form.Item>
+              <div style={{ color: '#ff4d4f', textAlign: 'center', marginBottom: 8 }}>
+                {loginError}
+              </div>
+            </Form.Item>
+          ) : null}
           <Form.Item>
             <Button 
               type="primary" 

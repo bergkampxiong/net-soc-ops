@@ -99,35 +99,34 @@ request.interceptors.response.use(
     }
     
     const originalRequest = error.config;
-    
-    // 如果是401错误且不是刷新令牌的请求
-    if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.url.includes('/auth/token/refresh')) {
+    const isLoginRequest = originalRequest?.url?.includes('auth/login') ?? false;
+
+    // 登录接口的 401 不尝试刷新 token，直接交给业务层展示错误（如“用户名或密码错误”）
+    // 仅对已登录后的接口 401 尝试用 refresh_token 刷新
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !originalRequest.url?.includes('/auth/token/refresh') &&
+      !isLoginRequest
+    ) {
       originalRequest._retry = true;
-      
+
       try {
-        // 获取刷新令牌
         const refreshToken = localStorage.getItem('refresh_token');
         if (!refreshToken) {
           throw new Error('No refresh token available');
         }
-        
-        // 尝试刷新令牌
+
         const response = await request.post('/auth/token/refresh', { refresh_token: refreshToken });
-        
+
         if (response.status === 200) {
-          // 更新访问令牌
           const newToken = response.data.access_token;
           localStorage.setItem('token', newToken);
-          
-          // 更新原始请求的Authorization头
           originalRequest.headers.Authorization = `Bearer ${newToken}`;
-          
-          // 重试原始请求
           return request(originalRequest);
         }
       } catch (refreshError) {
         console.error('刷新令牌失败:', refreshError);
-        // 清除令牌并重定向到登录页面
         localStorage.removeItem('token');
         localStorage.removeItem('refresh_token');
         window.location.href = '/login';
@@ -140,9 +139,10 @@ request.interceptors.response.use(
       // 服务器返回了错误响应
       const { status, data } = error.response;
       
-      // 显示错误消息
-      if (data && data.message) {
-        message.error(data.message);
+      // 显示错误消息（FastAPI 使用 detail，部分接口使用 message）
+      const errorMsg = data?.detail ?? data?.message;
+      if (errorMsg) {
+        message.error(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
       } else if (status === 404) {
         message.error('请求的资源不存在');
       } else if (status === 403) {

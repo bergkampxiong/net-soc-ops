@@ -127,7 +127,11 @@ async def login(
         ldap_user, ldap_error = ldap_authenticate(form_data.username, form_data.password, db)
         
         if not ldap_user:
-            # LDAP认证失败
+            # LDAP认证失败：记录到审计并输出到后端日志便于排查
+            import logging
+            logging.getLogger(__name__).warning(
+                "LDAP登录失败 username=%s reason=%s", form_data.username, ldap_error or "未知"
+            )
             log_event(
                 db=db,
                 event_type="ldap_login_failed",
@@ -138,7 +142,7 @@ async def login(
             )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="LDAP认证失败: " + ldap_error
+                detail="LDAP认证失败: " + (ldap_error or "未知错误")
             )
         
         # 检查是否需要2FA
