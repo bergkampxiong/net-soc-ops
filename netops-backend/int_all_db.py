@@ -154,6 +154,9 @@ def init_cmdb_data(db):
                 {"name": "Cisco", "description": "Cisco Systems"},
                 {"name": "Huawei", "description": "Huawei Technologies"},
                 {"name": "H3C", "description": "H3C Technologies"},
+                {"name": "Ruijie", "description": "Ruijie Networks"},
+                {"name": "Palo Alto", "description": "Palo Alto Networks"},
+                {"name": "Fortinet", "description": "Fortinet Inc."},
                 {"name": "Dell", "description": "Dell Technologies"},
                 {"name": "HP", "description": "Hewlett Packard"}
             ]

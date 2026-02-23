@@ -11,6 +11,9 @@ from .cisco_campus import discover_cisco_campus
 from .cisco_datacenter import discover_cisco_datacenter
 from .huawei import discover_huawei
 from .h3c import discover_h3c
+from .ruijie import discover_ruijie
+from .paloalto import discover_paloalto
+from .fortinet import discover_fortinet
 
 logger = logging.getLogger(__name__)
 
@@ -67,12 +70,51 @@ def _run_h3c(params: dict) -> DiscoveryResult:
     )
 
 
+def _run_ruijie(params: dict) -> DiscoveryResult:
+    return discover_ruijie(
+        ip_range=params["ip_range"],
+        username=params["username"],
+        password=params["password"],
+        port=params.get("port", 22),
+        timeout=params.get("timeout", 30),
+        threads=params.get("threads", 5),
+        enable_password=params.get("enable_password"),
+    )
+
+
+def _run_paloalto(params: dict) -> DiscoveryResult:
+    return discover_paloalto(
+        ip_range=params["ip_range"],
+        username=params["username"],
+        password=params["password"],
+        port=params.get("port", 22),
+        timeout=params.get("timeout", 30),
+        threads=params.get("threads", 5),
+        enable_password=params.get("enable_password"),
+    )
+
+
+def _run_fortinet(params: dict) -> DiscoveryResult:
+    return discover_fortinet(
+        ip_range=params["ip_range"],
+        username=params["username"],
+        password=params["password"],
+        port=params.get("port", 22),
+        timeout=params.get("timeout", 30),
+        threads=params.get("threads", 5),
+        enable_password=params.get("enable_password"),
+    )
+
+
 # 已实现的发现类型
 DISCOVERY_RUNNERS: dict[str, DiscoveryRunner] = {
     "cisco-campus": _run_cisco_campus,
     "cisco-datacenter": _run_cisco_datacenter,
     "huawei": _run_huawei,
     "h3c": _run_h3c,
+    "ruijie": _run_ruijie,
+    "paloalto": _run_paloalto,
+    "fortinet": _run_fortinet,
 }
 
 
