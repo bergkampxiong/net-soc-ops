@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-  Card, Table, Button, Typography, Modal, Form, Input, Select, InputNumber, Row, Space, message, Spin,
+  Card, Table, Button, Typography, Modal, Form, Input, Select, InputNumber, Row, Space, message, Progress,
 } from 'antd';
-import { LoadingOutlined, DatabaseOutlined } from '@ant-design/icons';
+import { DatabaseOutlined } from '@ant-design/icons';
 import request from '../../utils/request';
 import './Discovery.css';
 
@@ -61,11 +61,118 @@ const discoveryTypes: DiscoveryTypeRecord[] = [
 /**
  * 设备发现组件（风格与 CMDB 模型管理、资产盘点一致：Card + Table）
  */
+// 单台发现结果
+interface DiscoveryResultItem {
+  ip: string;
+  name?: string;
+  reason?: string;
+}
+
+// 发现进行中时进度条每 2 秒增加的百分比（约 90 秒到 90%，避免长时间无变化）
+const PROGRESS_INTERVAL_MS = 2000;
+const PROGRESS_STEP = 2;
+const PROGRESS_CAP = 90;
+
 const CMDBDiscovery: React.FC = () => {
   const [discoveryModalVisible, setDiscoveryModalVisible] = useState<boolean>(false);
   const [currentDiscoveryType, setCurrentDiscoveryType] = useState<string>('');
   const [discoveryForm] = Form.useForm();
   const [discovering, setDiscovering] = useState<boolean>(false);
+  const [discoveryProgress, setDiscoveryProgress] = useState<number>(0);
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [resultModalVisible, setResultModalVisible] = useState<boolean>(false);
+  const [discoveryResult, setDiscoveryResult] = useState<{ succeeded: DiscoveryResultItem[]; failed: DiscoveryResultItem[] }>({ succeeded: [], failed: [] });
+  // 发现任务弹窗拖动：偏移量（px）
+  const [modalDragOffset, setModalDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const dragStartRef = useRef<{ clientX: number; clientY: number; offsetX: number; offsetY: number } | null>(null);
+  const [resultModalDragOffset, setResultModalDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const resultDragStartRef = useRef<{ clientX: number; clientY: number; offsetX: number; offsetY: number } | null>(null);
+
+  // 发现任务弹窗：标题栏拖动
+  useEffect(() => {
+    if (!discoveryModalVisible) {
+      setModalDragOffset({ x: 0, y: 0 });
+      return;
+    }
+    const onMouseMove = (e: MouseEvent) => {
+      if (dragStartRef.current == null) return;
+      setModalDragOffset({
+        x: dragStartRef.current.offsetX + (e.clientX - dragStartRef.current.clientX),
+        y: dragStartRef.current.offsetY + (e.clientY - dragStartRef.current.clientY),
+      });
+    };
+    const onMouseUp = () => {
+      dragStartRef.current = null;
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [discoveryModalVisible]);
+
+  const onDiscoveryModalTitleMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    dragStartRef.current = {
+      clientX: e.clientX,
+      clientY: e.clientY,
+      offsetX: modalDragOffset.x,
+      offsetY: modalDragOffset.y,
+    };
+  };
+
+  // 发现结果弹窗：标题栏拖动
+  useEffect(() => {
+    if (!resultModalVisible) {
+      setResultModalDragOffset({ x: 0, y: 0 });
+      return;
+    }
+    const onMouseMove = (e: MouseEvent) => {
+      if (resultDragStartRef.current == null) return;
+      setResultModalDragOffset({
+        x: resultDragStartRef.current.offsetX + (e.clientX - resultDragStartRef.current.clientX),
+        y: resultDragStartRef.current.offsetY + (e.clientY - resultDragStartRef.current.clientY),
+      });
+    };
+    const onMouseUp = () => {
+      resultDragStartRef.current = null;
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [resultModalVisible]);
+
+  const onResultModalTitleMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    resultDragStartRef.current = {
+      clientX: e.clientX,
+      clientY: e.clientY,
+      offsetX: resultModalDragOffset.x,
+      offsetY: resultModalDragOffset.y,
+    };
+  };
+
+  // 发现进行中：进度条缓慢推进到 90%，完成后在 handleDiscovery 里设为 100%
+  useEffect(() => {
+    if (!discovering) {
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
+      return;
+    }
+    setDiscoveryProgress(0);
+    progressTimerRef.current = setInterval(() => {
+      setDiscoveryProgress((prev) => Math.min(prev + PROGRESS_STEP, PROGRESS_CAP));
+    }, PROGRESS_INTERVAL_MS);
+    return () => {
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    };
+  }, [discovering]);
 
   const openDiscoveryModal = (type: string) => {
     setCurrentDiscoveryType(type);
@@ -77,10 +184,22 @@ const CMDBDiscovery: React.FC = () => {
     setDiscovering(true);
     try {
       const discoveryParams = { ...values, discovery_type: currentDiscoveryType };
-      const response = await request.post('cmdb/discovery', discoveryParams);
+      // 发现任务可能较久，单独设置 5 分钟超时，避免后端仍在执行时前端先报错
+      const response = await request.post('cmdb/discovery', discoveryParams, { timeout: 300000 });
       if (response.data?.success) {
-        message.success(`成功发现 ${response.data.discovered_count ?? 0} 台设备`);
+        setDiscoveryProgress(100);
+        const succeeded = response.data.succeeded ?? [];
+        const failed = response.data.failed ?? [];
+        setDiscoveryResult({ succeeded, failed });
         setDiscoveryModalVisible(false);
+        setResultModalVisible(true);
+        if (failed.length === 0) {
+          message.success(`全部成功：共 ${succeeded.length} 台设备已添加`);
+        } else if (succeeded.length === 0) {
+          message.warning(`全部失败：共 ${failed.length} 台，请查看详情`);
+        } else {
+          message.success(`已完成：成功 ${succeeded.length} 台，失败 ${failed.length} 台`);
+        }
       } else {
         message.error(response.data?.message || '设备发现失败');
       }
@@ -103,6 +222,9 @@ const CMDBDiscovery: React.FC = () => {
         </Form.Item>
         <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
           <Input.Password placeholder="请输入密码" />
+        </Form.Item>
+        <Form.Item name="enable_password" label="Enable 密码">
+          <Input.Password placeholder="可选，Cisco 等设备需提权时填写" />
         </Form.Item>
         <Form.Item name="port" label="端口" initialValue={22}>
           <InputNumber min={1} max={65535} style={{ width: '100%' }} />
@@ -231,28 +353,102 @@ const CMDBDiscovery: React.FC = () => {
       </Card>
 
       <Modal
-        title={getModalTitle()}
+        title={
+          <div
+            role="button"
+            tabIndex={0}
+            onMouseDown={onDiscoveryModalTitleMouseDown}
+            style={{ cursor: 'move', userSelect: 'none', paddingRight: 24 }}
+          >
+            {discovering ? '正在发现设备' : getModalTitle()}
+          </div>
+        }
         open={discoveryModalVisible}
-        onCancel={() => setDiscoveryModalVisible(false)}
+        onCancel={discovering ? undefined : () => setDiscoveryModalVisible(false)}
+        maskClosable={!discovering}
+        closable={!discovering}
         footer={null}
         width={560}
-        destroyOnClose
+        modalRender={(node) => (
+          <div style={{ transform: `translate(${modalDragOffset.x}px, ${modalDragOffset.y}px)` }}>
+            {node}
+          </div>
+        )}
       >
-        <Spin spinning={discovering} indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />}>
+        {discovering ? (
+          <div style={{ padding: '24px 0' }}>
+            <Progress
+              percent={discoveryProgress}
+              status="active"
+              strokeColor={{ from: '#108ee9', to: '#87d068' }}
+            />
+            <Text type="secondary" style={{ display: 'block', marginTop: 16, lineHeight: 1.6 }}>
+              正在扫描 IP 范围并连接设备，请勿关闭此窗口。<br />
+              根据范围大小，可能需要 1～5 分钟。
+            </Text>
+          </div>
+        ) : (
           <Form form={discoveryForm} layout="vertical" onFinish={handleDiscovery}>
             {getFormFields()}
             <Form.Item>
               <Row justify="end">
                 <Space>
                   <Button onClick={() => setDiscoveryModalVisible(false)}>取消</Button>
-                  <Button type="primary" htmlType="submit" loading={discovering}>
+                  <Button type="primary" htmlType="submit">
                     开始发现
                   </Button>
                 </Space>
               </Row>
             </Form.Item>
           </Form>
-        </Spin>
+        )}
+      </Modal>
+
+      <Modal
+        title={
+          <div
+            role="button"
+            tabIndex={0}
+            onMouseDown={onResultModalTitleMouseDown}
+            style={{ cursor: 'move', userSelect: 'none', paddingRight: 24 }}
+          >
+            发现结果
+          </div>
+        }
+        open={resultModalVisible}
+        onCancel={() => setResultModalVisible(false)}
+        footer={<Button type="primary" onClick={() => setResultModalVisible(false)}>确定</Button>}
+        width={520}
+        destroyOnClose
+        modalRender={(node) => (
+          <div style={{ transform: `translate(${resultModalDragOffset.x}px, ${resultModalDragOffset.y}px)` }}>
+            {node}
+          </div>
+        )}
+      >
+        {discoveryResult.succeeded.length > 0 && (
+          <>
+            <Title level={5} style={{ marginTop: 0 }}>成功添加（{discoveryResult.succeeded.length} 台）</Title>
+            <ul style={{ paddingLeft: 20, marginBottom: 16 }}>
+              {discoveryResult.succeeded.map((item) => (
+                <li key={item.ip}>{item.ip}{item.name && item.name !== item.ip ? `（${item.name}）` : ''}</li>
+              ))}
+            </ul>
+          </>
+        )}
+        {discoveryResult.failed.length > 0 && (
+          <>
+            <Title level={5}>添加失败（{discoveryResult.failed.length} 台）</Title>
+            <ul style={{ paddingLeft: 20, marginBottom: 0 }}>
+              {discoveryResult.failed.map((item) => (
+                <li key={item.ip}>{item.ip}：{item.reason ?? '未知原因'}</li>
+              ))}
+            </ul>
+          </>
+        )}
+        {discoveryResult.succeeded.length === 0 && discoveryResult.failed.length === 0 && (
+          <Text type="secondary">无设备被处理（请检查 IP 范围是否正确）</Text>
+        )}
       </Modal>
     </div>
   );

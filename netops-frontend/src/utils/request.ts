@@ -52,8 +52,11 @@ request.interceptors.request.use(
       config.url = config.url.substring(1);
     }
 
-    // 添加调试日志
-    console.log(`发送请求: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
+    // 添加调试日志（baseURL 与 url 之间补斜杠，避免显示成 /apicmdb/...）
+    const fullUrl = config.baseURL && config.url
+      ? (config.baseURL.replace(/\/+$/, '') + (config.url.startsWith('/') ? '' : '/') + config.url.replace(/^\/+/, ''))
+      : (config.url || '');
+    console.log(`发送请求: ${config.method?.toUpperCase()} ${fullUrl}`);
     if (config.data) {
       // 不记录敏感信息
       const logData = {...config.data};
