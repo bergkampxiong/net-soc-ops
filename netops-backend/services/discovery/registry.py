@@ -8,6 +8,7 @@ from typing import List, Optional, Callable, Any, Tuple
 
 from .base import DiscoveredDevice
 from .cisco_campus import discover_cisco_campus
+from .cisco_datacenter import discover_cisco_datacenter
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +29,22 @@ def _run_cisco_campus(params: dict) -> DiscoveryResult:
     )
 
 
+def _run_cisco_datacenter(params: dict) -> DiscoveryResult:
+    return discover_cisco_datacenter(
+        ip_range=params["ip_range"],
+        username=params["username"],
+        password=params["password"],
+        port=params.get("port", 22),
+        timeout=params.get("timeout", 30),
+        threads=params.get("threads", 5),
+        enable_password=params.get("enable_password"),
+    )
+
+
 # 已实现的发现类型
 DISCOVERY_RUNNERS: dict[str, DiscoveryRunner] = {
     "cisco-campus": _run_cisco_campus,
+    "cisco-datacenter": _run_cisco_datacenter,
 }
 
 
