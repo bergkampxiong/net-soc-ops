@@ -2,6 +2,86 @@
   padding: 12px;
 }
 
+/* 滚动条美化：整页及表格区域 */
+.cmdb-query-page ::-webkit-scrollbar,
+.cmdb-query-card .ant-table-body::-webkit-scrollbar,
+.cmdb-query-card .ant-table-content::-webkit-scrollbar,
+.csv-template-container::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.cmdb-query-page ::-webkit-scrollbar-track,
+.cmdb-query-card .ant-table-body::-webkit-scrollbar-track,
+.cmdb-query-card .ant-table-content::-webkit-scrollbar-track,
+.csv-template-container::-webkit-scrollbar-track {
+  background: #f5f5f5;
+  border-radius: 4px;
+}
+
+.cmdb-query-page ::-webkit-scrollbar-thumb,
+.cmdb-query-card .ant-table-body::-webkit-scrollbar-thumb,
+.cmdb-query-card .ant-table-content::-webkit-scrollbar-thumb,
+.csv-template-container::-webkit-scrollbar-thumb {
+  background: #bfbfbf;
+  border-radius: 4px;
+}
+
+.cmdb-query-page ::-webkit-scrollbar-thumb:hover,
+.cmdb-query-card .ant-table-body::-webkit-scrollbar-thumb:hover,
+.cmdb-query-card .ant-table-content::-webkit-scrollbar-thumb:hover,
+.csv-template-container::-webkit-scrollbar-thumb:hover {
+  background: #8c8c8c;
+}
+
+.cmdb-query-page ::-webkit-scrollbar-thumb:active,
+.cmdb-query-card .ant-table-body::-webkit-scrollbar-thumb:active,
+.cmdb-query-card .ant-table-content::-webkit-scrollbar-thumb:active,
+.csv-template-container::-webkit-scrollbar-thumb:active {
+  background: #595959;
+}
+
+.cmdb-query-page ::-webkit-scrollbar-corner,
+.cmdb-query-card .ant-table-body::-webkit-scrollbar-corner,
+.cmdb-query-card .ant-table-content::-webkit-scrollbar-corner {
+  background: #f5f5f5;
+  border-radius: 4px;
+}
+
+/* Firefox 滚动条 */
+.cmdb-query-page,
+.cmdb-query-card .ant-table-body,
+.cmdb-query-card .ant-table-content,
+.csv-template-container {
+  scrollbar-width: thin;
+  scrollbar-color: #bfbfbf #f5f5f5;
+}
+
+/* 弹窗内滚动条（添加/编辑设备等，Modal 渲染在 body 下，用 class 限定） */
+.cmdb-query-modal.ant-modal .ant-modal-body::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.cmdb-query-modal.ant-modal .ant-modal-body::-webkit-scrollbar-track {
+  background: #f5f5f5;
+  border-radius: 4px;
+}
+
+.cmdb-query-modal.ant-modal .ant-modal-body::-webkit-scrollbar-thumb {
+  background: #bfbfbf;
+  border-radius: 4px;
+}
+
+.cmdb-query-modal.ant-modal .ant-modal-body::-webkit-scrollbar-thumb:hover {
+  background: #8c8c8c;
+}
+
+.cmdb-query-modal.ant-modal .ant-modal-body {
+  scrollbar-width: thin;
+  scrollbar-color: #bfbfbf #f5f5f5;
+}
+
 .cmdb-query-card {
   margin-bottom: 24px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);

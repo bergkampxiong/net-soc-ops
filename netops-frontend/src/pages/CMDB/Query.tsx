@@ -1139,6 +1139,7 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
 
       {/* 添加设备模态框 */}
       <Modal
+        className="cmdb-query-modal"
         title="添加设备"
         open={addDeviceModalVisible}
         onCancel={() => {
@@ -1399,6 +1400,7 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
 
       {/* 编辑设备模态框 */}
       <Modal
+        className="cmdb-query-modal"
         title="编辑设备"
         open={editDeviceModalVisible}
         onCancel={() => {

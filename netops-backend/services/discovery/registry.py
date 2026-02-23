@@ -15,6 +15,8 @@ from .ruijie import discover_ruijie
 from .paloalto import discover_paloalto
 from .fortinet import discover_fortinet
 from .vmware import discover_vmware
+from .aws import discover_aws
+from .aliyun import discover_aliyun
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +122,22 @@ def _run_vmware(params: dict) -> DiscoveryResult:
     )
 
 
+def _run_aws(params: dict) -> DiscoveryResult:
+    return discover_aws(
+        access_key=params["access_key"],
+        secret_key=params["secret_key"],
+        region=params["region"],
+    )
+
+
+def _run_aliyun(params: dict) -> DiscoveryResult:
+    return discover_aliyun(
+        access_key=params["access_key"],
+        secret_key=params["secret_key"],
+        region=params["region"],
+    )
+
+
 # 已实现的发现类型
 DISCOVERY_RUNNERS: dict[str, DiscoveryRunner] = {
     "cisco-campus": _run_cisco_campus,
@@ -130,6 +148,8 @@ DISCOVERY_RUNNERS: dict[str, DiscoveryRunner] = {
     "paloalto": _run_paloalto,
     "fortinet": _run_fortinet,
     "vmware": _run_vmware,
+    "aws": _run_aws,
+    "aliyun": _run_aliyun,
 }
 
 

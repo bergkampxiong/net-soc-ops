@@ -122,6 +122,8 @@ def sync_discovered_to_cmdb(db: Session, devices: List[DiscoveredDevice]) -> int
                 db.add(net_dev)
             # 虚拟机类型：同步到 cmdb_virtual_machines（vcpu_count 个、memory_size/disk_size GB）
             if getattr(dev, "device_type_name", None) == "Virtual Machine":
+                _v = (getattr(dev, "vendor_name", None) or "").strip()
+                vm_type_name = "AWS" if _v == "AWS" else ("阿里云" if _v == "阿里云" else "VMware")
                 vm_rec = db.query(VirtualMachine).filter(VirtualMachine.asset_id == asset_id).first()
                 if vm_rec:
                     if getattr(dev, "cpu_count", None) is not None:
@@ -130,12 +132,12 @@ def sync_discovered_to_cmdb(db: Session, devices: List[DiscoveredDevice]) -> int
                         vm_rec.memory_size = dev.memory_capacity_gb
                     if getattr(dev, "storage_capacity_gb", None) is not None:
                         vm_rec.disk_size = dev.storage_capacity_gb
-                    vm_rec.vm_type = "VMware"
+                    vm_rec.vm_type = vm_type_name
                     vm_rec.updated_at = now
                 else:
                     vm_rec = VirtualMachine(
                         asset_id=asset_id,
-                        vm_type="VMware",
+                        vm_type=vm_type_name,
                         vcpu_count=getattr(dev, "cpu_count", None),
                         memory_size=getattr(dev, "memory_capacity_gb", None),
                         disk_size=getattr(dev, "storage_capacity_gb", None),

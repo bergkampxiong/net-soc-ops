@@ -158,6 +158,8 @@ def init_cmdb_data(db):
                 {"name": "Ruijie", "description": "Ruijie Networks"},
                 {"name": "Palo Alto", "description": "Palo Alto Networks"},
                 {"name": "Fortinet", "description": "Fortinet Inc."},
+                {"name": "AWS", "description": "Amazon Web Services"},
+                {"name": "阿里云", "description": "阿里云计算"},
                 {"name": "Dell", "description": "Dell Technologies"},
                 {"name": "HP", "description": "Hewlett Packard"}
             ]
