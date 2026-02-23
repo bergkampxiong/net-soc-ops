@@ -250,6 +250,23 @@ def init_cmdb_data(db):
         db.rollback()
         raise
 
+def ensure_user_last_activity_at(engine):
+    """确保 users 表存在 last_activity_at 列（用于会话无操作超时）。不修改其他表或逻辑。"""
+    try:
+        inspector = inspect(engine)
+        if 'users' not in inspector.get_table_names():
+            return
+        columns = [col['name'] for col in inspector.get_columns('users')]
+        if 'last_activity_at' in columns:
+            return
+        with engine.connect() as conn:
+            # PostgreSQL 用 TIMESTAMP，SQLite 也接受 TIMESTAMP
+            conn.execute(text("ALTER TABLE users ADD COLUMN last_activity_at TIMESTAMP"))
+            conn.commit()
+        print("已添加 last_activity_at 列到 users 表")
+    except Exception as e:
+        print(f"确保 users.last_activity_at 列时出错: {str(e)}")
+
 def init_device_connection_tables(engine):
     """初始化设备连接管理模块的表"""
     try:
@@ -500,6 +517,8 @@ def init_databases():
         db = SessionLocal()
         
         try:
+            # 确保 users 表有 last_activity_at 列（会话无操作超时）
+            ensure_user_last_activity_at(engine)
             # 初始化系统数据
             init_system_data(db)
             
