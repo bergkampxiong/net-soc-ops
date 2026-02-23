@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
@@ -179,23 +179,31 @@ def get_assets(
             (Asset.ip_address.ilike(f"%{search}%")) |
             (Asset.serial_number.ilike(f"%{search}%"))
         )
-    
+
+    query = query.options(joinedload(Asset.network_device))
     assets = query.offset(skip).limit(limit).all()
-    
+
     result = []
     for asset in assets:
+        model = None
+        version_from_device = None
+        if asset.network_device:
+            model = asset.network_device.device_model
+            version_from_device = asset.network_device.os_version
         asset_dict = {
             "id": asset.id,
             "name": asset.name,
             "asset_tag": asset.asset_tag,
             "ip_address": asset.ip_address,
             "serial_number": asset.serial_number,
-            "device_type": asset.device_type.name if asset.device_type else None,
-            "vendor": asset.vendor.name if asset.vendor else None,
-            "department": asset.department.name if asset.department else None,
-            "location": asset.location.name if asset.location else None,
-            "status": asset.status.name if asset.status else None,
+            "device_type": {"name": asset.device_type.name} if asset.device_type else None,
+            "vendor": {"name": asset.vendor.name} if asset.vendor else None,
+            "department": {"name": asset.department.name} if asset.department else None,
+            "location": {"name": asset.location.name} if asset.location else None,
+            "status": {"name": asset.status.name} if asset.status else None,
             "owner": asset.owner,
+            "model": model,
+            "version": asset.version or version_from_device,
             "purchase_date": asset.purchase_date,
             "purchase_cost": asset.purchase_cost,
             "current_value": asset.current_value,
@@ -206,7 +214,7 @@ def get_assets(
             "updated_at": asset.updated_at
         }
         result.append(asset_dict)
-    
+
     return result
 
 # 资产查询API
@@ -238,11 +246,18 @@ def query_assets(
         query = query.filter(Asset.serial_number.ilike(f"%{query_params['serial_number']}%"))
     if "owner" in query_params and query_params["owner"]:
         query = query.filter(Asset.owner.ilike(f"%{query_params['owner']}%"))
-    
+
+    query = query.options(joinedload(Asset.network_device))
     assets = query.all()
-    
+
     result = []
     for asset in assets:
+        # 型号来自关联的 NetworkDevice.device_model（Asset 表无 model 字段）
+        model = None
+        version_from_device = None
+        if asset.network_device:
+            model = asset.network_device.device_model
+            version_from_device = asset.network_device.os_version
         asset_dict = {
             "id": asset.id,
             "name": asset.name,
@@ -254,7 +269,12 @@ def query_assets(
             "department": {"name": asset.department.name} if asset.department else None,
             "location": {"name": asset.location.name} if asset.location else None,
             "status": {"name": asset.status.name} if asset.status else None,
+            "system_type": {"name": asset.system_type.name} if asset.system_type else None,
             "owner": asset.owner,
+            "model": model,
+            "version": asset.version or version_from_device,
+            "cpu_count": asset.cpu_count,
+            "memory_capacity": asset.memory_capacity,
             "purchase_date": asset.purchase_date,
             "purchase_cost": asset.purchase_cost,
             "current_value": asset.current_value,
@@ -265,8 +285,91 @@ def query_assets(
             "updated_at": asset.updated_at
         }
         result.append(asset_dict)
-    
+
     return result
+
+
+class AssetUpdateBody(BaseModel):
+    """资产更新请求体（用于 PUT /assets/{asset_id}）"""
+    name: Optional[str] = None
+    asset_tag: Optional[str] = None
+    ip_address: Optional[str] = None
+    serial_number: Optional[str] = None
+    device_type_id: Optional[int] = None
+    vendor_id: Optional[int] = None
+    department_id: Optional[int] = None
+    location_id: Optional[int] = None
+    status_id: Optional[int] = None
+    system_type_id: Optional[int] = None
+    owner: Optional[str] = None
+    model: Optional[str] = None  # 写入 NetworkDevice.device_model
+    version: Optional[str] = None  # 写入 Asset.version 与 NetworkDevice.os_version
+    cpu_count: Optional[int] = None
+    memory_capacity: Optional[float] = None
+    purchase_date: Optional[str] = None
+    purchase_cost: Optional[float] = None
+    current_value: Optional[float] = None
+    online_date: Optional[str] = None
+    warranty_expiry: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@router.put("/assets/{asset_id}", response_model=dict)
+def update_asset(
+    asset_id: int,
+    body: AssetUpdateBody,
+    db: Session = Depends(get_cmdb_db),
+):
+    """更新资产信息；model 写入 NetworkDevice.device_model，version 写入 Asset.version 与 NetworkDevice.os_version。"""
+    asset = db.query(Asset).filter(Asset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="资产不存在")
+    update_data = body.dict(exclude_unset=True)
+    now = datetime.utcnow().isoformat()
+    asset_fields = {k: v for k, v in update_data.items() if k not in ("model",)}
+    for key, value in asset_fields.items():
+        if hasattr(asset, key):
+            setattr(asset, key, value)
+    asset.updated_at = now
+    if "version" in update_data and update_data["version"] is not None:
+        asset.version = (update_data["version"] or "")[:50]
+    if "model" in update_data:
+        nd = db.query(NetworkDevice).filter(NetworkDevice.asset_id == asset_id).first()
+        if nd:
+            nd.device_model = (update_data["model"] or "")[:100] if update_data["model"] else None
+            if "version" in update_data and update_data["version"] is not None:
+                nd.os_version = (update_data["version"] or "")[:50]
+            nd.updated_at = now
+        else:
+            nd = NetworkDevice(
+                asset_id=asset_id,
+                device_model=(update_data["model"] or "")[:100] if update_data.get("model") else None,
+                os_version=(update_data.get("version") or "")[:50] if update_data.get("version") else None,
+                management_ip=asset.ip_address,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(nd)
+    db.commit()
+    db.refresh(asset)
+    model = None
+    version_from_device = None
+    if asset.network_device:
+        model = asset.network_device.device_model
+        version_from_device = asset.network_device.os_version
+    return {
+        "id": asset.id,
+        "name": asset.name,
+        "asset_tag": asset.asset_tag,
+        "ip_address": asset.ip_address,
+        "serial_number": asset.serial_number,
+        "device_type": {"name": asset.device_type.name} if asset.device_type else None,
+        "vendor": {"name": asset.vendor.name} if asset.vendor else None,
+        "model": model,
+        "version": asset.version or version_from_device,
+        "updated_at": asset.updated_at,
+    }
+
 
 # 添加示例资产数据
 @router.post("/seed-data")

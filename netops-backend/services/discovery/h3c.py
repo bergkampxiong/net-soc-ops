@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""华为网络设备发现：VRP，通过 SSH 执行 display version / display device manufacture-info 等采集并解析。"""
+"""H3C 网络设备发现：Comware，通过 SSH 执行 display version / display device manuinfo 等采集并解析。"""
 import re
 import logging
 from typing import List, Optional, Tuple
@@ -12,57 +12,43 @@ from .ip_parser import parse_ip_range
 
 logger = logging.getLogger(__name__)
 
-# netmiko 设备类型：华为 VRP
-NETMIKO_DEVICE_TYPE = "huawei"
+# netmiko 设备类型：H3C Comware
+NETMIKO_DEVICE_TYPE = "hp_comware"
 
 # CMDB 系统类型（与 int_all_db 一致）
-SYSTEM_TYPE_NAME = "huawei_vrpv8"
-
-# 资产标签与 SN 使用此命令（用户指定）
-DISPLAY_DEVICE_MANUFACTURE_INFO_CMD = "display device manufacture-info"
+SYSTEM_TYPE_NAME = "hp_comware"
 
 
 def _parse_display_version(text: str, ip: str) -> Optional[DiscoveredDevice]:
-    """从 display version 输出解析版本、型号；设备名称由 display current-configuration | include sysname 单独获取。"""
+    """从 display version 输出解析版本、型号；设备名称由 sysname 或 manuinfo 单独获取。"""
     lines = text.strip().split("\n")
     version = None
     model = None
 
     for line in lines:
         line_stripped = line.strip()
-        # Software      Version   : VRP (R) Software, Version 5.170 (V200R011C10SPC600)
-        if "Software" in line_stripped and "Version" in line_stripped and ("VRP" in line_stripped or "version" in line_stripped.lower()):
-            m = re.search(r"Version\s*:\s*(?:VRP\s*\([^)]+\)\s*Software,?\s*Version\s+)?([^\n]+)", line_stripped, re.IGNORECASE)
+        # H3C S5130-52C-EI Comware Software, Version 7.1.070, Release 5130-52C-EI
+        if "Comware" in line_stripped and "Version" in line_stripped:
+            m = re.search(r"[Vv]ersion\s+([^\s,]+)", line_stripped)
             if m:
                 v = m.group(1).strip(" ,")
-                if v and len(v) <= 80:
-                    version = v[:50]
-            if not version:
-                m = re.search(r"Version\s+([\d.]+(?:\s*\([^)]+\))?)", line_stripped)
-                if m:
-                    version = m.group(1).strip()[:50]
-            # 型号：括号内 V200R011C10SPC600 前的型号或 (S5700 V200R022C10)
-            m_model = re.search(r"\(([A-Z0-9\-]+)\s+V[\dR]+[C\d]*\)", line_stripped)
-            if m_model and not model:
-                model = m_model.group(1)
-        # Huawei AR6300 Router uptime / Huawei S5700 uptime / Huawei S5700-52C-EI
-        if "Huawei" in line_stripped and ("uptime" in line_stripped.lower() or "Switch" in line_stripped or "Router" in line_stripped):
-            m = re.search(r"Huawei\s+([A-Z0-9\-]+(?:\s+[A-Z0-9\-]+)*)\s*(?:Router|Switch|uptime|,)?", line_stripped, re.IGNORECASE)
-            if m and not model:
-                model = m.group(1).strip().replace(" ", "-")[:50]  # 保留完整型号，空格统一为连字符
-        # Device Type: / Board Type:（部分 VRP 在 display version 中输出）
-        if not model and ("Device Type:" in line_stripped or "Board Type:" in line_stripped):
-            m = re.search(r"(?:Device\s*Type|Board\s*Type):\s*([A-Za-z0-9\-]+)", line_stripped, re.IGNORECASE)
+                if v and len(v) <= 50:
+                    version = v
+            if "H3C" in line_stripped:
+                m_model = re.search(r"H3C\s+([A-Z0-9\-]+(?:\s+Comware|\s+uptime|$))", line_stripped)
+                if m_model and not model:
+                    model = m_model.group(1).replace("Comware", "").replace("uptime", "").strip()
+        # H3C S5130-52C-EI uptime is ...
+        if "H3C" in line_stripped and "uptime" in line_stripped.lower() and not model:
+            m = re.search(r"H3C\s+([A-Z0-9\-]+)\s+uptime", line_stripped, re.IGNORECASE)
             if m:
-                model = m.group(1).strip()
+                model = m.group(1)
 
     if not model:
-        # 常见型号：AR3260、S5700-52C-EI、CE6850、NE40E 等（含子型号如 S5700-52C-EI）
-        for m in re.finditer(r"\b(AR\d{3,4}(?:-\S+)?|S\d{3,4}(?:-[A-Z0-9\-]+)?|CE\d{4}(?:-\S+)?|NE\d{2,4}(?:-\S+)?)\b", text, re.IGNORECASE):
+        for m in re.finditer(r"\b(S\d{4}[\-\w]*|MSR\d*[\-\w]*|SR\d*[\-\w]*)\b", text, re.IGNORECASE):
             model = m.group(1)
             break
 
-    # 设备名称占位，由调用方用 sysname 覆盖
     return DiscoveredDevice(
         ip_address=ip,
         name=ip.replace(".", "-"),
@@ -70,7 +56,7 @@ def _parse_display_version(text: str, ip: str) -> Optional[DiscoveredDevice]:
         serial_number=None,
         device_model=model,
         os_version=version,
-        vendor_name="Huawei",
+        vendor_name="H3C",
         device_type_name="Switch",
         system_type_name=SYSTEM_TYPE_NAME,
         raw={"display_version": text[:2000]},
@@ -91,25 +77,28 @@ def _parse_display_device(text: str) -> Optional[str]:
     """
     从 display device 回显取设备型号（Type 列）。
     表格格式示例：
-        Slot Sub  Type                   Online    Power ...
-        0    -    S5720-36C-EI           Present   PowerOn ...
-    取第一行数据中的 Type 列，即 S5720-36C-EI。
+        Slot Type              State    Subslot  Soft Ver             Patch Ver
+        1    S6520X-30QC-EI    Master   0        S6520X-6530P02       None
+    取第一行数据中的 Type 列，即 S6520X-30QC-EI。
     """
     for line in text.split("\n"):
         line_stripped = line.strip()
-        # 匹配数据行：以数字(Slot) + - (Sub) + 型号(Type)，如 "0    -    S5720-36C-EI           Present"
-        m = re.match(r"^\s*\d+\s+-\s+([A-Za-z0-9\-]+)\s+", line_stripped)
+        # 数据行：以数字(Slot) + 型号(Type)，如 "1    S6520X-30QC-EI    Master   0 ..."
+        m = re.match(r"^\s*\d+\s+([A-Za-z0-9\-]+)\s+", line_stripped)
         if m:
             model = m.group(1).strip()
-            # 过滤掉 PWR、FAN 等非 chassis 类型（chassis 型号通常为 S/AR/CE 等开头）
-            if model and re.match(r"^[A-Z][A-Za-z0-9\-]{3,}", model) and "POWER" not in model.upper() and "FAN" not in model.upper():
+            # 过滤表头/无效行：型号通常为 S/MSR/SR 等开头且含连字符或足够长
+            if model and len(model) >= 4 and re.match(r"^[A-Z][A-Za-z0-9\-]+$", model):
+                if "Master" in model or "Standby" in model or "None" in model:
+                    continue
                 return model[:100]
     return None
 
 
-def _parse_display_device_manufacture_info(text: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+def _parse_display_device_manuinfo(text: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """
-    从 display device manufacture-info 取 SN、设备名、型号。
+    从 display device manuinfo 取 SN、设备名、型号。
+    优先解析 H3C 格式：DEVICE_SERIAL_NUMBER : xxx、DEVICE_MODEL : xxx
     返回 (serial_number, device_name, device_model)。
     """
     serial = None
@@ -118,7 +107,15 @@ def _parse_display_device_manufacture_info(text: str) -> Tuple[Optional[str], Op
     lines = text.split("\n")
     for line in lines:
         line_stripped = line.strip()
-        if re.match(r"^\s*\d+\s+", line_stripped):
+        if "DEVICE_SERIAL_NUMBER" in line_stripped:
+            m = re.search(r"DEVICE_SERIAL_NUMBER\s*:\s*(\S+)", line_stripped, re.IGNORECASE)
+            if m:
+                serial = m.group(1).strip()
+        if "DEVICE_MODEL" in line_stripped:
+            m = re.search(r"DEVICE_MODEL\s*:\s*(\S+)", line_stripped, re.IGNORECASE)
+            if m:
+                device_model = m.group(1).strip()[:100]
+        if re.match(r"^\s*\d+\s+", line_stripped) and not serial:
             parts = re.split(r"\s{2,}", line_stripped)
             if len(parts) >= 3:
                 sn_candidate = parts[2].strip()
@@ -127,20 +124,15 @@ def _parse_display_device_manufacture_info(text: str) -> Tuple[Optional[str], Op
                     break
         if not serial and (
             "ESN:" in line_stripped or "SN:" in line_stripped
-            or "Serial Number:" in line_stripped or "BarCode:" in line_stripped or "Serial number:" in line_stripped
+            or "Serial Number:" in line_stripped or "Serial-number:" in line_stripped or "BarCode:" in line_stripped
         ):
-            m = re.search(r"(?:ESN|SN|Serial\s*Number|BarCode):\s*(\S+)", line_stripped, re.IGNORECASE)
+            m = re.search(r"(?:ESN|SN|Serial\s*Number|Serial-number|BarCode):\s*(\S+)", line_stripped, re.IGNORECASE)
             if m:
                 serial = m.group(1).strip()
         if "Device name:" in line_stripped or "Product name:" in line_stripped:
             m = re.search(r"(?:Device\s*name|Product\s*name):\s*(.+)", line_stripped, re.IGNORECASE)
             if m:
                 device_name = m.group(1).strip()[:100]
-        # 型号：Product model / Device model / Model / Board type
-        if "Product model:" in line_stripped or "Device model:" in line_stripped or "Model:" in line_stripped or "Board type:" in line_stripped:
-            m = re.search(r"(?:Product\s*model|Device\s*model|Model|Board\s*type):\s*([A-Za-z0-9\-]+)", line_stripped, re.IGNORECASE)
-            if m:
-                device_model = m.group(1).strip()[:100]
     return (serial, device_name, device_model)
 
 
@@ -156,7 +148,7 @@ def _failure_reason(e: Exception) -> str:
     return msg or "未知错误"
 
 
-def discover_huawei(
+def discover_h3c(
     ip_range: str,
     username: str,
     password: str,
@@ -166,8 +158,9 @@ def discover_huawei(
     enable_password: Optional[str] = None,
 ) -> Tuple[List[DiscoveredDevice], List[Tuple[str, str]]]:
     """
-    对 ip_range 内的 IP 逐个 SSH 连接（华为 VRP），执行 display version（及 display device manuinfo），
-    解析出主机名、序列号、型号、版本。返回 (成功设备列表, 失败列表 [(ip, reason)])。
+    对 ip_range 内的 IP 逐个 SSH 连接（H3C Comware），执行 display version、display device manuinfo、
+    display current-configuration | include sysname，解析主机名、序列号、型号、版本。
+    返回 (成功设备列表, 失败列表 [(ip, reason)])。
     """
     ip_list = parse_ip_range(ip_range)
     if not ip_list:
@@ -193,18 +186,18 @@ def discover_huawei(
                 ver_text = conn.send_command("display version", delay_factor=2)
                 dev = _parse_display_version(ver_text, ip)
                 if dev:
-                    # 优先从 display device 取型号（Type 列，如 S5720-36C-EI）
+                    # 优先从 display device 取型号（Type 列，如 S6520X-30QC-EI）
                     try:
                         dev_text = conn.send_command("display device", delay_factor=2)
                         dev_model = _parse_display_device(dev_text)
                         if dev_model:
                             dev.device_model = dev_model[:100]
-                            logger.debug("华为发现 %s 型号来自 display device: %s", ip, dev_model)
+                            logger.debug("H3C 发现 %s 型号来自 display device: %s", ip, dev_model)
                     except Exception as e:
-                        logger.debug("华为发现 %s display device 未获取型号: %s", ip, e)
+                        logger.debug("H3C 发现 %s display device 未获取型号: %s", ip, e)
                     try:
-                        manu_text = conn.send_command(DISPLAY_DEVICE_MANUFACTURE_INFO_CMD, delay_factor=2)
-                        sn, manu_name, manu_model = _parse_display_device_manufacture_info(manu_text)
+                        manu_text = conn.send_command("display device manuinfo", delay_factor=2)
+                        sn, manu_name, manu_model = _parse_display_device_manuinfo(manu_text)
                         if sn:
                             dev.serial_number = sn
                             dev.asset_tag = sn[:50] if len(sn) <= 50 else dev.asset_tag
@@ -212,11 +205,11 @@ def discover_huawei(
                             dev.name = manu_name[:100]
                         if manu_model and not dev.device_model:
                             dev.device_model = manu_model[:100]
-                            logger.debug("华为发现 %s 型号来自 display device manufacture-info: %s", ip, manu_model)
+                            logger.debug("H3C 发现 %s 型号来自 display device manuinfo: %s", ip, manu_model)
                         elif dev.device_model:
-                            logger.debug("华为发现 %s 型号已由 display device 填充: %s", ip, dev.device_model)
+                            logger.debug("H3C 发现 %s 型号已由 display device 填充: %s", ip, dev.device_model)
                     except Exception as e:
-                        logger.debug("华为发现 %s manufacture-info 未获取: %s", ip, e)
+                        logger.debug("H3C 发现 %s manuinfo 未获取: %s", ip, e)
                     try:
                         sysname_text = conn.send_command("display current-configuration | include sysname", delay_factor=2)
                         name_from_sysname = _parse_sysname(sysname_text)
@@ -229,10 +222,10 @@ def discover_huawei(
                     results.append(dev)
         except (NetmikoTimeoutException, NetmikoAuthenticationException) as e:
             reason = _failure_reason(e)
-            logger.warning("华为发现跳过 %s: %s", ip, e)
+            logger.warning("H3C 发现跳过 %s: %s", ip, e)
             failed.append((ip, reason))
         except Exception as e:
             reason = _failure_reason(e)
-            logger.warning("华为发现失败 %s: %s", ip, e)
+            logger.warning("H3C 发现失败 %s: %s", ip, e)
             failed.append((ip, reason))
     return results, failed

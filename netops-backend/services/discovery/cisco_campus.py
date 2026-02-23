@@ -51,10 +51,11 @@ def _parse_show_version(text: str, ip: str) -> Optional[DiscoveredDevice]:
             m = re.search(r"Processor board ID\s+(\S+)", line_stripped)
             if m:
                 serial_number = m.group(1)
+        # 型号：如 "cisco C9300L-48T-4X ..." 或含 WS-C/C9xxx 的行
         if "cisco" in line_stripped.lower() and ("WS-" in line_stripped or "CISCO" in line_stripped or "C9" in line_stripped):
             parts = line_stripped.split()
             for p in parts:
-                if re.match(r"^(WS-C|CISCO|C9\d)", p):
+                if re.match(r"^(WS-C|CISCO|C\d{2,})", p, re.IGNORECASE) or (re.match(r"^C\d{4}", p, re.IGNORECASE) and "-" in p):
                     model = p
                     break
         if "uptime" in line_stripped.lower() and not model:
@@ -79,16 +80,57 @@ def _parse_show_version(text: str, ip: str) -> Optional[DiscoveredDevice]:
     )
 
 
-def _parse_show_inventory(text: str) -> Optional[str]:
-    """从 show inventory 取第一个 Chassis 的 PID 与 SN，用于补充 model 与 serial。"""
+def _is_concrete_model(s: str) -> bool:
+    """判断是否为具体型号（如 C9300L-48T-4X），而非泛称（如 c93xxL Stack）。"""
+    if not s or len(s) > 80:
+        return False
+    # 具体型号通常含连字符、数字与字母组合（如 C9300L-48T-4X、WS-C2960-24TC-L）
+    if "-" in s and re.search(r"[A-Za-z]\d+", s):
+        return True
+    if re.match(r"^(WS-C|CISCO|C\d{4})", s, re.IGNORECASE):
+        return True
+    return False
+
+
+def _parse_show_inventory(text: str) -> Tuple[Optional[str], Optional[str]]:
+    """从 show inventory 取 Chassis 的型号（优先 NAME: \"Switch N\" 后的 DESCR，其次其它 DESCR 中的具体型号，否则 PID）与 SN。"""
     serial = None
+    model = None
+    preferred_descr: List[str] = []  # NAME: "Switch 1" 等行上的 DESCR，为真实单机/堆叠单元型号
+    descr_models: List[str] = []
+    pid_models: List[str] = []
     for line in text.split("\n"):
-        if "SN:" in line or "Serial Number:" in line:
-            m = re.search(r"(?:SN:|Serial Number:)\s*(\S+)", line, re.IGNORECASE)
+        line_stripped = line.strip()
+        # NAME: "Switch 1", DESCR: "C9300L-48T-4X" → 该 DESCR 为单元型号，优先使用
+        if "DESCR:" in line_stripped:
+            m = re.search(r'DESCR:\s*"([^"]+)"', line_stripped, re.IGNORECASE)
+            if m:
+                d = m.group(1).strip()
+                descr_models.append(d)
+                if re.search(r'NAME:\s*"Switch\s*\d+"', line_stripped, re.IGNORECASE):
+                    preferred_descr.append(d)
+        # PID 或 Product ID（兼容不同 IOS/IOS-XE 输出）
+        if "PID:" in line_stripped or "Product ID:" in line_stripped:
+            m = re.search(r"(?:PID|Product ID):\s*([A-Za-z0-9\-]+)", line_stripped, re.IGNORECASE)
+            if m:
+                pid_models.append(m.group(1).strip())
+        if "SN:" in line_stripped or "Serial Number:" in line_stripped:
+            m = re.search(r"(?:SN:|Serial Number:)\s*(\S+)", line_stripped, re.IGNORECASE)
             if m:
                 serial = m.group(1).strip()
+    # 优先：Switch N 的 DESCR 中的具体型号 → 任意 DESCR 中的具体型号 → 第一个 PID
+    for d in preferred_descr:
+        if _is_concrete_model(d):
+            model = d[:100]
+            break
+    if not model:
+        for d in descr_models:
+            if _is_concrete_model(d):
+                model = d[:100]
                 break
-    return serial
+    if not model and pid_models:
+        model = pid_models[0][:100]
+    return (serial, model)
 
 
 def _failure_reason(e: Exception) -> str:
@@ -142,12 +184,18 @@ def discover_cisco_campus(
                 if dev:
                     try:
                         inv_text = conn.send_command("show inventory", delay_factor=2)
-                        sn = _parse_show_inventory(inv_text)
+                        sn, inv_model = _parse_show_inventory(inv_text)
                         if sn:
                             dev.serial_number = sn
                             dev.asset_tag = sn[:50] if len(sn) <= 50 else dev.asset_tag
-                    except Exception:
-                        pass
+                        if inv_model:
+                            dev.device_model = inv_model[:100]
+                            logger.debug("Cisco 发现 %s 型号来自 show inventory: %s", ip, inv_model)
+                        elif dev.device_model:
+                            logger.debug("Cisco 发现 %s 型号保留 show version: %s", ip, dev.device_model)
+                    except Exception as e:
+                        logger.debug("Cisco 发现 %s show inventory 未获取型号: %s", ip, e)
+                        # 保留 _parse_show_version 中已解析的型号
                     results.append(dev)
         except (NetmikoTimeoutException, NetmikoAuthenticationException) as e:
             reason = _failure_reason(e)

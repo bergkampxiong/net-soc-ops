@@ -51,8 +51,12 @@ def _parse_show_version(text: str, ip: str) -> Optional[DiscoveredDevice]:
             m = re.search(r"(?:Processor Board ID|proc_board_id):?\s*(\S+)", line_stripped, re.IGNORECASE)
             if m:
                 serial_number = m.group(1).strip()
-        # 型号：Nexus9000 C9396PX、cisco N9K-C9300、N3K-C3164 等
-        if "nexus" in line_stripped.lower() or "N9K-" in line_stripped or "N3K-" in line_stripped or "N7K-" in line_stripped:
+        # 型号：Nexus9000 C9396PX、N9K-C93180YC-EX、N3K-C3164、PID: N9K-xxx 等
+        if "PID:" in line_stripped or "Product ID:" in line_stripped:
+            m = re.search(r"(?:PID|Product ID):\s*([A-Za-z0-9\-]+)", line_stripped, re.IGNORECASE)
+            if m:
+                model = m.group(1).strip()
+        if not model and ("nexus" in line_stripped.lower() or "N9K-" in line_stripped or "N3K-" in line_stripped or "N7K-" in line_stripped):
             for m in re.finditer(r"(?:Nexus\s*\d*\s*)?(N[379]K-[A-Z0-9-]+|C\d{4}[A-Z]*)", line_stripped, re.IGNORECASE):
                 model = m.group(1)
                 break
@@ -78,14 +82,22 @@ def _parse_show_version(text: str, ip: str) -> Optional[DiscoveredDevice]:
     )
 
 
-def _parse_show_inventory(text: str) -> Optional[str]:
-    """从 NX-OS show inventory 取 Chassis 的 SN。"""
+def _parse_show_inventory(text: str) -> Tuple[Optional[str], Optional[str]]:
+    """从 NX-OS show inventory 取 Chassis 的 PID（型号）与 SN；兼容 PID:/Product ID: 及逗号后内容。"""
+    serial = None
+    model = None
     for line in text.split("\n"):
-        if "SN:" in line or "Serial Number:" in line or "serial_number" in line.lower():
-            m = re.search(r"(?:SN:|Serial Number:|serial_number):\s*(\S+)", line, re.IGNORECASE)
+        line_stripped = line.strip()
+        # PID 或 Product ID（型号），如 PID: N9K-C93180YC-EX    , VID: V01
+        if "PID:" in line_stripped or "Product ID:" in line_stripped or "pid:" in line_stripped:
+            m = re.search(r"(?:PID|Product ID):\s*([A-Za-z0-9\-]+)", line_stripped, re.IGNORECASE)
+            if m and not model:
+                model = m.group(1).strip()
+        if "SN:" in line_stripped or "Serial Number:" in line_stripped or "serial_number" in line_stripped.lower():
+            m = re.search(r"(?:SN:|Serial Number:|serial_number):\s*(\S+)", line_stripped, re.IGNORECASE)
             if m:
-                return m.group(1).strip()
-    return None
+                serial = m.group(1).strip()
+    return (serial, model)
 
 
 def _failure_reason(e: Exception) -> str:
@@ -139,12 +151,17 @@ def discover_cisco_datacenter(
                 if dev:
                     try:
                         inv_text = conn.send_command("show inventory", delay_factor=2)
-                        sn = _parse_show_inventory(inv_text)
+                        sn, inv_model = _parse_show_inventory(inv_text)
                         if sn:
                             dev.serial_number = sn
                             dev.asset_tag = sn[:50] if len(sn) <= 50 else dev.asset_tag
-                    except Exception:
-                        pass
+                        if inv_model:
+                            dev.device_model = inv_model[:100]
+                            logger.debug("Cisco 数据中心发现 %s 型号来自 show inventory: %s", ip, inv_model)
+                        elif dev.device_model:
+                            logger.debug("Cisco 数据中心发现 %s 型号保留 show version: %s", ip, dev.device_model)
+                    except Exception as e:
+                        logger.debug("Cisco 数据中心发现 %s show inventory 未获取型号: %s", ip, e)
                     results.append(dev)
         except (NetmikoTimeoutException, NetmikoAuthenticationException) as e:
             reason = _failure_reason(e)

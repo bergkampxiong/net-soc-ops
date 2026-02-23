@@ -9,6 +9,7 @@ class AssetBase(BaseModel):
     asset_tag: str
     ip_address: Optional[str] = None
     serial_number: Optional[str] = None
+    model: Optional[str] = None  # 设备型号，写入 NetworkDevice.device_model
     device_type_id: Optional[int] = None
     vendor_id: Optional[int] = None
     department_id: Optional[int] = None
@@ -35,6 +36,7 @@ class AssetUpdate(BaseModel):
     asset_tag: Optional[str] = None
     ip_address: Optional[str] = None
     serial_number: Optional[str] = None
+    model: Optional[str] = None
     device_type_id: Optional[int] = None
     vendor_id: Optional[int] = None
     department_id: Optional[int] = None
@@ -62,6 +64,7 @@ class AssetInDB(AssetBase):
         orm_mode = True
 
 class Asset(AssetInDB):
+    model: Optional[str] = None  # 来自 NetworkDevice.device_model，列表/编辑用
     device_type: Optional[DeviceType] = None
     vendor: Optional[Vendor] = None
     department: Optional[Department] = None

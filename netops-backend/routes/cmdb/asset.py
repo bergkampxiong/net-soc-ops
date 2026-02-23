@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional, Dict
 from datetime import datetime
 import csv
@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from database.cmdb_session import get_cmdb_db
 from database.cmdb_models import Asset as AssetModel
+from database.cmdb_models import NetworkDevice as NetworkDeviceModel
 from database.cmdb_models import DeviceType as DeviceTypeModel
 from database.cmdb_models import Vendor as VendorModel
 from database.cmdb_models import Department as DepartmentModel
@@ -82,7 +83,7 @@ def create_asset(
     asset: AssetCreate,
     db: Session = Depends(get_cmdb_db),
 ):
-    """创建新资产"""
+    """创建新资产；若传入 model/version，同时创建 NetworkDevice 并写入 device_model/os_version。"""
     db_asset = AssetModel(
         name=asset.name,
         asset_tag=asset.asset_tag,
@@ -109,6 +110,18 @@ def create_asset(
         updated_at=datetime.now().isoformat()
     )
     db.add(db_asset)
+    db.flush()
+    now = datetime.now().isoformat()
+    if asset.model or asset.version:
+        nd = NetworkDeviceModel(
+            asset_id=db_asset.id,
+            device_model=(asset.model or "")[:100] if asset.model else None,
+            os_version=(asset.version or "")[:50] if asset.version else None,
+            management_ip=asset.ip_address,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(nd)
     db.commit()
     db.refresh(db_asset)
     return db_asset
@@ -130,16 +143,37 @@ def update_asset(
     asset: AssetUpdate,
     db: Session = Depends(get_cmdb_db),
 ):
-    """更新资产信息"""
+    """更新资产信息；model 写入 NetworkDevice.device_model，version 可同时写入 Asset 与 NetworkDevice.os_version。"""
     db_asset = db.query(AssetModel).filter(AssetModel.id == asset_id).first()
     if db_asset is None:
         raise HTTPException(status_code=404, detail="资产不存在")
-    
+
     update_data = asset.dict(exclude_unset=True)
+    model_value = update_data.pop("model", None)
     for key, value in update_data.items():
-        setattr(db_asset, key, value)
-    
+        if hasattr(db_asset, key):
+            setattr(db_asset, key, value)
+
     db_asset.updated_at = datetime.now().isoformat()
+    now = datetime.now().isoformat()
+    if model_value is not None or "version" in update_data:
+        nd = db.query(NetworkDeviceModel).filter(NetworkDeviceModel.asset_id == asset_id).first()
+        if nd:
+            if model_value is not None:
+                nd.device_model = (model_value or "")[:100] if model_value else None
+            if "version" in update_data and update_data["version"] is not None:
+                nd.os_version = (update_data["version"] or "")[:50]
+            nd.updated_at = now
+        else:
+            nd = NetworkDeviceModel(
+                asset_id=asset_id,
+                device_model=(model_value or "")[:100] if model_value else None,
+                os_version=(update_data.get("version") or "")[:50] if update_data.get("version") else None,
+                management_ip=db_asset.ip_address,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(nd)
     db.commit()
     db.refresh(db_asset)
     return db_asset
@@ -158,31 +192,64 @@ def delete_asset(
     db.commit()
     return None
 
-@router.post("/assets/query", response_model=List[Asset], tags=["CMDB资产"])
+@router.post("/assets/query", response_model=List[dict], tags=["CMDB资产"])
 def query_assets(
     query_params: AssetQueryParams,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_cmdb_db),
 ):
-    """高级查询资产"""
-    query = db.query(AssetModel)
-    
-    # 从查询参数中提取非空字段
+    """高级查询资产；返回含 model、version（来自 NetworkDevice）的列表，与添加/编辑表单一致。"""
+    query = db.query(AssetModel).options(joinedload(AssetModel.network_device))
+
     filter_params = query_params.dict(exclude_unset=True, exclude_none=True)
-    
-    # 应用过滤条件
     for key, value in filter_params.items():
-        if key == 'name' or key == 'asset_tag' or key == 'ip_address' or key == 'serial_number' or key == 'owner':
-            # 对字符串字段使用模糊匹配
+        if key in ("name", "asset_tag", "ip_address", "serial_number", "owner"):
             query = query.filter(getattr(AssetModel, key).ilike(f"%{value}%"))
         else:
-            # 对其他字段使用精确匹配
             query = query.filter(getattr(AssetModel, key) == value)
-    
-    # 执行查询
+
     assets = query.offset(skip).limit(limit).all()
-    return assets
+    result = []
+    for a in assets:
+        model_val = None
+        version_from_nd = None
+        if a.network_device:
+            model_val = a.network_device.device_model
+            version_from_nd = a.network_device.os_version
+        result.append({
+            "id": a.id,
+            "name": a.name,
+            "asset_tag": a.asset_tag,
+            "ip_address": a.ip_address,
+            "serial_number": a.serial_number,
+            "model": model_val,
+            "version": a.version or version_from_nd,
+            "device_type_id": a.device_type_id,
+            "vendor_id": a.vendor_id,
+            "department_id": a.department_id,
+            "location_id": a.location_id,
+            "status_id": a.status_id,
+            "system_type_id": a.system_type_id,
+            "owner": a.owner,
+            "purchase_date": a.purchase_date,
+            "purchase_cost": a.purchase_cost,
+            "current_value": a.current_value,
+            "online_date": a.online_date,
+            "warranty_expiry": a.warranty_expiry,
+            "notes": a.notes,
+            "cpu_count": a.cpu_count,
+            "memory_capacity": a.memory_capacity,
+            "created_at": a.created_at,
+            "updated_at": a.updated_at,
+            "device_type": {"name": a.device_type.name} if a.device_type else None,
+            "vendor": {"name": a.vendor.name} if a.vendor else None,
+            "department": {"name": a.department.name} if a.department else None,
+            "location": {"name": a.location.name} if a.location else None,
+            "status": {"name": a.status.name} if a.status else None,
+            "system_type": {"name": a.system_type.name} if a.system_type else None,
+        })
+    return result
 
 @router.get("/assets/statistics", response_model=AssetStatistics, tags=["CMDB资产"])
 def get_asset_statistics(

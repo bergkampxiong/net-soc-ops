@@ -10,6 +10,7 @@ from .base import DiscoveredDevice
 from .cisco_campus import discover_cisco_campus
 from .cisco_datacenter import discover_cisco_datacenter
 from .huawei import discover_huawei
+from .h3c import discover_h3c
 
 logger = logging.getLogger(__name__)
 
@@ -54,11 +55,24 @@ def _run_huawei(params: dict) -> DiscoveryResult:
     )
 
 
+def _run_h3c(params: dict) -> DiscoveryResult:
+    return discover_h3c(
+        ip_range=params["ip_range"],
+        username=params["username"],
+        password=params["password"],
+        port=params.get("port", 22),
+        timeout=params.get("timeout", 30),
+        threads=params.get("threads", 5),
+        enable_password=params.get("enable_password"),
+    )
+
+
 # 已实现的发现类型
 DISCOVERY_RUNNERS: dict[str, DiscoveryRunner] = {
     "cisco-campus": _run_cisco_campus,
     "cisco-datacenter": _run_cisco_datacenter,
     "huawei": _run_huawei,
+    "h3c": _run_h3c,
 }
 
 

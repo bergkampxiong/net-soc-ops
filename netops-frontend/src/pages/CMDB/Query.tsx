@@ -145,7 +145,7 @@ const CMDBQuery: React.FC = () => {
         // 处理数据，确保所有字段都有值
         const processedData = response.data.map((asset: any) => ({
           ...asset,
-          model: asset.model || '-',
+          model: asset.model ?? asset.device_model ?? '-',
           serial_number: asset.serial_number || '-',
           owner: asset.owner || '-',
           purchase_cost: asset.purchase_cost !== null ? Number(asset.purchase_cost) : '-',
@@ -197,7 +197,7 @@ const CMDBQuery: React.FC = () => {
         // 处理数据，确保所有字段都有值
         const processedData = response.data.map((asset: any) => ({
           ...asset,
-          model: asset.model || '-',
+          model: asset.model ?? asset.device_model ?? '-',
           serial_number: asset.serial_number || '-',
           owner: asset.owner || '-',
           purchase_cost: asset.purchase_cost !== null ? Number(asset.purchase_cost) : '-',
@@ -521,19 +521,21 @@ const CMDBQuery: React.FC = () => {
     setCurrentDevice(device);
     
     // 处理日期字段，将字符串转换为moment对象
+    // 优先用行上的 *_id（接口已返回），避免 status/device_type 等只含 name 不含 id 时为空
     const formValues = {
       name: device.name,
       asset_tag: device.asset_tag,
       ip_address: device.ip_address,
       serial_number: device.serial_number,
-      device_type_id: device.device_type?.id,
-      vendor_id: device.vendor?.id,
-      department_id: device.department?.id,
-      location_id: device.location?.id,
-      status_id: device.status?.id,
-      system_type_id: device.system_type?.id,
+      device_type_id: device.device_type_id ?? device.device_type?.id,
+      vendor_id: device.vendor_id ?? device.vendor?.id,
+      department_id: device.department_id ?? device.department?.id,
+      location_id: device.location_id ?? device.location?.id,
+      status_id: device.status_id ?? device.status?.id,
+      system_type_id: device.system_type_id ?? device.system_type?.id,
       owner: device.owner,
-      model: device.model,
+      model: (device.model && device.model !== '-') ? device.model : undefined,
+      version: (device.version && device.version !== '-') ? device.version : undefined,
       purchase_cost: device.purchase_cost,
       current_value: device.current_value,
       notes: device.notes,
@@ -604,6 +606,7 @@ const CMDBQuery: React.FC = () => {
       width: 120,
       filterDropdown: getTextFilterDropdown('model'),
       filterIcon: getFilterIcon,
+      render: (val: string) => (val != null && val !== '' ? val : '-'),
     },
     {
       title: 'SN码',
@@ -1217,11 +1220,8 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
               </Form.Item>
             </Col>
             <Col span={6}>
-              <Form.Item
-                name="model"
-                label="型号"
-              >
-                <Input placeholder="请输入设备型号" style={{ width: '100%' }} />
+              <Form.Item name="model" label="型号">
+                <Input placeholder="请输入设备型号（可编辑文本框）" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col span={6}>
@@ -1445,38 +1445,40 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
           </Row>
 
           <Row gutter={[24, 24]}>
-            <Col span={8}>
+            <Col span={6}>
               <Form.Item
                 name="device_type_id"
                 label="设备类型"
                 rules={[{ required: true, message: '请选择设备类型' }]}
               >
-                <Select placeholder="请选择设备类型">
+                <Select placeholder="请选择设备类型" style={{ width: '100%' }}>
                   {deviceTypeOptions.map(option => (
                     <Option key={option.id} value={option.id}>{option.name}</Option>
                   ))}
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={8}>
-              <Form.Item
-                name="vendor_id"
-                label="厂商"
-              >
-                <Select placeholder="请选择厂商">
+            <Col span={6}>
+              <Form.Item name="vendor_id" label="厂商">
+                <Select placeholder="请选择厂商" allowClear style={{ width: '100%' }}>
                   {vendorOptions.map(option => (
                     <Option key={option.id} value={option.id}>{option.name}</Option>
                   ))}
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col span={6}>
+              <Form.Item name="model" label="型号">
+                <Input placeholder="请输入设备型号（可编辑文本框）" style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
               <Form.Item
                 name="system_type_id"
                 label="系统类型"
                 rules={[{ required: true, message: '请选择系统类型' }]}
               >
-                <Select placeholder="请选择系统类型">
+                <Select placeholder="请选择系统类型" style={{ width: '100%' }}>
                   {systemTypes.map(type => (
                     <Option key={type.id} value={type.id}>{type.name}</Option>
                   ))}
@@ -1486,12 +1488,14 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
           </Row>
 
           <Row gutter={[24, 24]}>
-            <Col span={8}>
-              <Form.Item
-                name="location_id"
-                label="位置"
-              >
-                <Select placeholder="请选择位置">
+            <Col span={6}>
+              <Form.Item name="serial_number" label="SN码">
+                <Input placeholder="请输入序列号" style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="location_id" label="位置">
+                <Select placeholder="请选择位置" allowClear style={{ width: '100%' }}>
                   {locationOptions.map(option => (
                     <Option key={option.id} value={option.id}>{option.name}</Option>
                   ))}
@@ -1521,74 +1525,51 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
           </Row>
 
           <Row gutter={[24, 24]}>
-            <Col span={8}>
-              <Form.Item
-                name="purchase_date"
-                label="购买日期"
-              >
-                <DatePicker style={{ width: '100%' }} />
+            <Col span={6}>
+              <Form.Item name="department_id" label="所属部门">
+                <Select placeholder="请选择部门" allowClear style={{ width: '100%' }}>
+                  {departmentOptions.map(dept => (
+                    <Option key={dept.id} value={dept.id}>{dept.name}</Option>
+                  ))}
+                </Select>
               </Form.Item>
             </Col>
-            <Col span={8}>
-              <Form.Item
-                name="purchase_cost"
-                label="购买成本"
-              >
-                <InputNumber style={{ width: '100%' }} placeholder="请输入购买成本" />
+            <Col span={6}>
+              <Form.Item name="purchase_date" label="购买日期">
+                <DatePicker style={{ width: '100%' }} placeholder="选择购买日期" />
               </Form.Item>
             </Col>
-            <Col span={8}>
-              <Form.Item
-                name="current_value"
-                label="当前价值"
-              >
-                <InputNumber style={{ width: '100%' }} placeholder="请输入当前价值" />
+            <Col span={6}>
+              <Form.Item name="purchase_cost" label="购买成本">
+                <InputNumber style={{ width: '100%' }} placeholder="请输入购买成本" min={0} step={0.1} />
               </Form.Item>
             </Col>
-          </Row>
-
-          <Row gutter={[24, 24]}>
-            <Col span={8}>
-              <Form.Item
-                name="online_date"
-                label="上线时间"
-              >
-                <DatePicker style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                name="warranty_expiry"
-                label="保修到期"
-              >
-                <DatePicker style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                name="serial_number"
-                label="SN码"
-              >
-                <Input placeholder="请输入SN码" />
+            <Col span={6}>
+              <Form.Item name="current_value" label="当前价值">
+                <InputNumber style={{ width: '100%' }} placeholder="请输入当前价值" min={0} step={0.1} />
               </Form.Item>
             </Col>
           </Row>
 
           <Row gutter={[24, 24]}>
-            <Col span={8}>
-              <Form.Item
-                name="version"
-                label="版本"
-              >
-                <Input placeholder="请输入版本号" />
+            <Col span={6}>
+              <Form.Item name="online_date" label="上线时间">
+                <DatePicker style={{ width: '100%' }} placeholder="选择上线时间" />
               </Form.Item>
             </Col>
-            <Col span={8}>
-              <Form.Item
-                name="notes"
-                label="备注"
-              >
-                <Input.TextArea rows={4} placeholder="请输入备注信息" />
+            <Col span={6}>
+              <Form.Item name="warranty_expiry" label="保修到期">
+                <DatePicker style={{ width: '100%' }} placeholder="请选择日期" />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="version" label="版本">
+                <Input placeholder="请输入版本号" style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="notes" label="备注">
+                <Input.TextArea rows={4} placeholder="请输入备注信息" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>
