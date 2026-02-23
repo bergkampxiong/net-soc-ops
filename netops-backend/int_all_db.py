@@ -70,6 +70,7 @@ def init_system_types(db):
             "hp_comware",
             "huawei_vrpv8",
             "linux",
+            "其他",
             "cisco_ios",
             "cisco_nxos",
             "cisco_xe",

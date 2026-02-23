@@ -275,6 +275,7 @@ def query_assets(
             "version": asset.version or version_from_device,
             "cpu_count": asset.cpu_count,
             "memory_capacity": asset.memory_capacity,
+            "storage_capacity": asset.storage_capacity,
             "purchase_date": asset.purchase_date,
             "purchase_cost": asset.purchase_cost,
             "current_value": asset.current_value,
@@ -306,6 +307,7 @@ class AssetUpdateBody(BaseModel):
     version: Optional[str] = None  # 写入 Asset.version 与 NetworkDevice.os_version
     cpu_count: Optional[int] = None
     memory_capacity: Optional[float] = None
+    storage_capacity: Optional[float] = None
     purchase_date: Optional[str] = None
     purchase_cost: Optional[float] = None
     current_value: Optional[float] = None
@@ -367,6 +369,9 @@ def update_asset(
         "vendor": {"name": asset.vendor.name} if asset.vendor else None,
         "model": model,
         "version": asset.version or version_from_device,
+        "cpu_count": asset.cpu_count,
+        "memory_capacity": asset.memory_capacity,
+        "storage_capacity": asset.storage_capacity,
         "updated_at": asset.updated_at,
     }
 

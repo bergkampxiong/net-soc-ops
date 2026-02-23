@@ -17,6 +17,10 @@ class DiscoveredDevice:
     device_type_name: str = "Switch"  # 用于解析 device_type_id，如 Switch / Router
     system_type_name: Optional[str] = None  # 用于解析 system_type_id，与 netmiko/系统类型一致，如 cisco_ios、cisco_xe
     raw: Optional[Dict[str, Any]] = None  # 原始采集数据，便于扩展
+    # 资源容量（VMware 等发现时填充；单位：CPU 为个，内存/存储为 GB）
+    cpu_count: Optional[int] = None  # CPU 数量（个），对应 Asset.cpu_count
+    memory_capacity_gb: Optional[float] = None  # 内存容量(GB)，对应 Asset.memory_capacity
+    storage_capacity_gb: Optional[float] = None  # 存储容量(GB)，对应 Asset.storage_capacity
 
     def __post_init__(self):
         if self.raw is None:

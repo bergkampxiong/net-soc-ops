@@ -240,6 +240,7 @@ def query_assets(
             "notes": a.notes,
             "cpu_count": a.cpu_count,
             "memory_capacity": a.memory_capacity,
+            "storage_capacity": a.storage_capacity,
             "created_at": a.created_at,
             "updated_at": a.updated_at,
             "device_type": {"name": a.device_type.name} if a.device_type else None,

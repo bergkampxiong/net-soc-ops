@@ -502,6 +502,9 @@ const CMDBQuery: React.FC = () => {
         // 处理数值字段
         purchase_cost: values.purchase_cost ? parseFloat(values.purchase_cost) : null,
         current_value: values.current_value ? parseFloat(values.current_value) : null,
+        cpu_count: values.cpu_count != null && values.cpu_count !== '' ? parseInt(values.cpu_count, 10) : null,
+        memory_capacity: values.memory_capacity != null && values.memory_capacity !== '' ? parseFloat(values.memory_capacity) : null,
+        storage_capacity: values.storage_capacity != null && values.storage_capacity !== '' ? parseFloat(values.storage_capacity) : null,
       };
       
       await request.put(`/cmdb/assets/${currentDevice.id}`, formattedValues);
@@ -539,6 +542,9 @@ const CMDBQuery: React.FC = () => {
       purchase_cost: device.purchase_cost,
       current_value: device.current_value,
       notes: device.notes,
+      cpu_count: device.cpu_count,
+      memory_capacity: device.memory_capacity,
+      storage_capacity: device.storage_capacity,
       // 日期字段处理
       purchase_date: device.purchase_date ? moment(device.purchase_date) : null,
       online_date: device.online_date ? moment(device.online_date) : null,
@@ -1488,6 +1494,21 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
           </Row>
 
           <Row gutter={[24, 24]}>
+            <Col span={6}>
+              <Form.Item name="cpu_count" label="CPU数量(个)">
+                <InputNumber placeholder="个" min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="memory_capacity" label="内存容量(GB)">
+                <InputNumber placeholder="GB" min={0} step={0.1} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="storage_capacity" label="存储容量(GB)">
+                <InputNumber placeholder="GB" min={0} step={0.1} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
             <Col span={6}>
               <Form.Item name="serial_number" label="SN码">
                 <Input placeholder="请输入序列号" style={{ width: '100%' }} />

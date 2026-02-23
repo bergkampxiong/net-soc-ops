@@ -6,7 +6,7 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from database.cmdb_models import Asset, NetworkDevice, DeviceType, Vendor, AssetStatus, SystemType
+from database.cmdb_models import Asset, NetworkDevice, DeviceType, Vendor, AssetStatus, SystemType, VirtualMachine
 from .base import DiscoveredDevice
 
 logger = logging.getLogger(__name__)
@@ -57,9 +57,9 @@ def sync_discovered_to_cmdb(db: Session, devices: List[DiscoveredDevice]) -> int
             if not existing:
                 existing = db.query(Asset).filter(Asset.asset_tag == dev.asset_tag).first()
             if existing:
-                existing.name = (dev.name or dev.ip_address)[:100]
+                existing.name = (dev.name or dev.ip_address or "")[:100]
                 existing.asset_tag = dev.asset_tag[:50]
-                existing.ip_address = dev.ip_address
+                existing.ip_address = (dev.ip_address.strip() or None) if (dev.ip_address and dev.ip_address.strip()) else None
                 if dev.serial_number:
                     existing.serial_number = dev.serial_number[:50]
                 if device_type_id is not None:
@@ -72,21 +72,30 @@ def sync_discovered_to_cmdb(db: Session, devices: List[DiscoveredDevice]) -> int
                     existing.system_type_id = system_type_id
                 if dev.os_version:
                     existing.version = dev.os_version[:50]
+                if getattr(dev, "cpu_count", None) is not None:
+                    existing.cpu_count = dev.cpu_count
+                if getattr(dev, "memory_capacity_gb", None) is not None:
+                    existing.memory_capacity = dev.memory_capacity_gb
+                if getattr(dev, "storage_capacity_gb", None) is not None:
+                    existing.storage_capacity = dev.storage_capacity_gb
                 existing.updated_at = now
                 asset_id = existing.id
             else:
                 asset_tag = dev.asset_tag[:50]
-                name = (dev.name or dev.ip_address)[:100]
+                name = (dev.name or dev.ip_address or "")[:100]
                 new_asset = Asset(
                     name=name,
                     asset_tag=asset_tag,
-                    ip_address=dev.ip_address,
+                    ip_address=(dev.ip_address.strip() or None) if (dev.ip_address and dev.ip_address.strip()) else None,
                     serial_number=dev.serial_number[:50] if dev.serial_number else None,
                     device_type_id=device_type_id,
                     vendor_id=vendor_id,
                     status_id=status_id,
                     system_type_id=system_type_id,
                     version=dev.os_version[:50] if dev.os_version else None,
+                    cpu_count=getattr(dev, "cpu_count", None),
+                    memory_capacity=getattr(dev, "memory_capacity_gb", None),
+                    storage_capacity=getattr(dev, "storage_capacity_gb", None),
                     created_at=now,
                     updated_at=now,
                 )
@@ -99,18 +108,41 @@ def sync_discovered_to_cmdb(db: Session, devices: List[DiscoveredDevice]) -> int
                     net_dev.device_model = dev.device_model[:100]
                 if dev.os_version:
                     net_dev.os_version = dev.os_version[:50]
-                net_dev.management_ip = dev.ip_address
+                net_dev.management_ip = (dev.ip_address.strip() or None) if (dev.ip_address and dev.ip_address.strip()) else None
                 net_dev.updated_at = now
             else:
                 net_dev = NetworkDevice(
                     asset_id=asset_id,
                     device_model=dev.device_model[:100] if dev.device_model else None,
                     os_version=dev.os_version[:50] if dev.os_version else None,
-                    management_ip=dev.ip_address,
+                    management_ip=(dev.ip_address.strip() or None) if (dev.ip_address and dev.ip_address.strip()) else None,
                     created_at=now,
                     updated_at=now,
                 )
                 db.add(net_dev)
+            # 虚拟机类型：同步到 cmdb_virtual_machines（vcpu_count 个、memory_size/disk_size GB）
+            if getattr(dev, "device_type_name", None) == "Virtual Machine":
+                vm_rec = db.query(VirtualMachine).filter(VirtualMachine.asset_id == asset_id).first()
+                if vm_rec:
+                    if getattr(dev, "cpu_count", None) is not None:
+                        vm_rec.vcpu_count = dev.cpu_count
+                    if getattr(dev, "memory_capacity_gb", None) is not None:
+                        vm_rec.memory_size = dev.memory_capacity_gb
+                    if getattr(dev, "storage_capacity_gb", None) is not None:
+                        vm_rec.disk_size = dev.storage_capacity_gb
+                    vm_rec.vm_type = "VMware"
+                    vm_rec.updated_at = now
+                else:
+                    vm_rec = VirtualMachine(
+                        asset_id=asset_id,
+                        vm_type="VMware",
+                        vcpu_count=getattr(dev, "cpu_count", None),
+                        memory_size=getattr(dev, "memory_capacity_gb", None),
+                        disk_size=getattr(dev, "storage_capacity_gb", None),
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    db.add(vm_rec)
             count += 1
         except Exception as e:
             logger.exception("同步发现设备到 CMDB 失败 %s: %s", dev.ip_address, e)

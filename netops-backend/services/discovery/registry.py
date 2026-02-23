@@ -14,6 +14,7 @@ from .h3c import discover_h3c
 from .ruijie import discover_ruijie
 from .paloalto import discover_paloalto
 from .fortinet import discover_fortinet
+from .vmware import discover_vmware
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,19 @@ def _run_fortinet(params: dict) -> DiscoveryResult:
     )
 
 
+def _run_vmware(params: dict) -> DiscoveryResult:
+    # VMware 使用 ip_range 作为 vCenter/ESXi 主机地址，端口默认 443
+    return discover_vmware(
+        host=params["ip_range"].strip(),
+        username=params["username"],
+        password=params["password"],
+        port=params.get("port", 443),
+        timeout=params.get("timeout"),
+        threads=params.get("threads"),
+        enable_password=params.get("enable_password"),
+    )
+
+
 # 已实现的发现类型
 DISCOVERY_RUNNERS: dict[str, DiscoveryRunner] = {
     "cisco-campus": _run_cisco_campus,
@@ -115,6 +129,7 @@ DISCOVERY_RUNNERS: dict[str, DiscoveryRunner] = {
     "ruijie": _run_ruijie,
     "paloalto": _run_paloalto,
     "fortinet": _run_fortinet,
+    "vmware": _run_vmware,
 }
 
 
