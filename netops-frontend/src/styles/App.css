@@ -115,12 +115,14 @@ body {
   margin: 0;
 }
 
-/* 系统管理页面样式 */
-.system-management .ant-tabs-nav {
+/* 系统管理、监控系统集成等左侧 Tab 页面样式 */
+.system-management .ant-tabs-nav,
+.monitoring-integration .ant-tabs-nav {
   width: 200px;
 }
 
-.system-management .ant-tabs-content-holder {
+.system-management .ant-tabs-content-holder,
+.monitoring-integration .ant-tabs-content-holder {
   padding-left: 24px;
   border-left: 1px solid #f0f0f0;
 }
@@ -160,11 +162,13 @@ body {
 
 /* 响应式样式 */
 @media (max-width: 768px) {
-  .system-management .ant-tabs-nav {
+  .system-management .ant-tabs-nav,
+  .monitoring-integration .ant-tabs-nav {
     width: auto;
   }
   
-  .system-management .ant-tabs-content-holder {
+  .system-management .ant-tabs-content-holder,
+  .monitoring-integration .ant-tabs-content-holder {
     padding-left: 0;
     border-left: none;
   }

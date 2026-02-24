@@ -71,18 +71,15 @@ const Layout: React.FC = () => {
 
   const handleLogout = async () => {
     try {
-      await request.post('/auth/logout');
-      localStorage.removeItem('token');
-      localStorage.removeItem('username');
-      message.success('已退出登录');
-      navigate('/login');
+      await request.post('/auth/logout', {}, { timeout: 5000 });
     } catch (error) {
-      console.error('退出登录失败:', error);
-      // 即使API调用失败，也清除本地存储并跳转
-      localStorage.removeItem('token');
-      localStorage.removeItem('username');
-      navigate('/login');
+      // 超时或网络错误时忽略，下面统一清除本地并跳转
     }
+    localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('username');
+    message.success('已退出登录');
+    navigate('/login');
   };
 
   // 获取当前选中的菜单项

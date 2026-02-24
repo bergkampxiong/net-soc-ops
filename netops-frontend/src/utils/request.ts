@@ -27,7 +27,7 @@ interface CustomAxiosInstance extends Omit<AxiosInstance, 'get' | 'delete' | 'po
 // 3. 代码中不需要手动添加/api
 const request = axios.create({
   baseURL: '/api',  // 自动添加/api前缀
-  timeout: 10000,
+  timeout: 20000,   // 20 秒，减少慢环境下的超时
   headers: {
     'Content-Type': 'application/json'
   }

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from .base import Base
@@ -94,4 +94,35 @@ class SecuritySettings(Base):
     password_require_uppercase = Column(Boolean, default=True)  # 要求包含大写字母
     password_require_lowercase = Column(Boolean, default=True)  # 要求包含小写字母
     password_require_numbers = Column(Boolean, default=True)  # 要求包含数字
-    password_require_special = Column(Boolean, default=False)  # 要求包含特殊字符 
+    password_require_special = Column(Boolean, default=False)  # 要求包含特殊字符
+
+
+class MonitoringWebhook(Base):
+    """监控集成 Webhook：创建后得到唯一 URL，供 SolarWinds POST 告警（无 token 验证）"""
+    __tablename__ = "monitoring_webhooks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    path_slug = Column(String(64), unique=True, index=True, nullable=False)  # URL 中的 webhook_id
+    enabled = Column(Boolean, default=True)
+    remark = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class MonitoringAlertEvent(Base):
+    """监控告警事件：SolarWinds POST 的 JSON 解析后落库"""
+    __tablename__ = "monitoring_alert_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    webhook_id = Column(String(64), index=True, nullable=False)  # path_slug
+    source = Column(String(64), default="solarwinds")
+    alert_title = Column(String(500), nullable=True)   # attachments[0].pretext
+    message = Column(Text, nullable=True)              # attachments[0].fallback
+    color = Column(String(32), nullable=True)           # attachments[0].color
+    entity_interface = Column(String(500), nullable=True)  # 从 fallback 解析
+    severity = Column(String(32), nullable=True)        # 由 color 映射
+    status = Column(String(32), default="triggered")
+    raw_payload = Column(Text, nullable=True)
+    triggered_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    metadata_ = Column("metadata", Text, nullable=True)  # 扩展信息 JSON

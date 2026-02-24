@@ -20,7 +20,7 @@ from database.cmdb_models import (
     AssetStatus, Asset, NetworkDevice, Server, VirtualMachine, K8sCluster,
     SystemType
 )
-from database.models import User, UsedTOTP, RefreshToken
+from database.models import User, UsedTOTP, RefreshToken, MonitoringWebhook, MonitoringAlertEvent
 from database.category_models import Base as CategoryBase, Credential, CredentialType
 from database.config_management_models import Base as ConfigBase
 from database.device_connection_models import DeviceConnection
@@ -266,6 +266,16 @@ def ensure_user_last_activity_at(engine):
         print("已添加 last_activity_at 列到 users 表")
     except Exception as e:
         print(f"确保 users.last_activity_at 列时出错: {str(e)}")
+
+def init_monitoring_integration_tables(engine):
+    """初始化监控系统集成表（Webhook + 告警事件）。不修改其它功能。"""
+    try:
+        MonitoringWebhook.__table__.create(engine, checkfirst=True)
+        MonitoringAlertEvent.__table__.create(engine, checkfirst=True)
+        print("监控系统集成表创建完成")
+    except Exception as e:
+        print(f"监控系统集成表初始化失败: {str(e)}")
+        raise
 
 def init_device_connection_tables(engine):
     """初始化设备连接管理模块的表"""
@@ -519,6 +529,8 @@ def init_databases():
         try:
             # 确保 users 表有 last_activity_at 列（会话无操作超时）
             ensure_user_last_activity_at(engine)
+            # 初始化监控系统集成表
+            init_monitoring_integration_tables(engine)
             # 初始化系统数据
             init_system_data(db)
             

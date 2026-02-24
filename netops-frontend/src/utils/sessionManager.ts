@@ -45,16 +45,13 @@ class SessionManager {
    */
   private defaultTimeoutHandler = async (): Promise<void> => {
     try {
-      await request.post('/auth/logout');
-      localStorage.removeItem('token');
-      localStorage.removeItem('refresh_token');
-      window.location.href = '/login';
+      await request.post('/auth/logout', {}, { timeout: 5000 });
     } catch (error) {
-      console.error('登出失败:', error);
-      localStorage.removeItem('token');
-      localStorage.removeItem('refresh_token');
-      window.location.href = '/login';
+      // 超时或网络错误时忽略，下面统一清除并跳转
     }
+    localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
+    window.location.href = '/login';
   }
 
   /**

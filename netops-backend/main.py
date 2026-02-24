@@ -20,6 +20,7 @@ import database.config_management_models  # 导入配置管理模型
 
 # 导入路由
 from routes import auth, users, audit, ldap, security, config_management, config_generator_router
+from routes.monitoring_integration import router as monitoring_integration_router
 from routes.cmdb import router as cmdb_router
 from routes.device import router as device_router, connections, ssh_connections
 from routes.job_config_router import router as job_config_router
@@ -94,6 +95,7 @@ app.include_router(connections.router)
 app.include_router(ssh_connections.router, prefix="/api")
 app.include_router(process_management.router, prefix="")
 app.include_router(job_router, prefix="/api")  # 添加job路由注册
+app.include_router(monitoring_integration_router)  # 监控系统集成 Webhook + 告警
 
 # 定期清理任务
 def cleanup_expired_records():
