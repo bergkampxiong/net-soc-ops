@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Card, Button, Space, Tag, message, Modal, Form, Input, Select, DatePicker } from 'antd';
-import { PlusOutlined, ReloadOutlined, DeleteOutlined, PlayCircleOutlined, PauseCircleOutlined, StopOutlined } from '@ant-design/icons';
+import { ReloadOutlined, DeleteOutlined, PlayCircleOutlined, PauseCircleOutlined, StopOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import request from '@/utils/request';
 import type { Job } from './types';
@@ -18,8 +18,9 @@ const JobList: React.FC = () => {
   const fetchJobs = async (params: any = {}) => {
     try {
       setLoading(true);
-      const response = await request.get('/jobs', { params });
-      setJobs(response.data);
+      const reqParams = { skip: 0, limit: 100, ...params };
+      const response = await request.get('/jobs', { params: reqParams });
+      setJobs(response.data ?? []);
     } catch (error) {
       message.error('获取作业列表失败');
     } finally {
@@ -45,6 +46,13 @@ const JobList: React.FC = () => {
       title: '作业类型',
       dataIndex: 'job_type',
       key: 'job_type',
+      render: (v: string) => (v === 'config_backup' ? '配置备份' : v),
+    },
+    {
+      title: '运行类型',
+      dataIndex: 'run_type',
+      key: 'run_type',
+      render: (v: string) => (v === 'scheduled' ? '定期作业' : '一次作业'),
     },
     {
       title: '状态',
@@ -113,6 +121,11 @@ const JobList: React.FC = () => {
           >
             终止
           </Button>
+          {record.run_type === 'once' && (
+            <Button type="link" onClick={() => navigate(`/rpa/job-execution/jobs/${record.id}?convert=scheduled`)}>
+              转为定期
+            </Button>
+          )}
         </Space>
       ),
     },
@@ -188,7 +201,8 @@ const JobList: React.FC = () => {
     if (values.name) params.name = values.name;
     if (values.job_type) params.job_type = values.job_type;
     if (values.status) params.status = values.status;
-    if (values.timeRange) {
+    if (values.run_type) params.run_type = values.run_type;
+    if (values.timeRange?.length === 2) {
       params.start_time = values.timeRange[0].toISOString();
       params.end_time = values.timeRange[1].toISOString();
     }
@@ -231,6 +245,17 @@ const JobList: React.FC = () => {
             ]}
           />
         </Form.Item>
+        <Form.Item name="run_type">
+          <Select
+            placeholder="运行类型"
+            allowClear
+            style={{ width: 120 }}
+            options={[
+              { label: '一次作业', value: 'once' },
+              { label: '定期作业', value: 'scheduled' },
+            ]}
+          />
+        </Form.Item>
         <Form.Item name="timeRange">
           <RangePicker showTime />
         </Form.Item>
@@ -246,13 +271,6 @@ const JobList: React.FC = () => {
 
       <div style={{ marginBottom: 16 }}>
         <Space>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => navigate('/rpa/job-execution/jobs/new')}
-          >
-            新建作业
-          </Button>
           <Button
             icon={<ReloadOutlined />}
             onClick={() => fetchJobs()}

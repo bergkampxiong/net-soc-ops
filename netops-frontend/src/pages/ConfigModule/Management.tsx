@@ -11,6 +11,7 @@ import {
   Spin,
   message,
   Popconfirm,
+  Alert,
 } from 'antd';
 import { useSearchParams } from 'react-router-dom';
 import request from '../../utils/request';
@@ -191,6 +192,15 @@ const ConfigModuleManagement: React.FC = () => {
         onClose={() => setDetailVisible(false)}
         width={720}
       >
+        {detailContent && /Error:|Unrecognized command|invalid input|%\s*Error/i.test(detailContent) && (
+          <Alert
+            type="warning"
+            showIcon
+            message="该备份内容可能为设备报错而非完整配置"
+            description="备份时设备可能未识别命令或处于错误模式，请检查流程中该设备的设备类型与备份命令是否正确，必要时重新执行备份。"
+            style={{ marginBottom: 16 }}
+          />
+        )}
         <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 12 }}>
           {detailContent}
         </pre>

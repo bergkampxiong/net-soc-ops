@@ -1,13 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { Drawer, Form, Input, Button, Space, message } from 'antd';
+import { Drawer, Form, Input, Button, Space, Select, message } from 'antd';
 import { SaveOutlined } from '@ant-design/icons';
 import type { ConfigBackupNode } from '../../../types/automation';
+
+export interface DeviceConnectNodeOption {
+  id: string;
+  label?: string;
+}
 
 interface ConfigBackupPanelProps {
   visible: boolean;
   onClose: () => void;
-  initialData?: ConfigBackupNode;
-  onSave: (data: ConfigBackupNode) => void;
+  initialData?: Partial<ConfigBackupNode>;
+  onSave: (data: Partial<ConfigBackupNode>) => void;
+  /** 流程中所有设备连接节点，用于「设备来源」下拉 */
+  deviceConnectNodes?: DeviceConnectNodeOption[];
 }
 
 export const PDConfigBackupPanel: React.FC<ConfigBackupPanelProps> = ({
@@ -15,26 +22,35 @@ export const PDConfigBackupPanel: React.FC<ConfigBackupPanelProps> = ({
   onClose,
   initialData,
   onSave,
+  deviceConnectNodes = [],
 }) => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (visible) {
-      form.setFieldsValue(initialData);
+      form.setFieldsValue({
+        useDeviceFromNodeId: initialData?.useDeviceFromNodeId,
+        remark: initialData?.remark,
+        backupCommand: initialData?.backupCommand,
+      });
     }
-  }, [visible, initialData]);
+  }, [visible, initialData, form]);
 
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
       onSave({
-        ...values,
-        isConfigured: true
+        useDeviceFromNodeId: values.useDeviceFromNodeId,
+        remark: values.remark,
+        backupCommand: values.backupCommand || undefined,
+        isConfigured: true,
+        configured: true,
       });
       onClose();
       message.success('配置已保存');
-    } catch (error) {
+    } catch (e) {
+      if (e && typeof e === 'object' && 'errorFields' in e) return;
       message.error('请检查配置信息');
     }
   };
@@ -59,34 +75,33 @@ export const PDConfigBackupPanel: React.FC<ConfigBackupPanelProps> = ({
         </Space>
       }
     >
-      <Form
-        form={form}
-        layout="vertical"
-        disabled={loading}
-      >
+      <Form form={form} layout="vertical" disabled={loading}>
         <Form.Item
-          name="name"
-          label="备份名称"
-          rules={[{ required: true, message: '请输入备份名称' }]}
+          name="useDeviceFromNodeId"
+          label="设备来源"
+          rules={[{ required: true, message: '请选择要备份的设备来源' }]}
         >
-          <Input placeholder="请输入备份名称" />
+          <Select
+            placeholder="使用流程中哪个设备连接节点的设备"
+            options={deviceConnectNodes.map((n) => ({
+              value: n.id,
+              label: n.label || `设备连接 (${n.id})`,
+            }))}
+          />
+        </Form.Item>
+
+        <Form.Item name="remark" label="备注（写入配置管理库时显示）">
+          <Input placeholder="如：日常备份、变更前快照" />
         </Form.Item>
 
         <Form.Item
-          name="description"
-          label="备份描述"
+          name="backupCommand"
+          label="备份命令（可选覆盖）"
+          extra="留空则按设备类型自动选择命令（如 show running-config / display current-configuration）"
         >
-          <Input.TextArea rows={3} placeholder="请输入备份描述" />
-        </Form.Item>
-
-        <Form.Item
-          name="backupPath"
-          label="备份路径"
-          rules={[{ required: true, message: '请输入备份路径' }]}
-        >
-          <Input placeholder="请输入备份路径" />
+          <Input placeholder="如：show running-config" />
         </Form.Item>
       </Form>
     </Drawer>
   );
-}; 
+};

@@ -10,8 +10,32 @@ from ..models.process_management import ProcessDefinition, ProcessDefinitionVers
 from ..schemas.process_management import ProcessDefinitionCreate, ProcessDefinitionUpdate
 from database.session import get_db
 from ..process_designer.code_generator import CodeGenerator
+from ..schemas.job import JobCreate, JobUpdate
+from ..services.job import JobService
 
 router = APIRouter(prefix="/api/process-definitions", tags=["流程管理"])
+
+
+def _row_to_process_dict(row) -> dict:
+    """将查询行转为 ProcessDefinition 可用的字典，兼容 nodes/edges/variables 为 JSON 字符串的情况"""
+    row_dict = dict(getattr(row, "_mapping", row))
+    if row_dict.get("created_at") and hasattr(row_dict["created_at"], "isoformat"):
+        row_dict["created_at"] = row_dict["created_at"].isoformat()
+    if row_dict.get("updated_at") and hasattr(row_dict["updated_at"], "isoformat"):
+        row_dict["updated_at"] = row_dict["updated_at"].isoformat()
+    if row_dict.get("deleted_at") and hasattr(row_dict["deleted_at"], "isoformat"):
+        row_dict["deleted_at"] = row_dict["deleted_at"].isoformat()
+    for key, default in (("nodes", []), ("edges", []), ("variables", {})):
+        val = row_dict.get(key)
+        if val is None:
+            row_dict[key] = default
+        elif isinstance(val, str):
+            try:
+                row_dict[key] = json.loads(val) if val else default
+            except (TypeError, ValueError):
+                row_dict[key] = default
+    return row_dict
+
 
 @router.get("", response_model=List[ProcessDefinition])
 async def get_process_definitions(db: Session = Depends(get_db)):
@@ -20,22 +44,13 @@ async def get_process_definitions(db: Session = Depends(get_db)):
         SELECT * FROM process_definitions 
         WHERE deleted_at IS NULL
     """))
-    
-    # 处理查询结果，确保符合模型要求
     process_definitions = []
     for row in result.mappings():
-        # 将 datetime 对象转换为 ISO 格式字符串
-        row_dict = dict(row)
-        row_dict['created_at'] = row_dict['created_at'].isoformat() if row_dict['created_at'] else None
-        row_dict['updated_at'] = row_dict['updated_at'].isoformat() if row_dict['updated_at'] else None
-        row_dict['deleted_at'] = row_dict['deleted_at'].isoformat() if row_dict['deleted_at'] else None
-        
-        # 确保 variables 是字典类型
-        if row_dict['variables'] is None:
-            row_dict['variables'] = {}
-            
-        process_definitions.append(ProcessDefinition(**row_dict))
-    
+        try:
+            process_definitions.append(ProcessDefinition(**_row_to_process_dict(row)))
+        except Exception as e:
+            # 单条解析失败不拖垮整列表，可打日志
+            continue
     return process_definitions
 
 @router.post("", response_model=ProcessDefinition)
@@ -82,15 +97,33 @@ async def create_process_definition(process: ProcessDefinitionCreate, db: Sessio
     
     row = result.mappings().first()
     if row:
-        # 将数据库返回的数据转换为字典
-        row_dict = dict(row)
-        # 将 datetime 对象转换为 ISO 格式字符串
-        row_dict['created_at'] = row_dict['created_at'].isoformat() if row_dict['created_at'] else None
-        row_dict['updated_at'] = row_dict['updated_at'].isoformat() if row_dict['updated_at'] else None
-        row_dict['deleted_at'] = row_dict['deleted_at'].isoformat() if row_dict['deleted_at'] else None
-        return ProcessDefinition(**row_dict)
-    else:
-        raise HTTPException(status_code=500, detail="创建流程定义失败")
+        return ProcessDefinition(**_row_to_process_dict(row))
+    raise HTTPException(status_code=500, detail="创建流程定义失败")
+
+# 带子路径的路由必须写在通用 /{process_id} 之前，否则 POST /xxx/generate-code 会被误匹配为 GET
+@router.post("/{process_id}/generate-code")
+async def generate_code(process_id: str, db: Session = Depends(get_db)):
+    """生成流程代码"""
+    try:
+        result = db.execute(text("""
+            SELECT * FROM process_definitions 
+            WHERE id = :id AND deleted_at IS NULL
+        """), {'id': process_id})
+        row = result.mappings().first()
+        if not row:
+            raise HTTPException(status_code=404, detail="流程定义不存在")
+        process = dict(row._mapping) if hasattr(row, '_mapping') else row
+        generator = CodeGenerator(process)
+        code = generator.generate_code()
+        headers = {
+            "Content-Disposition": f"attachment; filename=process_{process_id}.py",
+            "Content-Type": "text/plain; charset=utf-8"
+        }
+        return Response(content=code, headers=headers)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{process_id}", response_model=ProcessDefinition)
 async def get_process_definition(process_id: str, db: Session = Depends(get_db)):
@@ -103,15 +136,7 @@ async def get_process_definition(process_id: str, db: Session = Depends(get_db))
     row = result.mappings().first()
     if not row:
         raise HTTPException(status_code=404, detail="流程定义不存在")
-    
-    # 将数据库返回的数据转换为字典
-    row_dict = dict(row)
-    # 将 datetime 对象转换为 ISO 格式字符串
-    row_dict['created_at'] = row_dict['created_at'].isoformat() if row_dict['created_at'] else None
-    row_dict['updated_at'] = row_dict['updated_at'].isoformat() if row_dict['updated_at'] else None
-    row_dict['deleted_at'] = row_dict['deleted_at'].isoformat() if row_dict['deleted_at'] else None
-    
-    return ProcessDefinition(**row_dict)
+    return ProcessDefinition(**_row_to_process_dict(row))
 
 @router.put("/{process_id}", response_model=ProcessDefinition)
 async def update_process_definition(process_id: str, process: ProcessDefinitionUpdate, db: Session = Depends(get_db)):
@@ -127,8 +152,14 @@ async def update_process_definition(process_id: str, process: ProcessDefinitionU
         raise HTTPException(status_code=404, detail="流程定义不存在")
     
     now = datetime.now().isoformat()
-    
-    # 创建新版本
+    ep = _row_to_process_dict(existing_process)
+    nodes_ver = ep["nodes"]
+    edges_ver = ep["edges"]
+    variables_ver = ep["variables"]
+    nodes_ver_str = nodes_ver if isinstance(nodes_ver, str) else json.dumps(nodes_ver)
+    edges_ver_str = edges_ver if isinstance(edges_ver, str) else json.dumps(edges_ver)
+    variables_ver_str = variables_ver if isinstance(variables_ver, str) else json.dumps(variables_ver)
+
     db.execute(text("""
         INSERT INTO process_definition_versions (
             id, process_id, version, nodes, edges, variables,
@@ -140,15 +171,17 @@ async def update_process_definition(process_id: str, process: ProcessDefinitionU
     """), {
         'id': str(uuid4()),
         'process_id': process_id,
-        'version': existing_process['version'],
-        'nodes': existing_process['nodes'],
-        'edges': existing_process['edges'],
-        'variables': existing_process['variables'],
-        'created_by': existing_process['updated_by'],
+        'version': ep['version'],
+        'nodes': nodes_ver_str,
+        'edges': edges_ver_str,
+        'variables': variables_ver_str,
+        'created_by': ep.get('updated_by') or 'admin',
         'created_at': now
     })
-    
-    # 更新流程定义
+
+    nodes_up = json.dumps(process.nodes) if process.nodes is not None else None
+    edges_up = json.dumps(process.edges) if process.edges is not None else None
+    variables_up = json.dumps(process.variables) if process.variables is not None else None
     db.execute(text("""
         UPDATE process_definitions 
         SET name = COALESCE(:name, name),
@@ -164,22 +197,23 @@ async def update_process_definition(process_id: str, process: ProcessDefinitionU
         'id': process_id,
         'name': process.name,
         'description': process.description,
-        'nodes': process.nodes,
-        'edges': process.edges,
-        'variables': process.variables,
-        'updated_by': 'admin',  # TODO: 从当前用户获取
+        'nodes': nodes_up,
+        'edges': edges_up,
+        'variables': variables_up,
+        'updated_by': 'admin',
         'updated_at': now
     })
     
     db.commit()
     
-    # 获取更新后的流程定义
     result = db.execute(text("""
         SELECT * FROM process_definitions 
         WHERE id = :id
     """), {'id': process_id})
-    
-    return ProcessDefinition(**result.mappings().first())
+    row = result.mappings().first()
+    if not row:
+        raise HTTPException(status_code=500, detail="更新后未查到流程")
+    return ProcessDefinition(**_row_to_process_dict(row))
 
 @router.delete("/{process_id}")
 async def delete_process_definition(process_id: str, db: Session = Depends(get_db)):
@@ -201,7 +235,7 @@ async def delete_process_definition(process_id: str, db: Session = Depends(get_d
 
 @router.post("/{process_id}/publish")
 async def publish_process_definition(process_id: str, db: Session = Depends(get_db)):
-    """发布流程定义"""
+    """发布流程定义；同时创建或更新作业（一次作业），供作业执行控制使用"""
     result = db.execute(text("""
         UPDATE process_definitions 
         SET status = 'published',
@@ -211,11 +245,24 @@ async def publish_process_definition(process_id: str, db: Session = Depends(get_
         'id': process_id,
         'updated_at': datetime.now().isoformat()
     })
-    
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="流程定义不存在")
-    
     db.commit()
+
+    # 查询流程名称并创建/更新作业（幂等：同一流程仅一条作业）
+    row = db.execute(text("SELECT name FROM process_definitions WHERE id = :id"), {'id': process_id}).fetchone()
+    name = row[0] if row else process_id
+    job_service = JobService(db)
+    existing = job_service.get_job_by_process_definition_id(process_id)
+    if existing:
+        job_service.update_job(existing.id, JobUpdate(name=name, job_type=existing.job_type))
+    else:
+        job_service.create_job(JobCreate(
+            name=name,
+            job_type="config_backup",
+            process_definition_id=process_id,
+            run_type="once",
+        ))
     return {"message": "流程定义已发布"}
 
 @router.post("/{process_id}/disable")
@@ -294,32 +341,3 @@ async def rollback_process_version(process_id: str, version: int, db: Session = 
     db.commit()
     
     return {"message": "回滚成功"}
-
-@router.post("/{process_id}/generate-code")
-async def generate_code(process_id: str, db: Session = Depends(get_db)):
-    """生成流程代码"""
-    try:
-        # 获取流程定义
-        result = db.execute(text("""
-            SELECT * FROM process_definitions 
-            WHERE id = :id AND deleted_at IS NULL
-        """), {'id': process_id})
-        
-        process = result.mappings().first()
-        if not process:
-            raise HTTPException(status_code=404, detail="流程定义不存在")
-        
-        # 创建代码生成器实例
-        generator = CodeGenerator(process)
-        # 生成代码
-        code = generator.generate_code()
-        
-        # 设置响应头，指定文件名和内容类型
-        headers = {
-            "Content-Disposition": f"attachment; filename=process_{process_id}.py",
-            "Content-Type": "text/plain; charset=utf-8"
-        }
-        
-        return Response(content=code, headers=headers)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) 

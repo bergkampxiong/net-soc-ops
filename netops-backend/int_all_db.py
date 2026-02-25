@@ -516,11 +516,31 @@ def init_process_management_data(db):
         db.rollback()
         raise
 
+def ensure_job_extra_columns(engine):
+    """为 jobs 表添加 process_definition_id、run_type 列（兼容已有库）"""
+    try:
+        inspector = inspect(engine)
+        if "jobs" not in inspector.get_table_names():
+            return
+        columns = [col["name"] for col in inspector.get_columns("jobs")]
+        with engine.connect() as conn:
+            if "process_definition_id" not in columns:
+                conn.execute(text("ALTER TABLE jobs ADD COLUMN process_definition_id VARCHAR(36)"))
+                conn.commit()
+                print("已添加 process_definition_id 列到 jobs 表")
+            if "run_type" not in columns:
+                conn.execute(text("ALTER TABLE jobs ADD COLUMN run_type VARCHAR(20) DEFAULT 'once'"))
+                conn.commit()
+                print("已添加 run_type 列到 jobs 表")
+    except Exception as e:
+        print(f"确保 jobs 表扩展列时出错: {str(e)}")
+
+
 def init_job_tables(engine):
     """初始化作业执行控制相关表"""
     try:
-        # 创建作业相关表
         Base.metadata.create_all(bind=engine, tables=[Job.__table__, JobExecution.__table__])
+        ensure_job_extra_columns(engine)
         print("作业执行控制相关表创建成功")
     except Exception as e:
         print(f"作业执行控制相关表创建失败: {str(e)}")

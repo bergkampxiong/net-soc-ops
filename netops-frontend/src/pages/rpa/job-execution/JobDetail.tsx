@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Card,
   Descriptions,
@@ -9,9 +9,11 @@ import {
   Tag,
   message,
   Modal,
+  Form,
+  Input,
+  Select,
   Tabs,
   Typography,
-  Timeline,
 } from 'antd';
 import {
   PlayCircleOutlined,
@@ -21,6 +23,7 @@ import {
   DeleteOutlined,
   RollbackOutlined,
   ReloadOutlined,
+  CalendarOutlined,
 } from '@ant-design/icons';
 import request from '@/utils/request';
 import type { JobListItem, JobExecution } from './types';
@@ -30,11 +33,14 @@ const { TabPane } = Tabs;
 
 const JobDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [job, setJob] = useState<JobListItem | null>(null);
   const [executions, setExecutions] = useState<JobExecution[]>([]);
   const [loading, setLoading] = useState(false);
   const [executionLoading, setExecutionLoading] = useState(false);
+  const [convertModalVisible, setConvertModalVisible] = useState(false);
+  const [convertForm] = Form.useForm();
 
   // 获取作业详情
   const fetchJobDetail = async () => {
@@ -66,6 +72,37 @@ const JobDetail: React.FC = () => {
     fetchJobDetail();
     fetchExecutions();
   }, [id]);
+
+  useEffect(() => {
+    if (searchParams.get('convert') === 'scheduled' && job?.run_type === 'once') {
+      setConvertModalVisible(true);
+    }
+  }, [searchParams, job?.run_type]);
+
+  const handleConvertToScheduled = async () => {
+    try {
+      const values = await convertForm.validateFields();
+      const schedule_config = {
+        enabled: true,
+        type: values.type,
+        cron_expression: values.cron_expression || undefined,
+        interval_seconds: values.interval_seconds || undefined,
+        timezone: values.timezone || 'Asia/Shanghai',
+      };
+      await request.put(`/jobs/${id}`, {
+        name: job?.name,
+        job_type: job?.job_type ?? 'config_backup',
+        run_type: 'scheduled',
+        schedule_config,
+      });
+      message.success('已转为定期作业');
+      setConvertModalVisible(false);
+      convertForm.resetFields();
+      fetchJobDetail();
+    } catch (e) {
+      message.error('操作失败');
+    }
+  };
 
   // 执行历史表格列定义
   const executionColumns = [
@@ -284,6 +321,14 @@ const JobDetail: React.FC = () => {
             >
               终止
             </Button>
+            {job.run_type === 'once' && (
+              <Button
+                icon={<CalendarOutlined />}
+                onClick={() => setConvertModalVisible(true)}
+              >
+                转为定期
+              </Button>
+            )}
             <Button
               icon={<EditOutlined />}
               onClick={() => navigate(`/rpa/job-execution/jobs/${id}/edit`)}
@@ -310,7 +355,19 @@ const JobDetail: React.FC = () => {
           <TabPane tab="基本信息" key="basic">
             <Descriptions bordered>
               <Descriptions.Item label="作业名称">{job.name}</Descriptions.Item>
-              <Descriptions.Item label="作业类型">{job.job_type}</Descriptions.Item>
+              <Descriptions.Item label="作业类型">
+                {job.job_type === 'config_backup' ? '配置备份' : job.job_type}
+              </Descriptions.Item>
+              <Descriptions.Item label="运行类型">
+                {job.run_type === 'scheduled' ? '定期作业' : '一次作业'}
+              </Descriptions.Item>
+              {job.process_definition_id && (
+                <Descriptions.Item label="关联流程">
+                  <a onClick={() => navigate(`/rpa/process-orchestration/visual-designer/${job.process_definition_id}`)}>
+                    {job.process_definition_id}
+                  </a>
+                </Descriptions.Item>
+              )}
               <Descriptions.Item label="状态">
                 {job.status === 'active'
                   ? '运行中'
@@ -360,6 +417,40 @@ const JobDetail: React.FC = () => {
           </TabPane>
         </Tabs>
       </Card>
+
+      <Modal
+        title="转为定期作业"
+        open={convertModalVisible}
+        onOk={handleConvertToScheduled}
+        onCancel={() => { setConvertModalVisible(false); convertForm.resetFields(); }}
+        okText="确定"
+        cancelText="取消"
+      >
+        <Form form={convertForm} layout="vertical" initialValues={{ type: 'cron', timezone: 'Asia/Shanghai' }}>
+          <Form.Item name="type" label="调度类型" rules={[{ required: true }]}>
+            <Select options={[
+              { label: 'Cron 表达式', value: 'cron' },
+              { label: '固定间隔(秒)', value: 'interval' },
+            ]} />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.type !== cur.type}>
+            {({ getFieldValue }) =>
+              getFieldValue('type') === 'cron' ? (
+                <Form.Item name="cron_expression" label="Cron 表达式" rules={[{ required: true, message: '请输入 cron 表达式' }]}>
+                  <Input placeholder="如 0 0 * * * 表示每天 0 点" />
+                </Form.Item>
+              ) : (
+                <Form.Item name="interval_seconds" label="间隔(秒)" rules={[{ required: true, message: '请输入间隔秒数' }]}>
+                  <Input type="number" placeholder="如 3600" />
+                </Form.Item>
+              )
+            }
+          </Form.Item>
+          <Form.Item name="timezone" label="时区">
+            <Input />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 };

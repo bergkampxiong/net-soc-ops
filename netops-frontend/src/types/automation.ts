@@ -1,13 +1,14 @@
 export interface ConfigBackupNode {
   id: string;
   type: 'configBackup';
-  name: string;
-  description?: string;
-  backupType: 'full' | 'incremental';
-  backupPath: string;
-  compress: boolean;
-  retentionDays: number;
-  isConfigured: boolean;
+  /** 设备来源：关联的设备连接节点 id，备份使用该节点的设备列表 */
+  useDeviceFromNodeId?: string;
+  /** 写入配置管理模块时的备注 */
+  remark?: string;
+  /** 备份命令覆盖（为空则按设备类型使用默认命令） */
+  backupCommand?: string;
+  isConfigured?: boolean;
+  configured?: boolean;
 }
 
 export interface TaskNode {

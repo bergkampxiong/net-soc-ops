@@ -21,6 +21,8 @@ class JobBase(BaseModel):
     name: str
     description: Optional[str] = None
     job_type: str
+    process_definition_id: Optional[str] = None
+    run_type: Optional[str] = "once"  # once | scheduled
     parameters: Optional[Dict[str, Any]] = None
     schedule_config: Optional[ScheduleConfig] = None
 

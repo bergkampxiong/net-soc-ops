@@ -16,10 +16,15 @@ def get_jobs(
     name: Optional[str] = None,
     job_type: Optional[str] = None,
     status: Optional[str] = None,
+    run_type: Optional[str] = Query(None, description="once | scheduled"),
     db: Session = Depends(get_db)
 ):
-    """获取作业列表"""
-    return JobService(db).get_jobs(skip, limit, name, job_type, status)
+    """获取作业列表（默认仅返回由流程发布产生的作业）"""
+    return JobService(db).get_jobs(
+        skip, limit, name, job_type, status,
+        run_type=run_type,
+        from_published_only=True,
+    )
 
 @router.get("/jobs/{job_id}", response_model=JobResponse)
 def get_job(job_id: int, db: Session = Depends(get_db)):
@@ -52,7 +57,15 @@ def delete_job(job_id: int, db: Session = Depends(get_db)):
 
 @router.post("/jobs/{job_id}/execute")
 def execute_job(job_id: int, db: Session = Depends(get_db)):
-    """立即执行作业"""
+    """立即执行作业（需作业关联流程定义）"""
+    job = JobService(db).get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="作业不存在")
+    if not getattr(job, "process_definition_id", None):
+        raise HTTPException(
+            status_code=400,
+            detail="该作业未关联流程，无法执行",
+        )
     success = JobService(db).execute_job(job_id)
     if not success:
         raise HTTPException(status_code=404, detail="作业不存在")
@@ -89,8 +102,9 @@ def get_job_executions(
     limit: int = 10,
     db: Session = Depends(get_db)
 ):
-    """获取作业执行历史"""
-    executions = JobService(db).get_job_executions(job_id, skip, limit)
-    if not executions:
+    """获取作业执行历史（无记录时返回空列表）"""
+    job = JobService(db).get_job(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="作业不存在")
+    executions = JobService(db).get_job_executions(job_id, skip, limit)
     return executions 

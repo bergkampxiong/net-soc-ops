@@ -346,31 +346,35 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
 
   // 验证流程完整性
   const validateProcess = () => {
-    // 检查是否有开始节点
     const hasStartNode = nodes.some(node => node.type === 'start');
     if (!hasStartNode) {
       message.error('流程必须包含开始节点');
       return false;
     }
-
-    // 检查是否有结束节点
     const hasEndNode = nodes.some(node => node.type === 'end');
     if (!hasEndNode) {
       message.error('流程必须包含结束节点');
       return false;
     }
-
-    // 检查所有节点是否配置完整
+    const hasDeviceConnect = nodes.some(node => node.type === 'deviceConnect');
+    if (!hasDeviceConnect) {
+      message.error('流程必须包含至少一个设备连接节点');
+      return false;
+    }
+    const hasConfigDeploy = nodes.some(node => node.type === 'configDeploy');
+    const hasConfigBackup = nodes.some(node => node.type === 'configBackup');
+    if (!hasConfigDeploy && !hasConfigBackup) {
+      message.error('流程必须包含至少一个配置下发节点或配置备份节点');
+      return false;
+    }
     const unconfiguredNodes = nodes.filter(node => {
       if (node.type === 'start' || node.type === 'end') return false;
       return !(node as CustomNode).data?.configured;
     });
-
     if (unconfiguredNodes.length > 0) {
       message.error(`以下节点未完成配置：${unconfiguredNodes.map(n => n.data?.label).join(', ')}`);
       return false;
     }
-
     return true;
   };
 
@@ -436,11 +440,13 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
   };
 
   const handleExecute = async () => {
+    if (!processId) {
+      message.warning('请先保存流程后再生成代码');
+      return;
+    }
     try {
-      const response = await processCodeGeneratorApi.generate(processId || '');
-      
-      // 创建下载链接
-      const blob = new Blob([String(response.data)], { type: 'text/plain;charset=utf-8' });
+      const response = await processCodeGeneratorApi.generate(processId);
+      const blob = response.data instanceof Blob ? response.data : new Blob([String(response.data)], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -449,7 +455,6 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      
       message.success('代码生成成功');
     } catch (error) {
       message.error('代码生成失败');
@@ -731,7 +736,7 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
           <Button icon={<CheckOutlined />} onClick={handleValidate}>
             验证
           </Button>
-          <Button icon={<CodeOutlined />} onClick={handleExecute}>
+          <Button icon={<CodeOutlined />} onClick={handleExecute} disabled={!processId} title={!processId ? '请先保存流程' : undefined}>
             代码生成
           </Button>
         </Space>
@@ -839,6 +844,7 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
         onClose={() => setShowConfigBackupPanel(false)}
         initialData={selectedConfigBackupNode?.data}
         onSave={handleConfigBackupSave}
+        deviceConnectNodes={nodes.filter((n) => n.type === 'deviceConnect').map((n) => ({ id: n.id, label: (n as CustomNode).data?.label || n.id }))}
       />
 
       <PDStatusCheckPanel

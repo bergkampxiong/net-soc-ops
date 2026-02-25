@@ -12,6 +12,8 @@ class Job(Base):
     description = Column(Text, comment="作业描述")
     job_type = Column(String(50), nullable=False, comment="作业类型")
     status = Column(String(20), nullable=False, default="created", comment="作业状态")
+    process_definition_id = Column(String(36), nullable=True, index=True, comment="关联流程定义ID，非空表示由发布产生")
+    run_type = Column(String(20), nullable=False, default="once", comment="once=一次作业, scheduled=定期作业")
     parameters = Column(JSON, comment="执行参数")
     schedule_config = Column(JSON, comment="调度配置")
     created_at = Column(DateTime, default=datetime.datetime.utcnow, comment="创建时间")

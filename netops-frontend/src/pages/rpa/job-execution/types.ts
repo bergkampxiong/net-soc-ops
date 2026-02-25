@@ -1,5 +1,8 @@
+// 运行类型：一次作业 | 定期作业
+export type RunType = 'once' | 'scheduled';
+
 // 作业类型
-export type JobType = 'network_config' | 'device_check' | 'data_collection';
+export type JobType = 'network_config' | 'device_check' | 'data_collection' | 'config_backup';
 
 // 作业状态
 export type JobStatus = 'created' | 'active' | 'paused' | 'completed' | 'failed' | 'terminated';
@@ -57,9 +60,11 @@ export interface JobListItem {
   description?: string;
   job_type: JobType;
   status: JobStatus;
-  schedule_status: 'enabled' | 'disabled';
+  process_definition_id?: string;
+  run_type?: RunType;
+  schedule_status?: 'enabled' | 'disabled';
   parameters?: Record<string, any>;
-  schedule_config: ScheduleConfig;
+  schedule_config?: ScheduleConfig;
   created_at: string;
   updated_at: string;
   last_run_at?: string;
@@ -73,11 +78,12 @@ export interface JobSearchParams {
   name?: string;
   job_type?: JobType;
   status?: JobStatus;
+  run_type?: RunType;
   schedule_status?: 'enabled' | 'disabled';
   start_time?: string;
   end_time?: string;
-  page: number;
-  page_size: number;
+  page?: number;
+  page_size?: number;
 }
 
 // 作业列表响应

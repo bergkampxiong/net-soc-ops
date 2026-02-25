@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Card, Button, Space, Tag, message, Modal, Form, Input, Select, DatePicker } from 'antd';
-import { PlusOutlined, ReloadOutlined, DeleteOutlined, PlayCircleOutlined, PauseCircleOutlined, StopOutlined } from '@ant-design/icons';
+import { ReloadOutlined, DeleteOutlined, PlayCircleOutlined, PauseCircleOutlined, StopOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import request from '@/utils/request';
 import type { Job, JobSearchParams } from './job-execution/types';
@@ -14,17 +14,12 @@ const JobExecution: React.FC = () => {
   const [searchForm] = Form.useForm();
   const navigate = useNavigate();
 
-  // 获取作业列表
-  const fetchJobs = async (params: Partial<JobSearchParams> = {}) => {
+  const fetchJobs = async (params: Partial<JobSearchParams> & { skip?: number; limit?: number } = {}) => {
     try {
       setLoading(true);
-      const searchParams = {
-        page: 1,
-        page_size: 10,
-        ...params
-      };
+      const searchParams = { skip: 0, limit: 100, ...params };
       const response = await request.get('/jobs', { params: searchParams });
-      setJobs(response.data);
+      setJobs(response.data ?? []);
     } catch (error) {
       message.error('获取作业列表失败');
     } finally {
@@ -50,6 +45,13 @@ const JobExecution: React.FC = () => {
       title: '作业类型',
       dataIndex: 'job_type',
       key: 'job_type',
+      render: (v: string) => (v === 'config_backup' ? '配置备份' : v),
+    },
+    {
+      title: '运行类型',
+      dataIndex: 'run_type',
+      key: 'run_type',
+      render: (v: string) => (v === 'scheduled' ? '定期作业' : '一次作业'),
     },
     {
       title: '状态',
@@ -118,6 +120,11 @@ const JobExecution: React.FC = () => {
           >
             终止
           </Button>
+          {record.run_type === 'once' && (
+            <Button type="link" onClick={() => navigate(`/rpa/job-execution/jobs/${record.id}?convert=scheduled`)}>
+              转为定期
+            </Button>
+          )}
         </Space>
       ),
     },
@@ -189,11 +196,12 @@ const JobExecution: React.FC = () => {
   };
 
   const handleSearch = (values: any) => {
-    const params: Partial<JobSearchParams> = {};
+    const params: Partial<JobSearchParams> & { skip?: number; limit?: number } = {};
     if (values.name) params.name = values.name;
     if (values.job_type) params.job_type = values.job_type;
     if (values.status) params.status = values.status;
-    if (values.timeRange) {
+    if (values.run_type) params.run_type = values.run_type;
+    if (values.timeRange?.length === 2) {
       params.start_time = values.timeRange[0].toISOString();
       params.end_time = values.timeRange[1].toISOString();
     }
@@ -236,6 +244,17 @@ const JobExecution: React.FC = () => {
             ]}
           />
         </Form.Item>
+        <Form.Item name="run_type">
+          <Select
+            placeholder="运行类型"
+            allowClear
+            style={{ width: 120 }}
+            options={[
+              { label: '一次作业', value: 'once' },
+              { label: '定期作业', value: 'scheduled' },
+            ]}
+          />
+        </Form.Item>
         <Form.Item name="timeRange">
           <RangePicker showTime />
         </Form.Item>
@@ -251,13 +270,6 @@ const JobExecution: React.FC = () => {
 
       <div style={{ marginBottom: 16 }}>
         <Space>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => navigate('/rpa/job-execution/jobs/new')}
-          >
-            新建作业
-          </Button>
           <Button
             icon={<ReloadOutlined />}
             onClick={() => fetchJobs()}

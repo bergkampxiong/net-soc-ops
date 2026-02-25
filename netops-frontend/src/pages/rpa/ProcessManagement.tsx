@@ -79,7 +79,7 @@ const ProcessManagement: React.FC = () => {
   const handlePublish = async (id: string) => {
     try {
       await publishProcessDefinition(id);
-      message.success('发布成功');
+      message.success('已发布，可在【作业执行控制】中执行或设为定期作业');
       fetchProcesses();
     } catch (error) {
       message.error('发布失败');
