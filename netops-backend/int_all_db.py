@@ -272,6 +272,14 @@ def init_monitoring_integration_tables(engine):
     try:
         MonitoringWebhook.__table__.create(engine, checkfirst=True)
         MonitoringAlertEvent.__table__.create(engine, checkfirst=True)
+        inspector = inspect(engine)
+        if "monitoring_alert_events" in inspector.get_table_names():
+            columns = [col["name"] for col in inspector.get_columns("monitoring_alert_events")]
+            if "alert_type" not in columns:
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE monitoring_alert_events ADD COLUMN alert_type VARCHAR(128)"))
+                    conn.commit()
+                print("已添加 alert_type 列到 monitoring_alert_events 表")
         print("监控系统集成表创建完成")
     except Exception as e:
         print(f"监控系统集成表初始化失败: {str(e)}")

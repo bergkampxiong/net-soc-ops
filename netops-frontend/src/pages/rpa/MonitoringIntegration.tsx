@@ -77,16 +77,27 @@ interface WebhookItem {
   webhook_url: string;
 }
 
+interface AlertField {
+  title?: string;
+  value?: string;
+}
+
 interface AlertItem {
   id: number;
   webhook_id: string;
   source: string;
+  alert_type?: string;
   alert_title?: string;
   message?: string;
   color?: string;
   entity_interface?: string;
+  node_name?: string;
   node_ip?: string;
+  ip_address?: string;
   interface_name?: string;
+  utilization?: string;
+  disk?: string;
+  city?: string;
   severity: string;
   status: string;
   alert_time?: string;
@@ -97,6 +108,7 @@ interface AlertItem {
 interface AlertDetail extends AlertItem {
   raw_payload?: string;
   metadata?: string;
+  fields?: AlertField[];
 }
 
 const severityColors: Record<string, string> = {
@@ -422,9 +434,9 @@ const MonitoringIntegration: React.FC = () => {
               <Select.Option value="info">info</Select.Option>
             </Select>
             <Input.Search
-              placeholder="关键词（标题/摘要/节点）"
+              placeholder="关键词（类型/标题/摘要/节点）"
               allowClear
-              style={{ width: 200 }}
+              style={{ width: 220 }}
               onSearch={(v) => setAlertFilters((f) => ({ ...f, keyword: v || undefined }))}
             />
           </Space>
@@ -433,6 +445,14 @@ const MonitoringIntegration: React.FC = () => {
             rowKey="id"
             dataSource={alerts}
             columns={[
+              {
+                title: '告警类型',
+                dataIndex: 'alert_type',
+                key: 'alert_type',
+                width: 140,
+                ellipsis: true,
+                render: (v: string) => v || '-',
+              },
               {
                 title: '告警标题',
                 dataIndex: 'alert_title',
@@ -449,25 +469,39 @@ const MonitoringIntegration: React.FC = () => {
                 render: (s: string) => <Tag color={severityColors[s] || 'default'}>{s}</Tag>,
               },
               {
-                title: '节点/实体',
-                key: 'node_ip',
-                width: 140,
+                title: '节点名称',
+                key: 'node_name',
+                width: 130,
                 ellipsis: true,
-                render: (_: unknown, record: AlertItem) => record.node_ip || record.entity_interface || '-',
+                render: (_: unknown, record: AlertItem) => record.node_name || record.node_ip || record.entity_interface || '-',
               },
               {
-                title: '接口',
-                dataIndex: 'interface_name',
-                key: 'interface_name',
-                width: 140,
+                title: 'IP 地址',
+                dataIndex: 'ip_address',
+                key: 'ip_address',
+                width: 120,
                 ellipsis: true,
+                render: (v: string) => v || '-',
+              },
+              {
+                title: '接口/磁盘',
+                key: 'interface_disk',
+                width: 130,
+                ellipsis: true,
+                render: (_: unknown, record: AlertItem) => record.interface_name || record.disk || '-',
+              },
+              {
+                title: '利用率',
+                dataIndex: 'utilization',
+                key: 'utilization',
+                width: 90,
                 render: (v: string) => v || '-',
               },
               {
                 title: '告警时间',
                 dataIndex: 'alert_time',
                 key: 'alert_time',
-                width: 180,
+                width: 170,
                 render: (v: string) => formatAlertTime(v),
               },
               {
@@ -620,22 +654,41 @@ const MonitoringIntegration: React.FC = () => {
       {/* 告警详情抽屉 */}
       <Drawer
         title="告警详情"
-        width={560}
+        width={600}
         open={detailDrawerVisible}
         onClose={() => { setDetailDrawerVisible(false); setDetailAlert(null); }}
       >
         {detailAlert && (
           <>
+            <Paragraph><Text strong>告警类型：</Text>{detailAlert.alert_type ?? '-'}</Paragraph>
             <Paragraph><Text strong>告警标题：</Text>{displayAlertTitle(detailAlert.alert_title)}</Paragraph>
             <Paragraph>
               <Text strong>级别：</Text>
               <Tag color={severityColors[detailAlert.severity] || 'default'}>{detailAlert.severity}</Tag>
               {detailAlert.color && <Text type="secondary"> ({detailAlert.color})</Text>}
             </Paragraph>
-            <Paragraph><Text strong>节点/实体：</Text>{detailAlert.node_ip ?? detailAlert.entity_interface ?? '-'}</Paragraph>
-            <Paragraph><Text strong>接口：</Text>{detailAlert.interface_name ?? '-'}</Paragraph>
+            <Paragraph><Text strong>节点名称：</Text>{detailAlert.node_name ?? detailAlert.node_ip ?? detailAlert.entity_interface ?? '-'}</Paragraph>
+            <Paragraph><Text strong>IP 地址：</Text>{detailAlert.ip_address ?? '-'}</Paragraph>
+            <Paragraph><Text strong>接口/磁盘：</Text>{detailAlert.interface_name ?? detailAlert.disk ?? '-'}</Paragraph>
+            <Paragraph><Text strong>利用率：</Text>{detailAlert.utilization ?? '-'}</Paragraph>
+            {detailAlert.city != null && detailAlert.city !== '' && (
+              <Paragraph><Text strong>所在城市：</Text>{detailAlert.city}</Paragraph>
+            )}
             <Paragraph><Text strong>告警时间：</Text>{formatAlertTime(detailAlert.alert_time)}</Paragraph>
             <Paragraph><Text strong>告警摘要：</Text>{detailAlert.message ?? '-'}</Paragraph>
+            {detailAlert.fields && detailAlert.fields.length > 0 && (
+              <>
+                <Text strong>关键信息（fields）：</Text>
+                <div style={{ marginTop: 8, marginBottom: 16 }}>
+                  {detailAlert.fields.map((f, i) => (
+                    <Paragraph key={i} style={{ marginBottom: 4 }}>
+                      <Text type="secondary">{f.title}：</Text>
+                      <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{f.value ?? '-'}</span>
+                    </Paragraph>
+                  ))}
+                </div>
+              </>
+            )}
             {detailAlert.raw_payload && (
               <Collapse defaultActiveKey={['raw']}>
                 <Collapse.Panel header="原始 Body" key="raw">

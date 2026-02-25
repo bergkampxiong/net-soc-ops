@@ -116,13 +116,14 @@ class MonitoringAlertEvent(Base):
     id = Column(Integer, primary_key=True, index=True)
     webhook_id = Column(String(64), index=True, nullable=False)  # path_slug
     source = Column(String(64), default="solarwinds")
+    alert_type = Column(String(128), nullable=True)    # fallback 中「:」前中文，如：流量告警、双工模式不匹配告警
     alert_title = Column(String(500), nullable=True)   # attachments[0].pretext
     message = Column(Text, nullable=True)              # attachments[0].fallback
-    color = Column(String(32), nullable=True)           # attachments[0].color
-    entity_interface = Column(String(500), nullable=True)  # 从 fallback 解析
-    severity = Column(String(32), nullable=True)        # 由 color 映射
+    color = Column(String(32), nullable=True)         # attachments[0].color
+    entity_interface = Column(String(500), nullable=True)  # 从 fallback 解析（兼容老数据）
+    severity = Column(String(32), nullable=True)      # 由 color 映射
     status = Column(String(32), default="triggered")
     raw_payload = Column(Text, nullable=True)
     triggered_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    metadata_ = Column("metadata", Text, nullable=True)  # 扩展信息 JSON
+    metadata_ = Column("metadata", Text, nullable=True)  # 扩展信息 JSON：fields + node_name/ip_address/interface_name/utilization/disk/city

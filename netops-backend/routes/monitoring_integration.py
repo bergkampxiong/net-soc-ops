@@ -9,7 +9,7 @@ from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import Response
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -74,37 +74,123 @@ def _simplify_alert_title(pretext: str) -> Optional[str]:
     """根据文档 JSON 精简标题：去掉首尾星号、空格及括号及括号内内容"""
     if not pretext or not isinstance(pretext, str):
         return None
-    s = re.sub(r"^\s*\*+\s*|\s*\*+\s*$", "", pretext).strip()  # 去掉首尾星号（多个）
-    s = re.sub(r"\s*\([^)]*\)\s*$", "", s).strip()  # 去掉末尾 (xxx)
+    s = re.sub(r"^\s*\*+\s*|\s*\*+\s*$", "", pretext).strip()
+    s = re.sub(r"\s*\([^)]*\)\s*$", "", s).strip()
     return s or None
 
 
+def _extract_alert_type_from_fallback(fallback: Optional[str]) -> Optional[str]:
+    """从 fallback 提取告警类型：冒号前的中文部分，如 '流量告警: xxx' -> '流量告警'"""
+    if not fallback or not isinstance(fallback, str):
+        return None
+    s = fallback.strip()
+    if ":" in s:
+        return s.split(":", 1)[0].strip() or None
+    return s[:64] if s else None
+
+
+# fields 中 title 到展示键的映射（文档 告警事件解析.md）
+_FIELD_TITLE_TO_KEY = {
+    "节点/设备": "node_name",
+    "节点名称": "node_name",
+    "设备名称": "node_name",
+    "主机名称": "node_name",
+    "机器名称": "node_name",
+    "集群名称": "node_name",
+    "IP 地址": "ip_address",
+    "邻居 IP 地址": "ip_address",
+    "接口名称": "interface_name",
+    "接口": "interface_name",
+    "当前使用率": "utilization",
+    "发送利用率": "utilization",
+    "当前利用率": "utilization",
+    "内存利用率": "utilization",
+    "当前已用百分比": "utilization",
+    "当前使用百分比": "utilization",
+    "磁盘分区": "disk",
+    "LUN 名称": "disk",
+    "存储名称": "disk",
+    "作用域名称": "disk",
+    "所在城市": "city",
+}
+
+
+def _fields_to_display_map(fields: List[dict]) -> dict:
+    """从 fields 列表提取展示用键值（节点名称、IP、接口、利用率、磁盘、城市等）"""
+    out = {}
+    for f in fields or []:
+        if not isinstance(f, dict):
+            continue
+        title = (f.get("title") or "").strip()
+        value = f.get("value")
+        if value is None:
+            value = ""
+        elif not isinstance(value, str):
+            value = str(value)
+        key = _FIELD_TITLE_TO_KEY.get(title)
+        if key and value:
+            # 同一 key 只保留第一个有值的（如多个利用率取第一个）
+            if key not in out:
+                out[key] = value
+    return out
+
+
 def _parse_solarwinds_payload(body: dict) -> dict:
-    """按设计说明 4.3 解析 SolarWinds JSON -> 告警字段"""
+    """按 docs/告警事件解析.md 解析：告警类型(fallback 冒号前)、fields 存储与展示映射"""
     att = (body.get("attachments") or [{}])[0] if isinstance(body.get("attachments"), list) else {}
     if not att:
         att = body
     pretext = att.get("pretext") or att.get("pre_text") or ""
     fallback = att.get("fallback") or att.get("message") or ""
+    fallback = fallback if isinstance(fallback, str) else (json.dumps(fallback) if fallback else "")
     color = att.get("color")
     alert_title = _simplify_alert_title(pretext)
-    message = fallback if isinstance(fallback, str) else (json.dumps(fallback) if fallback else None)
-    entity_interface = _parse_entity_interface(message)
-    node_ip, interface_name = _parse_node_interface(entity_interface)
+    message = fallback or None
     severity = _color_to_severity(color)
-    metadata = {}
-    if node_ip is not None:
-        metadata["node_ip"] = node_ip
-    if interface_name is not None:
-        metadata["interface_name"] = interface_name
+
+    # 1. 告警类型：fallback 中冒号前的中文部分
+    alert_type = _extract_alert_type_from_fallback(fallback)
+
+    # 2. fields 原始列表（SolarWinds 发送时已替换变量为实际值）
+    raw_fields = att.get("fields")
+    if not isinstance(raw_fields, list):
+        raw_fields = []
+    fields_for_storage = [{"title": f.get("title"), "value": f.get("value")} for f in raw_fields if isinstance(f, dict)]
+
+    # 3. 从 fields 提取展示用：节点名称、IP、接口、利用率、磁盘、城市
+    display_map = _fields_to_display_map(raw_fields)
+    node_name = display_map.get("node_name")
+    ip_address = display_map.get("ip_address")
+    interface_name = display_map.get("interface_name")
+    utilization = display_map.get("utilization")
+    disk = display_map.get("disk")
+    city = display_map.get("city")
+
+    # 4. 兼容老逻辑：无 fields 时仍从 fallback 解析 entity_interface / node_ip / interface_name
+    entity_interface = _parse_entity_interface(fallback)
+    node_ip_legacy, interface_legacy = _parse_node_interface(entity_interface)
+    if not node_name and (node_ip_legacy or entity_interface):
+        node_name = node_ip_legacy or entity_interface
+    if not interface_name and interface_legacy:
+        interface_name = interface_legacy
+
+    metadata = {
+        "fields": fields_for_storage,
+        "node_name": node_name,
+        "ip_address": ip_address,
+        "interface_name": interface_name,
+        "utilization": utilization,
+        "disk": disk,
+        "city": city,
+        "node_ip": node_ip_legacy or ip_address or node_name,  # 列表展示用
+    }
     return {
+        "alert_type": alert_type,
         "alert_title": alert_title,
         "message": message,
         "color": color if isinstance(color, str) else None,
         "entity_interface": entity_interface,
-        "node_ip": node_ip,
-        "interface_name": interface_name,
-        "metadata_json": json.dumps(metadata) if metadata else None,
+        "metadata_json": json.dumps(metadata, ensure_ascii=False),
         "severity": severity,
         "status": body.get("status") or "triggered",
     }
@@ -251,6 +337,7 @@ async def receive_webhook(webhook_id: str, request: Request, db: Session = Depen
     evt = MonitoringAlertEvent(
         webhook_id=webhook_id,
         source="solarwinds",
+        alert_type=parsed.get("alert_type"),
         alert_title=parsed.get("alert_title"),
         message=parsed.get("message"),
         color=parsed.get("color"),
@@ -289,64 +376,88 @@ def list_alerts(
         q = q.filter(MonitoringAlertEvent.status == status)
     if keyword:
         k = f"%{keyword}%"
-        q = q.filter(
-            (MonitoringAlertEvent.alert_title.ilike(k))
-            | (MonitoringAlertEvent.message.ilike(k))
-            | (MonitoringAlertEvent.entity_interface.ilike(k))
-        )
+        keyword_conds = [
+            MonitoringAlertEvent.alert_title.ilike(k),
+            MonitoringAlertEvent.message.ilike(k),
+            MonitoringAlertEvent.entity_interface.ilike(k),
+        ]
+        if hasattr(MonitoringAlertEvent, "alert_type"):
+            keyword_conds.append(MonitoringAlertEvent.alert_type.ilike(k))
+        q = q.filter(or_(*keyword_conds))
     total = q.count()
     rows = q.order_by(MonitoringAlertEvent.created_at.desc()).offset(skip).limit(limit).all()
-    items = []
-    for r in rows:
-        meta = {}
-        if getattr(r, "metadata_", None):
-            try:
-                meta = json.loads(r.metadata_) or {}
-            except Exception:
-                pass
-        node_ip = meta.get("node_ip")
-        interface_name = meta.get("interface_name")
-        # 老数据无 metadata 时从 entity_interface 解析或整段回填，保证节点信息有展示
-        if (node_ip is None or interface_name is None) and r.entity_interface:
-            ni, iface = _parse_node_interface(r.entity_interface)
-            if node_ip is None:
-                node_ip = ni or r.entity_interface
-            if interface_name is None:
-                interface_name = iface
-        alert_time = r.triggered_at or r.created_at
-        items.append({
-            "id": r.id,
-            "webhook_id": r.webhook_id,
-            "source": r.source,
-            "alert_title": r.alert_title,
-            "message": r.message,
-            "color": r.color,
-            "entity_interface": r.entity_interface,
-            "node_ip": node_ip,
-            "interface_name": interface_name,
-            "severity": r.severity,
-            "status": r.status,
-            "alert_time": alert_time.isoformat() if alert_time else None,
-            "triggered_at": r.triggered_at.isoformat() if r.triggered_at else None,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-        })
+    items = [_alert_row_to_list_item(r) for r in rows]
     return {"total": total, "items": items}
 
 
-def _alert_row_to_dict(r: MonitoringAlertEvent) -> dict:
-    """将告警行转为与详情接口一致的字典（含 node_ip/interface_name/alert_time/raw_payload）"""
+def _get_meta(r: MonitoringAlertEvent) -> dict:
     meta = {}
     if getattr(r, "metadata_", None):
         try:
             meta = json.loads(r.metadata_) or {}
         except Exception:
             pass
-    node_ip = meta.get("node_ip")
+    return meta
+
+
+def _display_value(v: Optional[str]) -> Optional[str]:
+    """若为 SolarWinds 模板变量（如 ${N=SwisEntity;M=Node.Caption}），提取 M= 后的短名便于展示"""
+    if not v or not isinstance(v, str):
+        return v
+    s = v.strip()
+    if s.startswith("${") and ";M=" in s:
+        m = re.search(r";M=([^};]+)", s)
+        return m.group(1).strip() if m else v
+    if s.startswith("${") and "}" in s:
+        m = re.search(r"\$\{([^}]+)\}", s)
+        return m.group(1).strip() if m else v
+    return v
+
+
+def _enrich_from_raw_payload(r: MonitoringAlertEvent) -> tuple:
+    """当 metadata 为空或缺少展示字段时，从 raw_payload 重新解析并合并。返回 (meta, alert_type)。"""
+    meta = _get_meta(r)
+    alert_type = getattr(r, "alert_type", None)
+    has_display = any(meta.get(k) for k in ("node_name", "node_ip", "ip_address", "interface_name", "utilization", "disk"))
+    if has_display and alert_type:
+        return (meta, alert_type)
+    if not getattr(r, "raw_payload", None):
+        if not alert_type and r.message and ":" in r.message:
+            alert_type = (r.message.split(":", 1)[0].strip() or None)[:128]
+        return (meta, alert_type)
+    try:
+        body = json.loads(r.raw_payload)
+        parsed = _parse_solarwinds_payload(body)
+        meta_parsed = {}
+        if parsed.get("metadata_json"):
+            try:
+                meta_parsed = json.loads(parsed["metadata_json"]) or {}
+            except Exception:
+                pass
+        for k, v in meta_parsed.items():
+            if v is not None and v != "" and not meta.get(k):
+                meta[k] = v
+        if not alert_type:
+            alert_type = parsed.get("alert_type") or (r.message.split(":", 1)[0].strip()[:128] if r.message and ":" in r.message else None)
+    except Exception:
+        if not alert_type and r.message and ":" in r.message:
+            alert_type = (r.message.split(":", 1)[0].strip() or None)[:128]
+    return (meta, alert_type)
+
+
+def _alert_row_to_list_item(r: MonitoringAlertEvent) -> dict:
+    """列表项：告警类型、节点名称、IP、接口/磁盘、利用率等（缺则从 raw_payload 回填）"""
+    meta, alert_type = _enrich_from_raw_payload(r)
+    node_name = meta.get("node_name") or meta.get("node_ip")
+    ip_address = meta.get("ip_address")
     interface_name = meta.get("interface_name")
-    if (node_ip is None or interface_name is None) and r.entity_interface:
+    utilization = meta.get("utilization")
+    disk = meta.get("disk")
+    city = meta.get("city")
+    if (node_name is None or interface_name is None) and r.entity_interface:
         ni, iface = _parse_node_interface(r.entity_interface)
-        if node_ip is None:
-            node_ip = ni or r.entity_interface
+        if node_name is None:
+            node_name = ni or r.entity_interface
         if interface_name is None:
             interface_name = iface
     alert_time = r.triggered_at or r.created_at
@@ -354,12 +465,60 @@ def _alert_row_to_dict(r: MonitoringAlertEvent) -> dict:
         "id": r.id,
         "webhook_id": r.webhook_id,
         "source": r.source,
+        "alert_type": alert_type,
         "alert_title": r.alert_title,
         "message": r.message,
         "color": r.color,
         "entity_interface": r.entity_interface,
-        "node_ip": node_ip,
-        "interface_name": interface_name,
+        "node_name": _display_value(node_name),
+        "ip_address": _display_value(ip_address),
+        "interface_name": _display_value(interface_name),
+        "utilization": _display_value(utilization),
+        "disk": _display_value(disk),
+        "city": _display_value(city),
+        "severity": r.severity,
+        "status": r.status,
+        "alert_time": alert_time.isoformat() if alert_time else None,
+        "triggered_at": r.triggered_at.isoformat() if r.triggered_at else None,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    }
+
+
+def _alert_row_to_dict(r: MonitoringAlertEvent) -> dict:
+    """详情：含 raw_payload、fields 列表及展示用 node_name/ip_address 等（缺则从 raw_payload 回填）"""
+    meta, alert_type = _enrich_from_raw_payload(r)
+    node_name = meta.get("node_name") or meta.get("node_ip")
+    ip_address = meta.get("ip_address")
+    interface_name = meta.get("interface_name")
+    utilization = meta.get("utilization")
+    disk = meta.get("disk")
+    city = meta.get("city")
+    fields = meta.get("fields")
+    if not isinstance(fields, list):
+        fields = []
+    if (node_name is None or interface_name is None) and r.entity_interface:
+        ni, iface = _parse_node_interface(r.entity_interface)
+        if node_name is None:
+            node_name = ni or r.entity_interface
+        if interface_name is None:
+            interface_name = iface
+    alert_time = r.triggered_at or r.created_at
+    return {
+        "id": r.id,
+        "webhook_id": r.webhook_id,
+        "source": r.source,
+        "alert_type": alert_type,
+        "alert_title": r.alert_title,
+        "message": r.message,
+        "color": r.color,
+        "entity_interface": r.entity_interface,
+        "node_name": _display_value(node_name),
+        "ip_address": _display_value(ip_address),
+        "interface_name": _display_value(interface_name),
+        "utilization": _display_value(utilization),
+        "disk": _display_value(disk),
+        "city": _display_value(city),
+        "fields": [{"title": f.get("title"), "value": _display_value(f.get("value")) if isinstance(f.get("value"), str) else f.get("value")} for f in fields] if fields else [],
         "severity": r.severity,
         "status": r.status,
         "raw_payload": r.raw_payload,
