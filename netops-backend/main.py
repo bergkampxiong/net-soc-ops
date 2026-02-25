@@ -19,7 +19,7 @@ import database.category_models  # 再导入设备分类模型
 import database.config_management_models  # 导入配置管理模型
 
 # 导入路由
-from routes import auth, users, audit, ldap, security, config_management, config_generator_router
+from routes import auth, users, audit, ldap, security, config_management, config_generator_router, config_module
 from routes.monitoring_integration import router as monitoring_integration_router
 from routes.cmdb import router as cmdb_router
 from routes.device import router as device_router, connections, ssh_connections
@@ -90,6 +90,7 @@ app.include_router(cmdb_router, prefix="/api")
 app.include_router(device_router)
 app.include_router(config_management.router, prefix="/api", tags=["config"])
 app.include_router(config_generator_router, prefix="/api/config-generator", tags=["config-generator"])
+app.include_router(config_module.router, prefix="/api/config-module")
 app.include_router(job_config_router, prefix="/api")
 app.include_router(connections.router)
 app.include_router(ssh_connections.router, prefix="/api")

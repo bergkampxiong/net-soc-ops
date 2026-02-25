@@ -20,6 +20,7 @@ import DeviceManagement from './pages/DeviceManagement';
 import DeviceCategory from './pages/DeviceCategory';
 import CredentialManagement from './pages/CredentialManagement';
 import VisualDesigner from './pages/rpa/VisualDesigner';
+import ConfigModule from './pages/ConfigModule';
 
 // 样式
 import './styles/App.css';
@@ -82,6 +83,7 @@ const App: React.FC = () => {
           </Route>
           <Route path="rpa/*" element={<RPA />} />
           <Route path="rpa/process-orchestration/visual-designer/:id" element={<VisualDesigner />} />
+          <Route path="config-module/*" element={<ConfigModule />} />
           <Route path="aiops" element={<AIOPS />} />
           <Route path="system" element={
             <AdminRoute>

@@ -24,6 +24,7 @@ import {
   ApiOutlined,
   LineChartOutlined,
   LockOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import request from '../utils/request';
@@ -101,6 +102,12 @@ const Layout: React.FC = () => {
     if (path.startsWith('/rpa/system-integration')) return ['rpa-system-integration'];
     
     if (path.startsWith('/rpa')) return ['rpa'];
+    if (path.startsWith('/config-module/summary')) return ['config-module/summary'];
+    if (path.startsWith('/config-module/management')) return ['config-module/management'];
+    if (path.startsWith('/config-module/change-templates')) return ['config-module/change-templates'];
+    if (path.startsWith('/config-module/compliance')) return ['config-module/compliance'];
+    if (path.startsWith('/config-module/eos')) return ['config-module/eos'];
+    if (path.startsWith('/config-module')) return ['config-module'];
     if (path.startsWith('/aiops')) return ['aiops'];
     if (path.startsWith('/system')) return ['system'];
     return ['dashboard'];
@@ -121,6 +128,7 @@ const Layout: React.FC = () => {
     if (path.startsWith('/rpa/task-job-management')) return ['rpa', 'rpa-task-job-management'];
     if (path.startsWith('/rpa/system-integration')) return ['rpa', 'rpa-system-integration'];
     if (path.startsWith('/rpa')) return ['rpa'];
+    if (path.startsWith('/config-module')) return ['config-module'];
     
     return [];
   };
@@ -254,6 +262,18 @@ const Layout: React.FC = () => {
             },
           ],
         },
+      ],
+    },
+    {
+      key: 'config-module',
+      icon: <FileTextOutlined />,
+      label: '配置管理模块',
+      children: [
+        { key: 'config-module/summary', label: '配置摘要', icon: <BarChartOutlined /> },
+        { key: 'config-module/management', label: '配置管理', icon: <DatabaseOutlined /> },
+        { key: 'config-module/change-templates', label: '配置变更模板', icon: <FileTextOutlined /> },
+        { key: 'config-module/compliance', label: '合规', icon: <SafetyCertificateOutlined /> },
+        { key: 'config-module/eos', label: '服务终止', icon: <SettingOutlined /> },
       ],
     },
     {

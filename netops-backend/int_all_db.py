@@ -24,6 +24,13 @@ from database.models import User, UsedTOTP, RefreshToken, MonitoringWebhook, Mon
 from database.category_models import Base as CategoryBase, Credential, CredentialType
 from database.config_management_models import Base as ConfigBase
 from database.device_connection_models import DeviceConnection
+from database.config_module_models import (
+    ConfigModuleBackup,
+    ConfigChangeTemplate,
+    ConfigCompliancePolicy,
+    ConfigComplianceResult,
+    ConfigEosInfo,
+)
 from app.models.job import Job, JobExecution
 
 # 创建密码哈希上下文
@@ -519,6 +526,19 @@ def init_job_tables(engine):
         print(f"作业执行控制相关表创建失败: {str(e)}")
         raise
 
+def init_config_module_tables(engine):
+    """初始化配置管理模块表（备份、变更模板、合规、服务终止），不修改其它表或逻辑。"""
+    try:
+        ConfigModuleBackup.__table__.create(engine, checkfirst=True)
+        ConfigChangeTemplate.__table__.create(engine, checkfirst=True)
+        ConfigCompliancePolicy.__table__.create(engine, checkfirst=True)
+        ConfigComplianceResult.__table__.create(engine, checkfirst=True)
+        ConfigEosInfo.__table__.create(engine, checkfirst=True)
+        print("配置管理模块表（backups/change_templates/compliance_policies/compliance_results/eos_info）创建完成")
+    except Exception as e:
+        print(f"配置管理模块表初始化失败: {str(e)}")
+        raise
+
 def init_databases():
     """初始化所有数据库"""
     try:
@@ -565,6 +585,9 @@ def init_databases():
             
             # 初始化作业执行控制表
             init_job_tables(engine)
+            
+            # 初始化配置管理模块表
+            init_config_module_tables(engine)
             
             print("所有数据库初始化完成")
             
