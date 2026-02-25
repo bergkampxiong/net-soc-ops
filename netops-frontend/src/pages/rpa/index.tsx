@@ -10,8 +10,6 @@ import DeviceConnections from './DeviceConnections';
 import ConfigManagement from './ConfigManagement';
 import ConfigGenerator from './atomic-components/config-generator';
 import DataCollection from './DataCollection';
-import SecurityAudit from './SecurityAudit';
-import AlertReporting from './AlertReporting';
 
 import ProcessOrchestration from './ProcessOrchestration';
 import VisualDesigner from './VisualDesigner';
@@ -38,8 +36,6 @@ const RPARouter: React.FC = () => {
         <Route path="config-management" element={<ConfigManagement />} />
         <Route path="config-generator" element={<ConfigGenerator />} />
         <Route path="data-collection" element={<DataCollection />} />
-        <Route path="security-audit" element={<SecurityAudit />} />
-        <Route path="alert-reporting" element={<AlertReporting />} />
       </Route>
       
       {/* 流程编排引擎 */}

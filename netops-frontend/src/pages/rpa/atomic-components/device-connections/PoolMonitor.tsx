@@ -1,24 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Row, Col, Statistic, Button, Select, message, Radio } from 'antd';
+import { Card, Row, Col, Statistic, Button, Select, message, Radio, Alert, Typography } from 'antd';
 import { Line } from '@ant-design/charts';
 import { getPoolStats, getPoolMetrics, cleanupConnections } from '../../../../services/poolConfig';
 import type { PoolStats } from '../../../../services/poolConfig';
 
 const { Option } = Select;
+const { Text } = Typography;
 
 const PoolMonitor: React.FC = () => {
   const [stats, setStats] = useState<PoolStats | null>(null);
   const [metrics, setMetrics] = useState<any>(null);
   const [timeRange, setTimeRange] = useState('1h');
   const [loading, setLoading] = useState(false);
-  const [poolType, setPoolType] = useState('redis');
+  const [poolType, setPoolType] = useState<'redis' | 'device'>('device');
 
   const fetchData = async () => {
     try {
       setLoading(true);
       const [statsData, metricsData] = await Promise.all([
-        getPoolStats(),
-        getPoolMetrics(timeRange)
+        getPoolStats(poolType),
+        getPoolMetrics(timeRange, poolType)
       ]);
       setStats(statsData);
       setMetrics(metricsData);
@@ -38,7 +39,7 @@ const PoolMonitor: React.FC = () => {
 
   const handleCleanup = async () => {
     try {
-      await cleanupConnections();
+      await cleanupConnections(poolType);
       message.success('异常连接清理成功');
       fetchData();
     } catch (error) {
@@ -65,6 +66,17 @@ const PoolMonitor: React.FC = () => {
 
   return (
     <div>
+      <Alert
+        type="info"
+        showIcon
+        message="与 SSH 连接配置的关系"
+        description={
+          <>
+            <Text>本页统计的是<strong>网络设备连接池</strong>，即流程/作业执行时通过<strong>上方「SSH 连接配置」</strong>中的连接模板建立的 SSH 连接。选择「网络设备连接池」可查看当前活动连接数、总连接数等（由运行时的连接获取/释放实时更新）；「清理异常连接」将清空池中所有 SSH 连接并重置计数。</Text>
+          </>
+        }
+        style={{ marginBottom: 16 }}
+      />
       <Row gutter={[16, 16]}>
         <Col span={24}>
           <Card
@@ -73,7 +85,7 @@ const PoolMonitor: React.FC = () => {
                 <span>连接池状态</span>
                 <Radio.Group 
                   value={poolType} 
-                  onChange={(e) => setPoolType(e.target.value)}
+                  onChange={(e) => setPoolType(e.target.value as 'redis' | 'device')}
                   buttonStyle="solid"
                 >
                   <Radio.Button value="redis">Redis通信连接池</Radio.Button>

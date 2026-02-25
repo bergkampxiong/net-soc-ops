@@ -71,15 +71,18 @@ const Layout: React.FC = () => {
 
   const handleLogout = async () => {
     try {
-      await request.post('/auth/logout', {}, { timeout: 5000 });
+      await request.post('/auth/logout');
+      localStorage.removeItem('token');
+      localStorage.removeItem('username');
+      message.success('已退出登录');
+      navigate('/login');
     } catch (error) {
-      // 超时或网络错误时忽略，下面统一清除本地并跳转
+      console.error('退出登录失败:', error);
+      // 即使API调用失败，也清除本地存储并跳转
+      localStorage.removeItem('token');
+      localStorage.removeItem('username');
+      navigate('/login');
     }
-    localStorage.removeItem('token');
-    localStorage.removeItem('refresh_token');
-    localStorage.removeItem('username');
-    message.success('已退出登录');
-    navigate('/login');
   };
 
   // 获取当前选中的菜单项
@@ -203,14 +206,6 @@ const Layout: React.FC = () => {
             {
               key: 'rpa/atomic-components/data-collection',
               label: '数据采集组件',
-            },
-            {
-              key: 'rpa/atomic-components/security-audit',
-              label: '安全审计组件',
-            },
-            {
-              key: 'rpa/atomic-components/alert-reporting',
-              label: '告警与报告组件',
             },
           ],
         },
