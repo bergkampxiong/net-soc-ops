@@ -360,6 +360,53 @@ def summary_stats(db: Session = Depends(get_db)):
     )
 
 
+@router.get("/summary/backups-by-day")
+def summary_backups_by_day(
+    days: int = Query(7, ge=1, le=30),
+    db: Session = Depends(get_db),
+):
+    """按日统计最近 N 天备份数，用于趋势图。返回 [{ date: 'YYYY-MM-DD', count: n }, ...]。"""
+    now = datetime.utcnow()
+    start = (now - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    rows = (
+        db.query(ConfigModuleBackup.created_at)
+        .filter(ConfigModuleBackup.created_at >= start)
+        .all()
+    )
+    from collections import defaultdict
+    by_day: dict = defaultdict(int)
+    for (created_at,) in rows:
+        if created_at:
+            key = created_at.strftime("%Y-%m-%d") if hasattr(created_at, "strftime") else str(created_at)[:10]
+            by_day[key] += 1
+    result = []
+    for i in range(days):
+        d = (now - timedelta(days=days - 1 - i)).strftime("%Y-%m-%d")
+        result.append({"date": d, "count": by_day.get(d, 0)})
+    return result
+
+
+@router.get("/summary/backups-by-source")
+def summary_backups_by_source(
+    days: int = Query(7, ge=1, le=30),
+    db: Session = Depends(get_db),
+):
+    """按来源统计最近 N 天备份数，用于饼图。返回 [{ name: 'workflow', value: n }, ...]。"""
+    now = datetime.utcnow()
+    start = now - timedelta(days=days)
+    rows = (
+        db.query(ConfigModuleBackup.source, func.count(ConfigModuleBackup.id))
+        .filter(ConfigModuleBackup.created_at >= start)
+        .group_by(ConfigModuleBackup.source)
+        .all()
+    )
+    name_map = {"workflow": "流程", "manual": "手动", "api": "API"}
+    return [
+        {"name": name_map.get((s or "api").lower(), s or "其他"), "value": c}
+        for s, c in rows
+    ]
+
+
 @router.get("/summary/recent-backups")
 def recent_backups(
     limit: int = Query(10, ge=1, le=50),
