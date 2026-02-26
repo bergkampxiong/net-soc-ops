@@ -7,25 +7,40 @@ import type { PoolStats } from '../../../../services/poolConfig';
 const { Option } = Select;
 const { Text } = Typography;
 
+const DEFAULT_STATS: PoolStats = {
+  total_connections: 0,
+  active_connections: 0,
+  idle_connections: 0,
+  waiting_connections: 0,
+  max_wait_time: 0,
+  avg_wait_time: 0,
+  created_at: '',
+};
+
 const PoolMonitor: React.FC = () => {
-  const [stats, setStats] = useState<PoolStats | null>(null);
-  const [metrics, setMetrics] = useState<any>(null);
+  const [stats, setStats] = useState<PoolStats | null>(DEFAULT_STATS);
+  const [metrics, setMetrics] = useState<any>({ connection_history: [], error_history: [], resource_usage: [] });
   const [timeRange, setTimeRange] = useState('1h');
   const [loading, setLoading] = useState(false);
   const [poolType, setPoolType] = useState<'redis' | 'device'>('device');
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchData = async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       const [statsData, metricsData] = await Promise.all([
         getPoolStats(poolType),
         getPoolMetrics(timeRange, poolType)
       ]);
-      setStats(statsData);
-      setMetrics(metricsData);
+      setStats(statsData ?? DEFAULT_STATS);
+      setMetrics(metricsData ?? { connection_history: [], error_history: [], resource_usage: [] });
     } catch (error) {
       message.error('获取监控数据失败');
       console.error('获取监控数据失败:', error);
+      setLoadError('获取监控数据失败，请检查后端服务与 Redis。');
+      setStats(DEFAULT_STATS);
+      setMetrics({ connection_history: [], error_history: [], resource_usage: [] });
     } finally {
       setLoading(false);
     }
@@ -72,11 +87,14 @@ const PoolMonitor: React.FC = () => {
         message="与 SSH 连接配置的关系"
         description={
           <>
-            <Text>本页统计的是<strong>网络设备连接池</strong>，即流程/作业执行时通过<strong>上方「SSH 连接配置」</strong>中的连接模板建立的 SSH 连接。选择「网络设备连接池」可查看当前活动连接数、总连接数等（由运行时的连接获取/释放实时更新）；「清理异常连接」将清空池中所有 SSH 连接并重置计数。</Text>
+            <Text>本页统计的是<strong>网络设备连接池</strong>，即流程/作业执行时通过<strong>上方「SSH 连接配置」</strong>中的连接模板建立的 SSH 连接。选择「网络设备连接池」可查看当前活动连接数、总连接数等；流程发布到「作业执行控制」后执行时，任务中的设备连接会实时计入本统计；「清理异常连接」将清空池中所有 SSH 连接并重置计数。</Text>
           </>
         }
         style={{ marginBottom: 16 }}
       />
+      {loadError && (
+        <Alert type="warning" showIcon message={loadError} style={{ marginBottom: 16 }} />
+      )}
       <Row gutter={[16, 16]}>
         <Col span={24}>
           <Card
@@ -114,28 +132,28 @@ const PoolMonitor: React.FC = () => {
               <Col span={6}>
                 <Statistic
                   title="总连接数"
-                  value={stats?.total_connections}
+                  value={stats?.total_connections ?? 0}
                   loading={loading}
                 />
               </Col>
               <Col span={6}>
                 <Statistic
                   title="活动连接数"
-                  value={stats?.active_connections}
+                  value={stats?.active_connections ?? 0}
                   loading={loading}
                 />
               </Col>
               <Col span={6}>
                 <Statistic
                   title="空闲连接数"
-                  value={stats?.idle_connections}
+                  value={stats?.idle_connections ?? 0}
                   loading={loading}
                 />
               </Col>
               <Col span={6}>
                 <Statistic
                   title="等待连接数"
-                  value={stats?.waiting_connections}
+                  value={stats?.waiting_connections ?? 0}
                   loading={loading}
                 />
               </Col>
@@ -194,7 +212,11 @@ const PoolMonitor: React.FC = () => {
 
         <Col span={24}>
           <Card title="连接趋势">
-            <Line {...config} />
+            {(metrics?.connection_history?.length ?? 0) > 0 ? (
+              <Line {...config} />
+            ) : (
+              <div style={{ padding: 24, textAlign: 'center', color: '#999' }}>暂无趋势数据</div>
+            )}
           </Card>
         </Col>
       </Row>

@@ -267,7 +267,7 @@ const Layout: React.FC = () => {
     {
       key: 'config-module',
       icon: <FileTextOutlined />,
-      label: '配置管理模块',
+      label: '配置管理',
       children: [
         { key: 'config-module/summary', label: '配置摘要', icon: <BarChartOutlined /> },
         { key: 'config-module/management', label: '配置管理', icon: <DatabaseOutlined /> },

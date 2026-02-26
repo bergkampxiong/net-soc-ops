@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 import logging
@@ -12,19 +13,30 @@ from utils.connection_pool_manager import connection_pool_manager  # 与 device_
 from datetime import datetime
 
 
+def _zero_device_stats() -> Dict[str, Any]:
+    """返回全零的设备连接池统计（用于 Redis 不可用或无数据时）。"""
+    return {
+        "total_connections": 0,
+        "active_connections": 0,
+        "idle_connections": 0,
+        "waiting_connections": 0,
+        "max_wait_time": 0,
+        "avg_wait_time": 0,
+        "created_at": datetime.now().isoformat(),
+    }
+
+
 def _get_device_stats_from_redis(redis_client) -> Dict[str, Any]:
     """从 Redis 读取 device_connection_stats（device_connection_manager 写入），兼容 str/bytes key。"""
-    stats = redis_client.hgetall("device_connection_stats")
+    if not redis_client:
+        return _zero_device_stats()
+    try:
+        stats = redis_client.hgetall("device_connection_stats")
+    except Exception as e:
+        logger.warning(f"读取 device_connection_stats 失败: {e}，返回零统计")
+        return _zero_device_stats()
     if not stats:
-        return {
-            "total_connections": 0,
-            "active_connections": 0,
-            "idle_connections": 0,
-            "waiting_connections": 0,
-            "max_wait_time": 0,
-            "avg_wait_time": 0,
-            "created_at": datetime.now().isoformat(),
-        }
+        return _zero_device_stats()
     def _v(key):
         v = stats.get(key) or stats.get(key.encode("utf-8") if isinstance(key, str) else key)
         if v is None:
@@ -57,6 +69,35 @@ router = APIRouter(
 
 # 连接池 API 使用的 Redis 客户端（与 connection_pool_manager 同源，用于读写 device_connection_stats）
 pool_manager = connection_pool_manager
+
+
+class ReportEventBody(BaseModel):
+    event: str  # "connect" | "disconnect"
+
+
+@router.post("/report", status_code=status.HTTP_204_NO_CONTENT)
+async def report_connection_event(body: ReportEventBody):
+    """作业执行（生成代码子进程）在建立/关闭设备连接时调用，用于更新连接池统计，使「连接池监控」能正确显示。"""
+    event = (body.event or "").strip().lower()
+    if event not in ("connect", "disconnect"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="event 必须为 connect 或 disconnect")
+    redis_client = getattr(pool_manager, "redis_client", None)
+    if not redis_client:
+        return None
+    try:
+        stats_key = "device_connection_stats"
+        if event == "connect":
+            redis_client.hincrby(stats_key, "current_connections", 1)
+            redis_client.hincrby(stats_key, "total_connections", 1)
+        else:
+            redis_client.hincrby(stats_key, "current_connections", -1)
+            cur = redis_client.hget(stats_key, "current_connections")
+            if cur is not None and int(cur) < 0:
+                redis_client.hset(stats_key, "current_connections", 0)
+    except Exception as e:
+        logger.warning(f"上报连接事件失败: {e}")
+    return None
+
 
 @router.get("/{config_id}", response_model=ConnectionPoolResponse)
 async def get_pool_config(
@@ -120,7 +161,7 @@ async def get_pool_status(
     """获取连接池状态。device=网络设备 SSH 连接池（由 device_connection_manager 维护），redis=Redis 通信连接池配置统计。"""
     try:
         if pool_type == "device":
-            return _get_device_stats_from_redis(pool_manager.redis_client)
+            return _get_device_stats_from_redis(getattr(pool_manager, "redis_client", None))
         # redis：返回 connection_pool_stats:redis 的统计（若无可返回零值）
         stats = pool_manager.get_pool_stats("redis")
         return {
@@ -133,11 +174,21 @@ async def get_pool_status(
             "created_at": stats.get("created_at", datetime.now().isoformat()),
         }
     except Exception as e:
-        logger.error(f"获取连接池状态失败: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取连接池状态失败: {str(e)}"
-        )
+        logger.warning(f"获取连接池状态失败: {str(e)}，返回零统计")
+        return _zero_device_stats()
+
+def _zero_metrics(time_range: str) -> Dict[str, Any]:
+    """返回全零的指标（用于 Redis 不可用或异常时）。"""
+    return {
+        "connection_history": [],
+        "error_history": [],
+        "resource_usage": [],
+        "current_connections": 0,
+        "total_connections": 0,
+        "failed_connections": 0,
+        "time_range": time_range,
+    }
+
 
 @router.get("/{config_id}/metrics", response_model=dict)
 async def get_pool_metrics(
@@ -157,26 +208,28 @@ async def get_pool_metrics(
             "failed_connections": 0,
             "time_range": time_range,
         }
+        redis_client = getattr(pool_manager, "redis_client", None)
         if pool_type == "device":
-            stats = pool_manager.redis_client.hgetall("device_connection_stats")
-            if stats:
-                def _v(k):
-                    v = stats.get(k) or stats.get(k.encode("utf-8") if isinstance(k, str) else k)
-                    return int(float(v)) if v is not None else 0
-                metrics["current_connections"] = _v("current_connections")
-                metrics["total_connections"] = _v("total_connections")
-                metrics["failed_connections"] = _v("failed_connections")
+            if redis_client:
+                try:
+                    stats = redis_client.hgetall("device_connection_stats")
+                    if stats:
+                        def _v(k):
+                            v = stats.get(k) or stats.get(k.encode("utf-8") if isinstance(k, str) else k)
+                            return int(float(v)) if v is not None else 0
+                        metrics["current_connections"] = _v("current_connections")
+                        metrics["total_connections"] = _v("total_connections")
+                        metrics["failed_connections"] = _v("failed_connections")
+                except Exception as e:
+                    logger.warning(f"读取 device_connection_stats 失败: {e}")
         else:
             s = pool_manager.get_pool_stats("redis")
             metrics["current_connections"] = int(s.get("active_connections", 0))
             metrics["total_connections"] = int(s.get("total_connections", 0))
         return metrics
     except Exception as e:
-        logger.error(f"获取连接池指标失败: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取连接池指标失败: {str(e)}"
-        )
+        logger.warning(f"获取连接池指标失败: {str(e)}，返回零指标")
+        return _zero_metrics(time_range)
 
 @router.post("/{config_id}/cleanup", status_code=status.HTTP_204_NO_CONTENT)
 async def cleanup_pool(
