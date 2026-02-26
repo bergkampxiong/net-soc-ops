@@ -12,6 +12,7 @@ class ConfigModuleBackup(Base):
     device_id = Column(String(64), nullable=False, index=True, comment="设备标识")
     device_name = Column(String(128), nullable=True, comment="设备显示名")
     device_host = Column(String(128), nullable=True, index=True, comment="设备 IP/主机名")
+    job_execution_id = Column(String(64), nullable=True, index=True, comment="作业执行 ID，与作业/流程关联")
     content = Column(Text, nullable=False, comment="配置全文")
     source = Column(String(32), nullable=True, comment="来源: workflow / manual / api")
     remark = Column(String(500), nullable=True, comment="备注")
@@ -25,6 +26,7 @@ class ConfigModuleBackup(Base):
             "device_id": self.device_id,
             "device_name": self.device_name,
             "device_host": self.device_host,
+            "job_execution_id": self.job_execution_id,
             "source": self.source,
             "remark": self.remark,
             "version_no": self.version_no,

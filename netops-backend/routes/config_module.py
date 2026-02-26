@@ -1,6 +1,6 @@
 # 配置管理模块 API：设备配置备份、配置摘要、变更模板、合规、服务终止（不修改其它功能）
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_
 from typing import Optional, List, Tuple
 from datetime import datetime, timedelta
@@ -9,6 +9,7 @@ import re
 import logging
 
 from database.session import get_db
+from database.cmdb_models import Asset as AssetModel
 from database.config_module_models import (
     ConfigModuleBackup,
     ConfigChangeTemplate,
@@ -42,6 +43,13 @@ router = APIRouter(
 
 def _backup_to_response(b: ConfigModuleBackup, include_content: bool = False) -> dict:
     return b.to_dict(include_content=include_content)
+
+
+def _device_key(device_host: Optional[str], device_id: str) -> str:
+    """同一设备：device_host 非空用 device_host，否则用 device_id。"""
+    if device_host and (device_host := (device_host or "").strip()):
+        return device_host
+    return device_id or ""
 
 
 # ---------- 备份列表（须在 /backups/{id} 之前定义，避免 path 冲突）----------
@@ -91,6 +99,137 @@ def list_backups(
     )
 
 
+def _enrich_devices_with_cmdb(result: list) -> None:
+    """根据 device_host 查 CMDB，为 result 中每项补充 cmdb_name、cmdb_model、cmdb_vendor。"""
+    hosts = list({x["device_host"].strip() for x in result if x.get("device_host") and (x["device_host"] or "").strip()})
+    if not hosts:
+        return
+    try:
+        from database.cmdb_session import get_cmdb_db
+        cmdb_db = next(get_cmdb_db())
+        try:
+            assets = (
+                cmdb_db.query(AssetModel)
+                .filter(AssetModel.ip_address.in_(hosts))
+                .options(
+                    joinedload(AssetModel.network_device),
+                    joinedload(AssetModel.vendor),
+                )
+                .all()
+            )
+            cmdb_map = {}
+            for a in assets:
+                if not a.ip_address:
+                    continue
+                ip = (a.ip_address or "").strip()
+                if ip not in cmdb_map:
+                    nd = a.network_device
+                    vendor_name = a.vendor.name if a.vendor else None
+                    cmdb_map[ip] = {
+                        "cmdb_name": a.name,
+                        "cmdb_model": nd.device_model if nd else None,
+                        "cmdb_vendor": vendor_name,
+                    }
+            for x in result:
+                host = (x.get("device_host") or "").strip()
+                if host and host in cmdb_map:
+                    x.update(cmdb_map[host])
+        finally:
+            cmdb_db.close()
+    except Exception as e:
+        logger.warning("CMDB 查询失败，设备列表不补充 CMDB 信息: %s", e)
+
+
+@router.get("/backups/devices")
+def list_backup_devices(
+    keyword: Optional[str] = Query(None, description="关键词（综合）"),
+    device_name: Optional[str] = Query(None, description="设备名称"),
+    device_host: Optional[str] = Query(None, description="IP 地址"),
+    model: Optional[str] = Query(None, description="设备型号"),
+    vendor: Optional[str] = Query(None, description="厂商"),
+    db: Session = Depends(get_db),
+):
+    """按设备聚合：同一设备一行，返回设备名、IP、备份数、最近备份时间；优先用 CMDB 补充设备名称、型号、厂商。支持多条件筛选。"""
+    rows = (
+        db.query(ConfigModuleBackup)
+        .order_by(ConfigModuleBackup.created_at.desc())
+        .all()
+    )
+    groups: dict = {}
+    for r in rows:
+        key = _device_key(r.device_host, r.device_id)
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(r)
+    result = []
+    for key, group in groups.items():
+        latest = group[0]
+        result.append({
+            "device_key": key,
+            "device_id": latest.device_id,
+            "device_host": latest.device_host,
+            "device_name": latest.device_name,
+            "backup_count": len(group),
+            "latest_created_at": latest.created_at.isoformat() if latest.created_at else None,
+        })
+    _enrich_devices_with_cmdb(result)
+    # 多条件筛选：device_name / device_host / model / vendor 任一传入则按条件 AND 过滤
+    dn = (device_name or "").strip()
+    if dn:
+        dn_lower = dn.lower()
+        result = [
+            x for x in result
+            if dn_lower in (x.get("device_name") or "").lower()
+            or dn_lower in (x.get("cmdb_name") or "").lower()
+        ]
+    dh = (device_host or "").strip()
+    if dh:
+        result = [x for x in result if dh.lower() in (x.get("device_host") or "").lower()]
+    mdl = (model or "").strip()
+    if mdl:
+        result = [x for x in result if mdl.lower() in (x.get("cmdb_model") or "").lower()]
+    vnd = (vendor or "").strip()
+    if vnd:
+        result = [x for x in result if vnd.lower() in (x.get("cmdb_vendor") or "").lower()]
+    # 未使用分项条件时保留关键词综合搜索
+    if not any([dn, dh, mdl, vnd]) and keyword and (keyword := (keyword or "").strip()):
+        kw = keyword.lower()
+        result = [
+            x
+            for x in result
+            if kw in (x.get("device_name") or "").lower()
+            or kw in (x.get("device_host") or "").lower()
+            or kw in (x.get("device_id") or "").lower()
+            or kw in (x.get("cmdb_name") or "").lower()
+            or kw in (x.get("cmdb_model") or "").lower()
+            or kw in (x.get("cmdb_vendor") or "").lower()
+        ]
+    result.sort(key=lambda x: x["latest_created_at"] or "", reverse=True)
+    return {"items": result, "total": len(result)}
+
+
+@router.get("/backups/device-history")
+def device_history_query(
+    device_host: Optional[str] = Query(None, description="设备 IP/主机名"),
+    device_id: Optional[str] = Query(None, description="设备标识（device_host 为空时用）"),
+    limit: int = Query(90, ge=1, le=90),
+    db: Session = Depends(get_db),
+):
+    """单设备备份历史，按时间倒序，不含 content。传 device_host 或 device_id 其一。"""
+    if device_host and (device_host := (device_host or "").strip()):
+        q = db.query(ConfigModuleBackup).filter(ConfigModuleBackup.device_host == device_host)
+    elif device_id:
+        q = db.query(ConfigModuleBackup).filter(ConfigModuleBackup.device_id == device_id)
+    else:
+        raise HTTPException(status_code=400, detail="device_host or device_id required")
+    rows = (
+        q.order_by(ConfigModuleBackup.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [_backup_to_response(r, include_content=False) for r in rows]
+
+
 @router.get("/backups/device/{device_id}/history")
 def device_history(
     device_id: str,
@@ -132,11 +271,26 @@ def create_backup(
     body: BackupCreate,
     db: Session = Depends(get_db),
 ):
-    """写入一条备份（流程节点/API 调用）。"""
+    """写入一条备份（流程节点/API 调用）。同一设备最多保留 90 条，超出则删除最早一条再插入。"""
+    key = _device_key(body.device_host, body.device_id)
+    if not key:
+        raise HTTPException(status_code=400, detail="device_id or device_host required")
+    # 按设备统计：device_host 非空按 device_host，否则按 device_id
+    if body.device_host and (body.device_host or "").strip():
+        q = db.query(ConfigModuleBackup).filter(ConfigModuleBackup.device_host == (body.device_host or "").strip())
+    else:
+        q = db.query(ConfigModuleBackup).filter(ConfigModuleBackup.device_id == body.device_id)
+    count = q.count()
+    if count >= 90:
+        oldest = q.order_by(ConfigModuleBackup.created_at.asc()).first()
+        if oldest:
+            db.delete(oldest)
+            db.flush()
     b = ConfigModuleBackup(
         device_id=body.device_id,
         device_name=body.device_name,
         device_host=body.device_host,
+        job_execution_id=body.job_execution_id,
         content=body.content,
         source=body.source or "api",
         remark=body.remark,

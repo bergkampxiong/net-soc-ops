@@ -546,10 +546,28 @@ def init_job_tables(engine):
         print(f"作业执行控制相关表创建失败: {str(e)}")
         raise
 
+def ensure_config_backup_job_execution_id(engine):
+    """确保 config_module_backups 表存在 job_execution_id 列（兼容已有库）。"""
+    try:
+        inspector = inspect(engine)
+        if "config_module_backups" not in inspector.get_table_names():
+            return
+        columns = [col["name"] for col in inspector.get_columns("config_module_backups")]
+        if "job_execution_id" in columns:
+            return
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE config_module_backups ADD COLUMN job_execution_id VARCHAR(64)"))
+            conn.commit()
+        print("已添加 job_execution_id 列到 config_module_backups 表")
+    except Exception as e:
+        print(f"ensure_config_backup_job_execution_id 失败: {e}")
+
+
 def init_config_module_tables(engine):
     """初始化配置管理模块表（备份、变更模板、合规、服务终止），不修改其它表或逻辑。"""
     try:
         ConfigModuleBackup.__table__.create(engine, checkfirst=True)
+        ensure_config_backup_job_execution_id(engine)
         ConfigChangeTemplate.__table__.create(engine, checkfirst=True)
         ConfigCompliancePolicy.__table__.create(engine, checkfirst=True)
         ConfigComplianceResult.__table__.create(engine, checkfirst=True)

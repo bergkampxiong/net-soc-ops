@@ -7,6 +7,7 @@ class BackupCreate(BaseModel):
     device_id: str
     device_name: Optional[str] = None
     device_host: Optional[str] = None
+    job_execution_id: Optional[str] = None  # 作业执行 ID
     content: str
     source: Optional[str] = None  # workflow / manual / api
     remark: Optional[str] = None
@@ -17,6 +18,7 @@ class BackupResponse(BaseModel):
     device_id: str
     device_name: Optional[str] = None
     device_host: Optional[str] = None
+    job_execution_id: Optional[str] = None
     source: Optional[str] = None
     remark: Optional[str] = None
     version_no: Optional[int] = None
