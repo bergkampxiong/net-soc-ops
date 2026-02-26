@@ -69,4 +69,27 @@ class JobExecutionResponse(JobExecutionBase):
     updated_at: datetime
 
     class Config:
-        orm_mode = True 
+        orm_mode = True
+
+
+class JobExecutionListItem(JobExecutionResponse):
+    """跨作业执行列表项（含作业名称）"""
+    job_name: Optional[str] = None
+
+    class Config:
+        orm_mode = True
+
+
+class JobExecutionListResponse(BaseModel):
+    """跨作业执行列表响应"""
+    total: int
+    items: List[JobExecutionListItem]
+
+
+class JobExecutionStatsResponse(BaseModel):
+    """执行统计响应（监控概览）"""
+    total: int
+    success: int
+    failed: int
+    running: int
+    success_rate: float 

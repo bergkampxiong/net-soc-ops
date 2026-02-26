@@ -4,10 +4,67 @@ from typing import List, Optional
 from datetime import datetime
 from database.session import get_db
 from app.models.job import Job, JobExecution
-from app.schemas.job import JobCreate, JobUpdate, JobResponse, JobExecutionResponse
+from app.schemas.job import (
+    JobCreate, JobUpdate, JobResponse, JobExecutionResponse,
+    JobExecutionListItem, JobExecutionListResponse, JobExecutionStatsResponse,
+)
 from app.services.job import JobService
 
 router = APIRouter()
+
+
+@router.get("/job-executions", response_model=JobExecutionListResponse)
+def get_job_executions_cross(
+    job_id: Optional[int] = Query(None, description="按作业ID筛选"),
+    status: Optional[str] = Query(None, description="执行状态: completed | failed | running"),
+    start_time_from: Optional[str] = Query(None, description="开始时间起 ISO 或 YYYY-MM-DD"),
+    start_time_to: Optional[str] = Query(None, description="开始时间止 ISO 或 YYYY-MM-DD"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    """跨作业执行列表，供作业监控与报告使用"""
+    total, rows = JobService(db).get_job_executions_cross_job(
+        job_id=job_id,
+        status=status,
+        start_time_from=start_time_from,
+        start_time_to=start_time_to,
+        skip=skip,
+        limit=limit,
+    )
+    items = []
+    for ex, job_name in rows:
+        items.append(JobExecutionListItem(
+            id=ex.id,
+            job_id=ex.job_id,
+            status=ex.status,
+            start_time=ex.start_time,
+            end_time=ex.end_time,
+            result=ex.result,
+            error_message=ex.error_message,
+            logs=ex.logs,
+            created_at=ex.created_at,
+            updated_at=ex.updated_at,
+            job_name=job_name,
+        ))
+    return JobExecutionListResponse(total=total, items=items)
+
+
+@router.get("/job-executions/stats", response_model=JobExecutionStatsResponse)
+def get_job_executions_stats(
+    date_from: str = Query(..., description="统计起始日期 YYYY-MM-DD"),
+    date_to: str = Query(..., description="统计结束日期 YYYY-MM-DD"),
+    job_id: Optional[int] = Query(None, description="按作业ID筛选，不传为全部"),
+    db: Session = Depends(get_db),
+):
+    """执行统计，供作业监控概览卡片使用"""
+    stats = JobService(db).get_job_executions_stats(
+        date_from=date_from,
+        date_to=date_to,
+        job_id=job_id,
+    )
+    return JobExecutionStatsResponse(**stats)
+
 
 @router.get("/jobs", response_model=List[JobResponse])
 def get_jobs(

@@ -3,9 +3,9 @@ import os
 import subprocess
 import tempfile
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, text
-from typing import List, Optional
-from datetime import datetime
+from sqlalchemy import desc
+from typing import List, Optional, Tuple, Any
+from datetime import datetime, timedelta
 from app.models.job import Job, JobExecution
 from app.schemas.job import JobCreate, JobUpdate, JobExecutionCreate
 from app.process_designer.code_generator import CodeGenerator
@@ -265,6 +265,92 @@ class JobService:
             .limit(limit)
             .all()
         )
+
+    def get_job_executions_cross_job(
+        self,
+        job_id: Optional[int] = None,
+        status: Optional[str] = None,
+        start_time_from: Optional[str] = None,
+        start_time_to: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> Tuple[int, List[Tuple[JobExecution, str]]]:
+        """跨作业查询执行列表，返回 (total, [(execution, job_name), ...])"""
+        q = self.db.query(JobExecution).join(Job, JobExecution.job_id == Job.id)
+        if job_id is not None:
+            q = q.filter(JobExecution.job_id == job_id)
+        if status:
+            q = q.filter(JobExecution.status == status)
+        if start_time_from:
+            try:
+                dt_from = datetime.fromisoformat(start_time_from.replace("Z", "+00:00"))
+                q = q.filter(JobExecution.start_time >= dt_from)
+            except (ValueError, TypeError):
+                pass
+        if start_time_to:
+            try:
+                dt_to = datetime.fromisoformat(start_time_to.replace("Z", "+00:00"))
+                q = q.filter(JobExecution.start_time <= dt_to)
+            except (ValueError, TypeError):
+                pass
+        total = q.count()
+        rows = (
+            q.order_by(desc(JobExecution.start_time))
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+        out = []
+        for ex in rows:
+            name = ex.job.name if ex.job else ""
+            out.append((ex, name))
+        return total, out
+
+    def get_job_executions_stats(
+        self,
+        date_from: str,
+        date_to: str,
+        job_id: Optional[int] = None,
+    ) -> dict:
+        """按日期范围统计执行：total, success, failed, running, success_rate。日期格式 YYYY-MM-DD。"""
+        try:
+            dt_from = datetime.strptime(date_from, "%Y-%m-%d")
+            dt_to = datetime.strptime(date_to, "%Y-%m-%d")
+            dt_to_end = dt_to + timedelta(days=1)
+        except (ValueError, TypeError):
+            return {
+                "total": 0,
+                "success": 0,
+                "failed": 0,
+                "running": 0,
+                "success_rate": 0.0,
+            }
+        q = self.db.query(JobExecution).filter(
+            JobExecution.start_time >= dt_from,
+            JobExecution.start_time < dt_to_end,
+        )
+        if job_id is not None:
+            q = q.filter(JobExecution.job_id == job_id)
+        total = q.count()
+        if total == 0:
+            return {
+                "total": 0,
+                "success": 0,
+                "failed": 0,
+                "running": 0,
+                "success_rate": 0.0,
+            }
+        completed = q.filter(JobExecution.status == "completed").count()
+        failed = q.filter(JobExecution.status == "failed").count()
+        running = q.filter(JobExecution.status == "running").count()
+        success_rate = round(completed / total * 100.0, 1) if total else 0.0
+        return {
+            "total": total,
+            "success": completed,
+            "failed": failed,
+            "running": running,
+            "success_rate": success_rate,
+        }
 
 @shared_task
 def execute_job_task(job_id: int, execution_id: int):

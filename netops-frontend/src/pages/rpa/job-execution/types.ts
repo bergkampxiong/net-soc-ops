@@ -53,6 +53,26 @@ export interface JobExecution {
   updated_at: string;
 }
 
+// 跨作业执行列表项（含作业名称，供监控页）
+export interface JobExecutionListItem extends JobExecution {
+  job_name?: string;
+}
+
+// 跨作业执行列表响应
+export interface JobExecutionListResponse {
+  total: number;
+  items: JobExecutionListItem[];
+}
+
+// 执行统计（监控概览）
+export interface JobExecutionStatsResponse {
+  total: number;
+  success: number;
+  failed: number;
+  running: number;
+  success_rate: number;
+}
+
 // 作业列表项
 export interface JobListItem {
   id: number;

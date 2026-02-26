@@ -73,6 +73,9 @@ const JobDetail: React.FC = () => {
     fetchExecutions();
   }, [id]);
 
+  const tabFromUrl = searchParams.get('tab');
+  const defaultActiveKey = tabFromUrl === 'executions' ? 'executions' : 'basic';
+
   useEffect(() => {
     if (searchParams.get('convert') === 'scheduled' && job?.run_type === 'once') {
       setConvertModalVisible(true);
@@ -344,14 +347,14 @@ const JobDetail: React.FC = () => {
             </Button>
             <Button
               icon={<RollbackOutlined />}
-              onClick={() => navigate('/rpa/job-execution/jobs')}
+              onClick={() => navigate('/rpa/task-job-management/job-execution')}
             >
               返回
             </Button>
           </Space>
         }
       >
-        <Tabs defaultActiveKey="basic">
+        <Tabs defaultActiveKey={defaultActiveKey}>
           <TabPane tab="基本信息" key="basic">
             <Descriptions bordered>
               <Descriptions.Item label="作业名称">{job.name}</Descriptions.Item>
