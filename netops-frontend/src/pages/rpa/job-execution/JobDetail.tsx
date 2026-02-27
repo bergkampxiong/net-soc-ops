@@ -26,6 +26,7 @@ import {
   CalendarOutlined,
 } from '@ant-design/icons';
 import request from '@/utils/request';
+import { processDefinitionApi } from '@/api/process-designer';
 import type { JobListItem, JobExecution } from './types';
 
 const { Title } = Typography;
@@ -41,6 +42,7 @@ const JobDetail: React.FC = () => {
   const [executionLoading, setExecutionLoading] = useState(false);
   const [convertModalVisible, setConvertModalVisible] = useState(false);
   const [convertForm] = Form.useForm();
+  const [processHasPenetrationTest, setProcessHasPenetrationTest] = useState(false);
 
   // 获取作业详情
   const fetchJobDetail = async () => {
@@ -72,6 +74,20 @@ const JobDetail: React.FC = () => {
     fetchJobDetail();
     fetchExecutions();
   }, [id]);
+
+  useEffect(() => {
+    if (!job?.process_definition_id) {
+      setProcessHasPenetrationTest(false);
+      return;
+    }
+    processDefinitionApi
+      .getDetail(job.process_definition_id)
+      .then((res) => {
+        const nodes = (res.data as any)?.nodes ?? res?.nodes ?? [];
+        setProcessHasPenetrationTest(Array.isArray(nodes) && nodes.some((n: any) => n.type === 'penetrationTest'));
+      })
+      .catch(() => setProcessHasPenetrationTest(false));
+  }, [job?.process_definition_id]);
 
   const tabFromUrl = searchParams.get('tab');
   const defaultActiveKey = tabFromUrl === 'executions' ? 'executions' : 'basic';
@@ -164,6 +180,14 @@ const JobDetail: React.FC = () => {
           >
             查看日志
           </Button>
+          {processHasPenetrationTest && (
+            <Button
+              type="link"
+              onClick={() => navigate(`/rpa/task-job-management/penetration-reports?job_execution_id=${record.id}`)}
+            >
+              查看渗透测试报告
+            </Button>
+          )}
           {record.status === 'failed' && (
             <Button
               type="link"

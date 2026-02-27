@@ -2,8 +2,10 @@ import json
 import os
 import subprocess
 import tempfile
+import time
+import requests
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, text
 from typing import List, Optional, Tuple, Any
 from datetime import datetime, timedelta
 from app.models.job import Job, JobExecution
@@ -129,7 +131,7 @@ class JobService:
             self.db.commit()
             return True
 
-        # 拉取流程定义并生成代码、执行
+        # 拉取流程定义
         try:
             row = (
                 self.db.execute(
@@ -151,50 +153,147 @@ class JobService:
                     process[key] = [] if key != "variables" else {}
                 elif isinstance(process[key], str):
                     process[key] = json.loads(process[key]) if process[key] else ([] if key != "variables" else {})
-            gen = CodeGenerator(process)
-            code = gen.generate_code()
         except Exception as e:
             self._set_execution_failed(execution_id, str(e))
             return True
 
-        backend_root = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "..")
+        nodes = process.get("nodes", [])
+        has_traditional = any(
+            n.get("type") in ("deviceConnect", "configBackup", "configDeploy") for n in nodes
         )
-        fd, path = tempfile.mkstemp(suffix=".py", prefix="job_")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(code)
-            env = os.environ.copy()
-            env["PYTHONPATH"] = backend_root
-            result = subprocess.run(
-                [os.environ.get("PYTHON_EXE", "python"), path],
-                cwd=backend_root,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=600,
-            )
-            execution = self.db.query(JobExecution).filter(JobExecution.id == execution_id).first()
-            if not execution:
-                return True
-            execution.end_time = datetime.utcnow()
-            execution.logs = (result.stdout or "") + (result.stderr or "")
-            if result.returncode != 0:
-                execution.status = "failed"
-                execution.error_message = result.stderr or f"exit code {result.returncode}"
-                execution.result = {"returncode": result.returncode}
-            else:
-                execution.status = "completed"
-                execution.result = {"returncode": 0}
-        except subprocess.TimeoutExpired:
-            self._set_execution_failed(execution_id, "执行超时")
-        except Exception as e:
-            self._set_execution_failed(execution_id, str(e))
-        finally:
+        penetration_nodes = [n for n in nodes if n.get("type") == "penetrationTest"]
+        script_logs = ""
+        execution_failed = False
+        script_returncode = 0
+
+        # 若有设备/配置节点：生成并执行 Python 脚本
+        if has_traditional:
             try:
-                os.unlink(path)
-            except OSError:
-                pass
+                gen = CodeGenerator(process)
+                val = gen.validate()
+                if not val.get("isValid"):
+                    self._set_execution_failed(
+                        execution_id,
+                        "流程校验失败: " + "; ".join(val.get("errors", [])),
+                    )
+                    return True
+                code = gen.generate_code()
+            except Exception as e:
+                self._set_execution_failed(execution_id, str(e))
+                return True
+
+            backend_root = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), "..", "..")
+            )
+            fd, path = tempfile.mkstemp(suffix=".py", prefix="job_")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(code)
+                env = os.environ.copy()
+                env["PYTHONPATH"] = backend_root
+                result = subprocess.run(
+                    [os.environ.get("PYTHON_EXE", "python"), path],
+                    cwd=backend_root,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                )
+                script_logs = (result.stdout or "") + (result.stderr or "")
+                script_returncode = result.returncode
+                if result.returncode != 0:
+                    execution_failed = True
+                    script_logs += f"\n[脚本退出码: {result.returncode}]"
+            except subprocess.TimeoutExpired:
+                self._set_execution_failed(execution_id, "执行超时")
+                return True
+            except Exception as e:
+                self._set_execution_failed(execution_id, str(e))
+                return True
+            finally:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+            if execution_failed:
+                execution = self.db.query(JobExecution).filter(JobExecution.id == execution_id).first()
+                if execution:
+                    execution.end_time = datetime.utcnow()
+                    execution.logs = script_logs
+                    execution.status = "failed"
+                    execution.error_message = "脚本执行失败"
+                    execution.result = {"returncode": result.returncode}
+                self.db.commit()
+                job = self.db.query(Job).filter(Job.id == job_id).first()
+                if job:
+                    job.status = "created"
+                self.db.commit()
+                return True
+
+        # 渗透测试节点：调用后端 Strix API，轮询直至完成
+        strix_base = os.environ.get("CONFIG_MODULE_API_URL", "http://127.0.0.1:8000/api").rstrip("/")
+        strix_scan_ids: List[int] = []
+        for pn in penetration_nodes:
+            data = pn.get("data") or {}
+            target_source = data.get("targetSource") or "inline"
+            target_node_id = data.get("targetNodeId")
+            targets = []
+            if target_source == "targetNode" and target_node_id:
+                target_node = next((n for n in nodes if n.get("id") == target_node_id), None)
+                if target_node:
+                    td = (target_node.get("data") or {}).get("targets")
+                    if isinstance(td, list):
+                        targets = [str(t) for t in td]
+                    elif td:
+                        targets = [str(td)]
+            if not targets:
+                inline = data.get("targets")
+                if isinstance(inline, list):
+                    targets = [str(t) for t in inline]
+                elif inline:
+                    targets = [str(inline)]
+                elif data.get("targetValue"):
+                    targets = [str(data["targetValue"])]
+            if not targets:
+                script_logs += "\n[渗透测试] 跳过节点: 无目标\n"
+                continue
+            try:
+                r = requests.post(
+                    f"{strix_base}/config-module/strix/scans",
+                    json={
+                        "target_type": data.get("targetType") or "web_url",
+                        "targets": targets,
+                        "instruction": data.get("instruction") or None,
+                        "scan_mode": data.get("scanMode") or "deep",
+                        "job_execution_id": execution_id,
+                    },
+                    timeout=30,
+                )
+                r.raise_for_status()
+                body = r.json()
+                scan_id = body.get("id")
+                if scan_id is not None:
+                    strix_scan_ids.append(scan_id)
+                script_logs += f"\n[渗透测试] 已创建扫描 id={scan_id}\n"
+                # 轮询直至非 pending/running（最多约 1 小时）
+                for _ in range(360):
+                    time.sleep(10)
+                    r2 = requests.get(f"{strix_base}/config-module/strix/scans/{scan_id}", timeout=10)
+                    r2.raise_for_status()
+                    st = (r2.json() or {}).get("status") or ""
+                    if st not in ("pending", "running"):
+                        script_logs += f"[渗透测试] 扫描 {scan_id} 状态: {st}\n"
+                        break
+            except Exception as e:
+                script_logs += f"\n[渗透测试] 节点执行异常: {e}\n"
+
+        execution = self.db.query(JobExecution).filter(JobExecution.id == execution_id).first()
+        if execution:
+            execution.end_time = datetime.utcnow()
+            execution.logs = (execution.logs or "") + script_logs
+            if not execution_failed:
+                execution.status = "completed"
+                execution.result = {"returncode": script_returncode, "strix_scan_ids": strix_scan_ids}
 
         job = self.db.query(Job).filter(Job.id == job_id).first()
         if job:

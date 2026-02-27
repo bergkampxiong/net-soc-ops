@@ -37,6 +37,8 @@ import {
   DeploymentUnitOutlined,
   CodeOutlined,
   CheckCircleOutlined,
+  AimOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import 'reactflow/dist/style.css';
@@ -65,6 +67,10 @@ import { PDConfigDeployPanel } from './panels/pd-config-deploy-panel';
 import { PDCommandExecutePanel } from './panels/pd-command-execute-panel';
 import { PDConfigBackupPanel } from './panels/pd-config-backup-panel';
 import { PDStatusCheckPanel } from './panels/pd-status-check-panel';
+import { PDScanTargetPanel } from './panels/pd-scan-target-panel';
+import { PDPenetrationTestPanel } from './panels/pd-penetration-test-panel';
+import { PDScanTargetNode } from './nodes/pd-scan-target-node';
+import { PDPenetrationTestNode } from './nodes/pd-penetration-test-node';
 
 // 节点类型映射
 const nodeTypes = {
@@ -78,6 +84,8 @@ const nodeTypes = {
   commandExecute: PDCommandExecuteNode,
   configBackup: PDConfigBackupNode,
   statusCheck: PDStatusCheckNode,
+  scanTarget: PDScanTargetNode,
+  penetrationTest: PDPenetrationTestNode,
 };
 
 // 节点配置
@@ -126,6 +134,16 @@ const nodeConfigs = [
     type: 'statusCheck',
     title: '状态检查',
     icon: <CheckCircleOutlined style={{ fontSize: 26, color: '#52c41a' }} />,
+  },
+  {
+    type: 'scanTarget',
+    title: '扫描目标',
+    icon: <AimOutlined style={{ fontSize: 26, color: '#722ed1' }} />,
+  },
+  {
+    type: 'penetrationTest',
+    title: '渗透测试',
+    icon: <SafetyCertificateOutlined style={{ fontSize: 26, color: '#cf1322' }} />,
   },
 ];
 
@@ -185,6 +203,10 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
   const [selectedCommandExecuteNode, setSelectedCommandExecuteNode] = useState<Node | null>(null);
   const [selectedConfigBackupNode, setSelectedConfigBackupNode] = useState<Node | null>(null);
   const [selectedStatusCheckNode, setSelectedStatusCheckNode] = useState<Node | null>(null);
+  const [showScanTargetPanel, setShowScanTargetPanel] = useState(false);
+  const [selectedScanTargetNode, setSelectedScanTargetNode] = useState<Node | null>(null);
+  const [showPenetrationTestPanel, setShowPenetrationTestPanel] = useState(false);
+  const [selectedPenetrationTestNode, setSelectedPenetrationTestNode] = useState<Node | null>(null);
   const [saveModalVisible, setSaveModalVisible] = useState(false);
   const [saveForm] = Form.useForm();
   const [isSaving, setIsSaving] = useState(false);
@@ -294,6 +316,12 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
     } else if (node.type === 'statusCheck') {
       setSelectedStatusCheckNode(node);
       setShowStatusCheckPanel(true);
+    } else if (node.type === 'scanTarget') {
+      setSelectedScanTargetNode(node);
+      setShowScanTargetPanel(true);
+    } else if (node.type === 'penetrationTest') {
+      setSelectedPenetrationTestNode(node);
+      setShowPenetrationTestPanel(true);
     }
     setSelectedNode(node);
   }, []);
@@ -344,7 +372,7 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
     [reactFlowInstance, setNodes, onDirtyChange]
   );
 
-  // 验证流程完整性
+  // 验证流程完整性（若存在渗透测试节点则不强制要求设备连接与配置下发/备份）
   const validateProcess = () => {
     const hasStartNode = nodes.some(node => node.type === 'start');
     if (!hasStartNode) {
@@ -356,19 +384,23 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
       message.error('流程必须包含结束节点');
       return false;
     }
-    const hasDeviceConnect = nodes.some(node => node.type === 'deviceConnect');
-    if (!hasDeviceConnect) {
-      message.error('流程必须包含至少一个设备连接节点');
-      return false;
-    }
-    const hasConfigDeploy = nodes.some(node => node.type === 'configDeploy');
-    const hasConfigBackup = nodes.some(node => node.type === 'configBackup');
-    if (!hasConfigDeploy && !hasConfigBackup) {
-      message.error('流程必须包含至少一个配置下发节点或配置备份节点');
-      return false;
+    const hasPenetrationTest = nodes.some(node => node.type === 'penetrationTest');
+    if (!hasPenetrationTest) {
+      const hasDeviceConnect = nodes.some(node => node.type === 'deviceConnect');
+      if (!hasDeviceConnect) {
+        message.error('流程必须包含至少一个设备连接节点');
+        return false;
+      }
+      const hasConfigDeploy = nodes.some(node => node.type === 'configDeploy');
+      const hasConfigBackup = nodes.some(node => node.type === 'configBackup');
+      if (!hasConfigDeploy && !hasConfigBackup) {
+        message.error('流程必须包含至少一个配置下发节点或配置备份节点');
+        return false;
+      }
     }
     const unconfiguredNodes = nodes.filter(node => {
       if (node.type === 'start' || node.type === 'end') return false;
+      if (node.type === 'scanTarget' || node.type === 'penetrationTest') return false;
       return !(node as CustomNode).data?.configured;
     });
     if (unconfiguredNodes.length > 0) {
@@ -593,6 +625,38 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
       onDirtyChange?.(true);
     }
   }, [selectedConfigBackupNode, setNodes, onDirtyChange]);
+
+  // 处理扫描目标节点配置保存
+  const handleScanTargetSave = useCallback((data: any) => {
+    if (selectedScanTargetNode) {
+      const updatedNode = {
+        ...selectedScanTargetNode,
+        data: { ...selectedScanTargetNode.data, ...data, configured: true },
+      };
+      setNodes((nds) =>
+        nds.map((node) => (node.id === selectedScanTargetNode.id ? updatedNode : node))
+      );
+      setShowScanTargetPanel(false);
+      setIsDirty(true);
+      onDirtyChange?.(true);
+    }
+  }, [selectedScanTargetNode, setNodes, onDirtyChange]);
+
+  // 处理渗透测试节点配置保存
+  const handlePenetrationTestSave = useCallback((data: any) => {
+    if (selectedPenetrationTestNode) {
+      const updatedNode = {
+        ...selectedPenetrationTestNode,
+        data: { ...selectedPenetrationTestNode.data, ...data, configured: true },
+      };
+      setNodes((nds) =>
+        nds.map((node) => (node.id === selectedPenetrationTestNode.id ? updatedNode : node))
+      );
+      setShowPenetrationTestPanel(false);
+      setIsDirty(true);
+      onDirtyChange?.(true);
+    }
+  }, [selectedPenetrationTestNode, setNodes, onDirtyChange]);
 
   // 处理状态检查节点配置保存
   const handleStatusCheckSave = useCallback((data: any) => {
@@ -852,6 +916,21 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
         onClose={() => setShowStatusCheckPanel(false)}
         initialData={selectedStatusCheckNode?.data}
         onSave={handleStatusCheckSave}
+      />
+
+      <PDScanTargetPanel
+        visible={showScanTargetPanel}
+        onClose={() => setShowScanTargetPanel(false)}
+        initialData={selectedScanTargetNode?.data}
+        onSave={handleScanTargetSave}
+      />
+
+      <PDPenetrationTestPanel
+        visible={showPenetrationTestPanel}
+        onClose={() => setShowPenetrationTestPanel(false)}
+        initialData={selectedPenetrationTestNode?.data}
+        onSave={handlePenetrationTestSave}
+        scanTargetNodes={nodes.filter((n) => n.type === 'scanTarget').map((n) => ({ id: n.id, label: (n as CustomNode).data?.label || n.id }))}
       />
 
       {/* 保存对话框 */}

@@ -215,6 +215,10 @@ const Layout: React.FC = () => {
               key: 'rpa/atomic-components/data-collection',
               label: '数据采集组件',
             },
+            {
+              key: 'rpa/atomic-components/penetration-test',
+              label: '渗透测试',
+            },
           ],
         },
         {
@@ -244,6 +248,10 @@ const Layout: React.FC = () => {
             {
               key: 'rpa/task-job-management/job-monitoring',
               label: '作业监控与报告',
+            },
+            {
+              key: 'rpa/task-job-management/penetration-reports',
+              label: '渗透测试报告',
             },
           ],
         },

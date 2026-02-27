@@ -288,11 +288,11 @@ sudo supervisorctl start netops-backend
 
 ## 八、Strix 工程（可选）
 
-[Strix](https://github.com/usestrix/strix) 为开源 AI 安全扫描工具，可与本工程集成使用。当前仅安装工程代码至后端目录，不自动配置运行环境。
+[Strix](https://github.com/usestrix/strix) 为开源 AI 安全扫描工具，可与本工程集成使用。**本仓库以 Git 子模块（submodule）方式收纳 Strix**，便于锁定版本并与我们的集成代码一起保存。
 
 ### 8.1 安装位置与权限
 
-- **代码路径**：`<项目根目录>/netops-backend/strix`（与后端同级单独目录）。
+- **代码路径**：`<项目根目录>/netops-backend/strix`（以 submodule 形式存在，与后端同级）。
 - **权限**：安装脚本会将该目录所有者设为 `netops`，确保 netops 账号有完整读写执行权限。
 
 ### 8.2 一键安装（推荐）
@@ -308,8 +308,20 @@ sudo bash scripts/install-strix.sh
 
 1. **安装 Docker**（若未安装）：按系统类型（apt / yum·dnf）安装 Docker CE。
 2. **配置 Docker 桥接子网**：在 `/etc/docker/daemon.json` 中设置 `bip: "192.168.0.1/25"`（网段 192.168.0.0/25），避免与现有 172.17.0.0/16 等网段冲突；若已有配置则合并，并重启 Docker。
-3. **克隆 Strix 代码**：从 `https://github.com/usestrix/strix.git` 克隆 `main` 分支到 `netops-backend/strix`；若目录已存在则执行 `git pull`。
+3. **获取 Strix 代码**：若本仓库已配置 Strix 为子模块（方式二），则执行 `git submodule update --init netops-backend/strix`；否则按传统方式克隆到 `netops-backend/strix`。
 4. **设置权限**：`chown -R netops:netops netops-backend/strix`，并设置合理 umask。
+
+**首次克隆本仓库时**若需一并拉取 Strix 子模块，请使用：
+
+```bash
+git clone --recursive <本仓库地址>
+```
+
+若已克隆但未带 `--recursive`，在项目根目录执行一次即可：
+
+```bash
+git submodule update --init netops-backend/strix
+```
 
 ### 8.3 可调环境变量
 
@@ -328,7 +340,9 @@ sudo DOCKER_BIP=192.168.64.1/25 TARGET_USER=appuser bash scripts/install-strix.s
 
 ### 8.4 更新 Strix 工程
 
-仅更新代码（不重装 Docker、不改权限）时，可在 Strix 目录执行：
+**方式一：未使用 submodule（当前脚本默认）**
+
+仅更新代码时，在 Strix 目录执行：
 
 ```bash
 cd <项目根目录>/netops-backend/strix
@@ -337,9 +351,59 @@ git checkout main
 git pull --rebase origin main
 ```
 
-或以 netops 用户执行上述命令；若需重新执行完整安装与权限设置，可再次运行 `sudo bash scripts/install-strix.sh`（已安装 Docker 和已存在仓库时会跳过或仅更新代码）。
+**方式二：已使用 submodule（推荐，便于锁定版本）**
 
-### 8.5 使用 Strix
+若已将 Strix 添加为 Git 子模块，则“当前使用的 Strix 版本”由主仓库里记录的 submodule 提交保存。其他人克隆主仓库后执行一次即可拿到同版本 Strix：
+
+```bash
+cd <项目根目录>
+git submodule update --init netops-backend/strix
+```
+
+更新 Strix 到**指定版本**（如某 tag 或 commit）并保存到我们仓库：
+
+```bash
+cd <项目根目录>/netops-backend/strix
+git fetch origin --tags
+git checkout v1.2.3          # 或指定 commit: git checkout <commit-hash>
+cd ../..
+git add netops-backend/strix
+git commit -m "chore(strix): 升级到 v1.2.3"
+```
+
+之后 push 主仓库即可，其他人拉代码再执行 `git submodule update --init` 会得到同一版本。
+
+### 8.5 Strix 版本锁定与集成代码的保存（推荐流程）
+
+若你后续要做 Strix 集成并希望**支持特定版本、且把“用哪个版本”和“我们的集成代码”都放进本仓库**，建议：
+
+1. **把 Strix 以 submodule 形式纳入本仓库**（仅做一次，由维护者执行）  
+   - 在项目根目录执行（若当前 `netops-backend/strix` 是普通 clone，先备份后删掉再执行）：
+   ```bash
+   git submodule add -b main https://github.com/usestrix/strix.git netops-backend/strix
+   cd netops-backend/strix
+   git checkout v0.x.x   # 或某次 commit，按需锁定
+   cd ../..
+   git add netops-backend/strix .gitmodules
+   git commit -m "chore: 添加 Strix 子模块并锁定版本 v0.x.x"
+   ```
+   - 之后本仓库会记录“Strix 指向的 commit”，即**锁定的版本**。
+
+2. **集成代码放在本仓库，不放进 strix 目录**  
+   - 调用 Strix 的 API、配置、脚本、前端入口等一律放在 `netops-backend` / `netops-frontend` 等现有目录，按正常提交即可。  
+   - 这样“我们的集成”和“第三方 Strix 版本”分离：我们只提交自己的代码 + submodule 指针。
+
+3. **升级 Strix 到另一指定版本**  
+   - 按 [8.4 方式二](#84-更新-strix-工程) 进入 `netops-backend/strix`，`git fetch` 后 `checkout` 到目标 tag/commit，再在主仓库 `git add netops-backend/strix` 并提交，即可把“支持的 Strix 版本”更新并保存到本仓库。
+
+4. **其他人克隆/拉取本仓库**  
+   - 克隆时带子模块：`git clone --recursive <本仓库地址>`  
+   - 或克隆后再执行：`git submodule update --init netops-backend/strix`  
+   即可得到与仓库中记录的同一 Strix 版本。
+
+这样，你“后面更新集成 Strix”时：**版本由 submodule 提交锁定并保存在我们 Git；集成逻辑全部在我们自己的代码里提交保存。**
+
+### 8.6 使用 Strix CLI
 
 安装完成后，使用方式请参考 Strix 官方文档与仓库 README：
 

@@ -86,9 +86,13 @@ systemctl restart docker
 echo "Docker 已重启，桥接子网为 ${DOCKER_BIP}。"
 
 echo ""
-echo "========== 3. 克隆 Strix 到 ${STRIX_DIR} =========="
+echo "========== 3. 获取 Strix 代码（submodule 或 clone）=========="
+REPO_ROOT="$(cd "$(dirname "$BACKEND_DIR")" && pwd)"
 mkdir -p "$(dirname "$STRIX_DIR")"
-if [[ -d "$STRIX_DIR/.git" ]]; then
+if [[ -f "$REPO_ROOT/.gitmodules" ]] && grep -q "path = netops-backend/strix" "$REPO_ROOT/.gitmodules" 2>/dev/null; then
+  echo "检测到 Strix 已配置为 Git 子模块，执行 submodule update --init ..."
+  (cd "$REPO_ROOT" && git submodule update --init netops-backend/strix)
+elif [[ -d "$STRIX_DIR/.git" ]]; then
   echo "目录已存在，执行 git pull..."
   (cd "$STRIX_DIR" && git fetch origin && git checkout "${STRIX_BRANCH}" && git pull --rebase origin "${STRIX_BRANCH}")
 else

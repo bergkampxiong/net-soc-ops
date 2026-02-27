@@ -10,6 +10,7 @@ import DeviceConnections from './DeviceConnections';
 import ConfigManagement from './ConfigManagement';
 import ConfigGenerator from './atomic-components/config-generator';
 import DataCollection from './DataCollection';
+import PenetrationTest from './atomic-components/penetration-test';
 
 import ProcessOrchestration from './ProcessOrchestration';
 import VisualDesigner from './VisualDesigner';
@@ -36,6 +37,7 @@ const RPARouter: React.FC = () => {
         <Route path="config-management" element={<ConfigManagement />} />
         <Route path="config-generator" element={<ConfigGenerator />} />
         <Route path="data-collection" element={<DataCollection />} />
+        <Route path="penetration-test" element={<PenetrationTest />} />
       </Route>
       
       {/* 流程编排引擎 */}
@@ -51,6 +53,8 @@ const RPARouter: React.FC = () => {
         <Route path="job-execution" element={<JobExecution />} />
         <Route path="job-scheduling" element={<JobScheduling />} />
         <Route path="job-monitoring" element={<JobMonitoring />} />
+        <Route path="penetration-reports" element={<PenetrationReports />} />
+        <Route path="penetration-reports/:id" element={<PenetrationReports />} />
       </Route>
       
       {/* 系统集成 */}

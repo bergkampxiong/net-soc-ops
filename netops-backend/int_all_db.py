@@ -31,6 +31,7 @@ from database.config_module_models import (
     ConfigComplianceResult,
     ConfigEosInfo,
 )
+from database.strix_models import StrixScanTask, StrixConfig
 from app.models.job import Job, JobExecution
 
 # 创建密码哈希上下文
@@ -577,6 +578,18 @@ def init_config_module_tables(engine):
         print(f"配置管理模块表初始化失败: {str(e)}")
         raise
 
+
+def init_strix_tables(engine):
+    """初始化 Strix 集成表：扫描任务、OpenAPI 配置。"""
+    try:
+        StrixScanTask.__table__.create(engine, checkfirst=True)
+        StrixConfig.__table__.create(engine, checkfirst=True)
+        print("Strix 集成表（strix_scan_tasks、strix_config）创建完成")
+    except Exception as e:
+        print(f"Strix 集成表初始化失败: {str(e)}")
+        raise
+
+
 def init_databases():
     """初始化所有数据库"""
     try:
@@ -626,6 +639,9 @@ def init_databases():
             
             # 初始化配置管理模块表
             init_config_module_tables(engine)
+            
+            # 初始化 Strix 集成表
+            init_strix_tables(engine)
             
             print("所有数据库初始化完成")
             

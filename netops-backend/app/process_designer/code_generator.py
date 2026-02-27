@@ -22,10 +22,9 @@ class CodeGenerator:
         self.edges = process_definition.get('edges', [])
 
     def validate(self) -> Dict[str, Any]:
-        """验证流程定义的有效性"""
+        """验证流程定义的有效性。若存在渗透测试节点，则不强制要求设备连接与配置下发/备份。"""
         errors = []
         
-        # 检查必要的节点
         start_nodes = [node for node in self.nodes if node['type'] == 'start']
         if len(start_nodes) != 1:
             errors.append('流程必须包含一个开始节点')
@@ -33,17 +32,18 @@ class CodeGenerator:
         end_nodes = [node for node in self.nodes if node['type'] == 'end']
         if len(end_nodes) != 1:
             errors.append('流程必须包含一个结束节点')
-            
-        # 检查设备连接节点
-        device_nodes = [node for node in self.nodes if node['type'] == 'deviceConnect']
-        if not device_nodes:
-            errors.append('流程必须包含至少一个设备连接节点')
-            
-        # 至少需要配置下发或配置备份之一
-        config_deploy_nodes = [node for node in self.nodes if node['type'] == 'configDeploy']
-        config_backup_nodes = [node for node in self.nodes if node['type'] == 'configBackup']
-        if not config_deploy_nodes and not config_backup_nodes:
-            errors.append('流程必须包含至少一个配置下发节点或配置备份节点')
+
+        penetration_test_nodes = [node for node in self.nodes if node.get('type') == 'penetrationTest']
+        has_penetration = len(penetration_test_nodes) > 0
+
+        if not has_penetration:
+            device_nodes = [node for node in self.nodes if node['type'] == 'deviceConnect']
+            if not device_nodes:
+                errors.append('流程必须包含至少一个设备连接节点')
+            config_deploy_nodes = [node for node in self.nodes if node['type'] == 'configDeploy']
+            config_backup_nodes = [node for node in self.nodes if node['type'] == 'configBackup']
+            if not config_deploy_nodes and not config_backup_nodes:
+                errors.append('流程必须包含至少一个配置下发节点或配置备份节点')
         return {
             'isValid': len(errors) == 0,
             'errors': errors
