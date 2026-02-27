@@ -129,7 +129,7 @@ const ConfigModuleSummary: React.FC = () => {
               valueStyle={{ color: '#52c41a', fontSize: 28 }}
             />
             {(stats?.backup_24h_fail ?? 0) > 0 && (
-              <Text type="secondary" style={{ fontSize: 12 }}>失败 {stats.backup_24h_fail}</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>失败 {stats?.backup_24h_fail}</Text>
             )}
           </Card>
         </Col>
@@ -141,7 +141,7 @@ const ConfigModuleSummary: React.FC = () => {
               valueStyle={{ color: '#fa8c16', fontSize: 28 }}
             />
             {(stats?.backup_7d_fail ?? 0) > 0 && (
-              <Text type="secondary" style={{ fontSize: 12 }}>失败 {stats.backup_7d_fail}</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>失败 {stats?.backup_7d_fail}</Text>
             )}
           </Card>
         </Col>

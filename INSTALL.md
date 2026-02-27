@@ -20,6 +20,7 @@
 | 生产部署     | 3.9+   | 16+     | PostgreSQL 13+   | 6+    | 1.18+ | 推荐 |
 
 - Docker、LDAP、Celery：可选，按需使用。
+- Strix（AI 安全扫描）：可选，见 [八、Strix 工程（可选）](#八strix-工程可选)。
 
 ---
 
@@ -279,5 +280,72 @@ sudo supervisorctl start netops-backend
 
 - **日常**：查看应用与 Nginx 日志，监控磁盘与数据库大小。
 - **更新**：拉取代码后，更新依赖（pip/npm），执行数据库迁移（如有），再重启后端与前端（或 Nginx 重载）。
+- **Strix**：若已安装 Strix，更新其代码见 [8.4 更新 Strix 工程](#84-更新-strix-工程)。
 
 如有问题，建议在项目仓库提交 Issue 或联系维护人员。
+
+---
+
+## 八、Strix 工程（可选）
+
+[Strix](https://github.com/usestrix/strix) 为开源 AI 安全扫描工具，可与本工程集成使用。当前仅安装工程代码至后端目录，不自动配置运行环境。
+
+### 8.1 安装位置与权限
+
+- **代码路径**：`<项目根目录>/netops-backend/strix`（与后端同级单独目录）。
+- **权限**：安装脚本会将该目录所有者设为 `netops`，确保 netops 账号有完整读写执行权限。
+
+### 8.2 一键安装（推荐）
+
+在项目根目录执行（需 root，用于安装 Docker 及写 `/app`）：
+
+```bash
+cd <项目根目录>
+sudo bash scripts/install-strix.sh
+```
+
+脚本将依次完成：
+
+1. **安装 Docker**（若未安装）：按系统类型（apt / yum·dnf）安装 Docker CE。
+2. **配置 Docker 桥接子网**：在 `/etc/docker/daemon.json` 中设置 `bip: "192.168.0.1/25"`（网段 192.168.0.0/25），避免与现有 172.17.0.0/16 等网段冲突；若已有配置则合并，并重启 Docker。
+3. **克隆 Strix 代码**：从 `https://github.com/usestrix/strix.git` 克隆 `main` 分支到 `netops-backend/strix`；若目录已存在则执行 `git pull`。
+4. **设置权限**：`chown -R netops:netops netops-backend/strix`，并设置合理 umask。
+
+### 8.3 可调环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `DOCKER_BIP` | `192.168.0.1/25` | Docker 桥接子网 |
+| `BACKEND_DIR` | `/app/net-soc-ops/netops-backend` | 后端根目录，Strix 安装在其下 `strix/` |
+| `TARGET_USER` / `TARGET_GROUP` | `netops` | 目录属主与属组 |
+| `STRIX_BRANCH` | `main` | 克隆分支 |
+
+示例：使用自定义子网并指定用户：
+
+```bash
+sudo DOCKER_BIP=192.168.64.1/25 TARGET_USER=appuser bash scripts/install-strix.sh
+```
+
+### 8.4 更新 Strix 工程
+
+仅更新代码（不重装 Docker、不改权限）时，可在 Strix 目录执行：
+
+```bash
+cd <项目根目录>/netops-backend/strix
+git fetch origin
+git checkout main
+git pull --rebase origin main
+```
+
+或以 netops 用户执行上述命令；若需重新执行完整安装与权限设置，可再次运行 `sudo bash scripts/install-strix.sh`（已安装 Docker 和已存在仓库时会跳过或仅更新代码）。
+
+### 8.5 使用 Strix
+
+安装完成后，使用方式请参考 Strix 官方文档与仓库 README：
+
+```bash
+cd <项目根目录>/netops-backend/strix
+cat README.md
+```
+
+需配置 LLM API（如 `STRIX_LLM`、`LLM_API_KEY`）并安装 Strix CLI 后，方可进行安全扫描；具体见 [Strix 文档](https://docs.strix.ai) 与 [GitHub 仓库](https://github.com/usestrix/strix)。
