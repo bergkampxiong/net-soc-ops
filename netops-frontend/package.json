@@ -1,6 +1,6 @@
 {
   "name": "netops-frontend",
-  "version": "0.1.0",
+  "version": "1.824",
   "private": true,
   "dependencies": {
     "@ant-design/charts": "^2.2.7",

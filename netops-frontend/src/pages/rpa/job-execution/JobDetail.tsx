@@ -82,8 +82,9 @@ const JobDetail: React.FC = () => {
     }
     processDefinitionApi
       .getDetail(job.process_definition_id)
-      .then((res) => {
-        const nodes = (res.data as any)?.nodes ?? res?.nodes ?? [];
+      .then((res: any) => {
+        const data = res?.data ?? res;
+        const nodes = data?.nodes ?? [];
         setProcessHasPenetrationTest(Array.isArray(nodes) && nodes.some((n: any) => n.type === 'penetrationTest'));
       })
       .catch(() => setProcessHasPenetrationTest(false));

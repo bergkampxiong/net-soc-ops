@@ -217,7 +217,7 @@ const Layout: React.FC = () => {
             },
             {
               key: 'rpa/atomic-components/penetration-test',
-              label: '渗透测试',
+              label: '渗透测试组件',
             },
           ],
         },

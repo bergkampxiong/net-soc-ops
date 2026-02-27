@@ -1,13 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Drawer, Form, Input, Button, Space, Select, message } from 'antd';
+import { Drawer, Form, Input, Button, Space, Select, message, Alert, Typography } from 'antd';
 import { SafetyCertificateOutlined } from '@ant-design/icons';
 
 export interface ScanTargetNodeOption {
   id: string;
   label?: string;
+  targetType?: string;
+  /** 仅静态代码审计时为 true */
+  staticOnly?: boolean;
 }
 
 export interface PenetrationTestNodeData {
+  /** 渗透测试目标只能从扫描目标节点获取 */
   targetSource?: 'targetNode' | 'inline';
   targetNodeId?: string;
   targetType?: string;
@@ -34,6 +38,14 @@ const SCAN_MODES = [
   { value: 'deep', label: 'deep（深度）' },
 ];
 
+function getTestTypeLabel(targetType?: string, staticOnly?: boolean): string {
+  if (staticOnly) return '仅静态（代码审计）';
+  if (targetType === 'web_url') return '动态（黑盒）';
+  if (targetType === 'git_url') return '白盒（Git）';
+  if (targetType === 'local_path') return '白盒（本地路径）';
+  return '—';
+}
+
 export const PDPenetrationTestPanel: React.FC<PDPenetrationTestPanelProps> = ({
   visible,
   onClose,
@@ -47,15 +59,9 @@ export const PDPenetrationTestPanel: React.FC<PDPenetrationTestPanelProps> = ({
   useEffect(() => {
     if (visible) {
       form.setFieldsValue({
-        targetSource: initialData?.targetSource ?? 'inline',
         targetNodeId: initialData?.targetNodeId,
-        targetType: initialData?.targetType ?? 'web_url',
-        targetValue: Array.isArray(initialData?.targets)
-          ? initialData.targets.join('\n')
-          : initialData?.targetValue || '',
         instruction: initialData?.instruction,
         scanMode: initialData?.scanMode ?? 'deep',
-        presetId: initialData?.presetId,
       });
     }
   }, [visible, initialData, form]);
@@ -63,28 +69,16 @@ export const PDPenetrationTestPanel: React.FC<PDPenetrationTestPanelProps> = ({
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
-      const targetSource = values.targetSource as 'targetNode' | 'inline';
-      let targets: string[] = [];
-      let targetNodeId: string | undefined;
-      if (targetSource === 'targetNode' && values.targetNodeId) {
-        targetNodeId = values.targetNodeId;
-      } else {
-        const targetValue = (values.targetValue || '').trim();
-        targets = targetValue ? targetValue.split(/\n/).map((s: string) => s.trim()).filter(Boolean) : [];
-        if (!targets.length) {
-          message.error('请至少填写一个目标，或选择从目标节点获取');
-          return;
-        }
+      const targetNodeId = values.targetNodeId as string;
+      if (!targetNodeId) {
+        message.error('请选择扫描目标节点');
+        return;
       }
       onSave({
-        targetSource,
+        targetSource: 'targetNode',
         targetNodeId,
-        targetType: values.targetType,
-        targets: targets.length ? targets : undefined,
-        targetValue: targets[0],
         instruction: values.instruction || undefined,
         scanMode: values.scanMode ?? 'deep',
-        presetId: values.presetId,
         configured: true,
       });
       onClose();
@@ -115,57 +109,56 @@ export const PDPenetrationTestPanel: React.FC<PDPenetrationTestPanelProps> = ({
         </Space>
       }
     >
+      <Typography.Paragraph type="secondary" style={{ marginBottom: 16, fontSize: 12 }}>
+        <strong>扫描模式说明</strong>：quick 快速检查（分钟级，CI/PR 冒烟）；standard 常规评估（约 30 分钟～1 小时）；deep 深度渗透（约 1～4 小时，全面审计）。
+      </Typography.Paragraph>
       <Form form={form} layout="vertical">
-        <Form.Item name="targetSource" label="目标来源" rules={[{ required: true }]}>
+        {scanTargetNodes.length === 0 ? (
+          <Alert
+            type="warning"
+            showIcon
+            message="请先在流程中添加「扫描目标」节点"
+            description="渗透测试的目标只能从流程中的扫描目标节点获取，不能在本节点内填写。请添加扫描目标节点并配置目标后再选择。"
+            style={{ marginBottom: 16 }}
+          />
+        ) : null}
+        <Form.Item
+          name="targetNodeId"
+          label="选择扫描目标节点"
+          rules={[{ required: true, message: '请选择扫描目标节点' }]}
+          extra="渗透测试目标只能从扫描目标节点获取，将使用所选节点中配置的目标执行扫描（单目标）。"
+        >
           <Select
-            options={[
-              { value: 'targetNode', label: '从目标节点获取' },
-              { value: 'inline', label: '本节点内填写' },
-            ]}
+            placeholder="选择流程中的扫描目标节点"
+            disabled={scanTargetNodes.length === 0}
+            options={scanTargetNodes.map((n) => ({
+              value: n.id,
+              label: n.label || `扫描目标 (${n.id})`,
+            }))}
           />
         </Form.Item>
-        <Form.Item
-          noStyle
-          shouldUpdate={(prev, curr) => prev.targetSource !== curr.targetSource}
-        >
-          {({ getFieldValue }) =>
-            getFieldValue('targetSource') === 'targetNode' ? (
-              <Form.Item name="targetNodeId" label="选择扫描目标节点" rules={[{ required: true }]}>
-                <Select
-                  placeholder="选择流程中的扫描目标节点"
-                  options={scanTargetNodes.map((n) => ({
-                    value: n.id,
-                    label: n.label || `扫描目标 (${n.id})`,
-                  }))}
-                />
-              </Form.Item>
-            ) : (
-              <>
-                <Form.Item name="targetType" label="目标类型">
-                  <Select
-                    options={[
-                      { value: 'web_url', label: 'Web URL' },
-                      { value: 'git_url', label: 'Git URL' },
-                      { value: 'local_path', label: '本地路径' },
-                      { value: 'domain_ip', label: '域名或 IP' },
-                    ]}
-                  />
-                </Form.Item>
-                <Form.Item name="targetValue" label="目标值（多行）">
-                  <Input.TextArea rows={3} placeholder="每行一个目标" />
-                </Form.Item>
-              </>
-            )
-          }
+        <Form.Item noStyle shouldUpdate={(prev, curr) => prev.targetNodeId !== curr.targetNodeId}>
+          {({ getFieldValue }) => {
+            const id = getFieldValue('targetNodeId');
+            const node = id ? scanTargetNodes.find((n) => n.id === id) : null;
+            const testTypeLabel = node ? getTestTypeLabel(node.targetType, node.staticOnly) : null;
+            if (!testTypeLabel || testTypeLabel === '—') return null;
+            return (
+              <Typography.Paragraph type="secondary" style={{ marginTop: -8, marginBottom: 16, fontSize: 12 }}>
+                当前目标测试类型：<strong>{testTypeLabel}</strong>
+              </Typography.Paragraph>
+            );
+          }}
         </Form.Item>
-        <Form.Item name="scanMode" label="扫描模式" rules={[{ required: true }]}>
+        <Form.Item
+          name="scanMode"
+          label="扫描模式"
+          rules={[{ required: true }]}
+        >
           <Select options={SCAN_MODES} />
         </Form.Item>
         <Form.Item name="instruction" label="自定义指令（可选）">
           <Input.TextArea rows={2} placeholder="如：仅测认证与越权" />
-        </Form.Item>
-        <Form.Item name="presetId" label="扫描预设（可选）">
-          <Select allowClear placeholder="选择预设" options={[]} />
         </Form.Item>
       </Form>
     </Drawer>

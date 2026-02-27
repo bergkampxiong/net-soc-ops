@@ -27,7 +27,6 @@ import {
   PDLoopNode,
   PDDeviceConnectNode,
   PDConfigDeployNode,
-  PDCommandExecuteNode,
   PDConfigBackupNode,
   PDStatusCheckNode,
 } from './nodes';
@@ -43,7 +42,6 @@ const nodeTypes = {
   loop: PDLoopNode,
   deviceConnect: PDDeviceConnectNode,
   configDeploy: PDConfigDeployNode,
-  commandExecute: PDCommandExecuteNode,
   configBackup: PDConfigBackupNode,
   statusCheck: PDStatusCheckNode,
 };

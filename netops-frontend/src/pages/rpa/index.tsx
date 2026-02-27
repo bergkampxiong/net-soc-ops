@@ -10,7 +10,7 @@ import DeviceConnections from './DeviceConnections';
 import ConfigManagement from './ConfigManagement';
 import ConfigGenerator from './atomic-components/config-generator';
 import DataCollection from './DataCollection';
-import PenetrationTest from './atomic-components/penetration-test';
+import PenetrationTest from './atomic-components/penetration-test/index';
 
 import ProcessOrchestration from './ProcessOrchestration';
 import VisualDesigner from './VisualDesigner';
@@ -20,6 +20,7 @@ import TaskJobManagement from './TaskJobManagement';
 import JobExecution from './JobExecution';
 import JobScheduling from './JobScheduling';
 import JobMonitoring from './JobMonitoring';
+import PenetrationReports from './PenetrationReports';
 
 import SystemIntegration from './SystemIntegration';
 import MonitoringIntegration from './MonitoringIntegration';

@@ -12,7 +12,6 @@ export enum PDNodeType {
   // 网络自动化节点
   DEVICE_CONNECT = 'pd_device_connect',
   CONFIG_DEPLOY = 'pd_config_deploy',
-  COMMAND_EXECUTE = 'pd_command_execute',
   CONFIG_BACKUP = 'pd_config_backup',
   STATUS_CHECK = 'pd_status_check'
 }

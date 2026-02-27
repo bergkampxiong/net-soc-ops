@@ -240,7 +240,6 @@
 .pd-node-loop,
 .pd-node-device-connect,
 .pd-node-config-deploy,
-.pd-node-command-execute,
 .pd-node-config-backup,
 .pd-node-status-check {
   border-color: #e6f4ff;
@@ -253,7 +252,6 @@
 .pd-node-loop .anticon,
 .pd-node-device-connect .anticon,
 .pd-node-config-deploy .anticon,
-.pd-node-command-execute .anticon,
 .pd-node-config-backup .anticon,
 .pd-node-status-check .anticon {
   color: #1890ff;

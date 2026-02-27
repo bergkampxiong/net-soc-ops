@@ -238,38 +238,6 @@ export const PDNodeConfigPanel: React.FC<PDNodeConfigPanelProps> = ({
           </>
         );
 
-      case PDNodeType.COMMAND_EXECUTE:
-        return (
-          <>
-            <Form.Item
-              label="节点名称"
-              name="label"
-              rules={[{ required: true, message: '请输入节点名称' }]}
-            >
-              <Input />
-            </Form.Item>
-            <Form.Item
-              label="命令"
-              name="command"
-              rules={[{ required: true, message: '请输入命令' }]}
-            >
-              <Input.TextArea rows={4} />
-            </Form.Item>
-            <Form.Item
-              label="超时时间(秒)"
-              name="timeout"
-            >
-              <InputNumber min={1} />
-            </Form.Item>
-            <Form.Item
-              label="描述"
-              name="description"
-            >
-              <Input.TextArea />
-            </Form.Item>
-          </>
-        );
-
       case PDNodeType.CONFIG_BACKUP:
         return (
           <>

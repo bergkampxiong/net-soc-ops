@@ -62,7 +62,7 @@ class StrixConfig(Base):
     def to_dict(self, mask_sensitive=True):
         val = self.config_value
         if mask_sensitive and self.config_key and "key" in self.config_key.lower() and val:
-            val = (val[:4] + "****") if len(val) > 4 else "****"
+            val = "********"  # 不暴露任何字符，仅表示已配置
         return {
             "config_key": self.config_key,
             "config_value": val,

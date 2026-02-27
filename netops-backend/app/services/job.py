@@ -238,15 +238,23 @@ class JobService:
             target_source = data.get("targetSource") or "inline"
             target_node_id = data.get("targetNodeId")
             targets = []
+            target_type = data.get("targetType") or "web_url"
+            static_only = False
+            # 渗透测试目标只能从扫描目标节点获取；若指定了 targetNodeId 则仅从该节点取
             if target_source == "targetNode" and target_node_id:
                 target_node = next((n for n in nodes if n.get("id") == target_node_id), None)
                 if target_node:
-                    td = (target_node.get("data") or {}).get("targets")
+                    tn_data = target_node.get("data") or {}
+                    td = tn_data.get("targets")
                     if isinstance(td, list):
                         targets = [str(t) for t in td]
                     elif td:
                         targets = [str(td)]
-            if not targets:
+                    elif tn_data.get("targetValue"):
+                        targets = [str(tn_data["targetValue"])]
+                    target_type = tn_data.get("targetType") or target_type
+                    static_only = bool(tn_data.get("staticOnly"))
+            if not targets and target_source != "targetNode":
                 inline = data.get("targets")
                 if isinstance(inline, list):
                     targets = [str(t) for t in inline]
@@ -255,15 +263,21 @@ class JobService:
                 elif data.get("targetValue"):
                     targets = [str(data["targetValue"])]
             if not targets:
-                script_logs += "\n[渗透测试] 跳过节点: 无目标\n"
+                script_logs += "\n[渗透测试] 跳过节点: 无目标（请从扫描目标节点选择目标）\n"
                 continue
+            # 仅支持单目标，每次执行一个
+            single_target = [targets[0]]
+            instruction = data.get("instruction") or None
+            if static_only:
+                static_instruction = "仅做静态代码审计，不要尝试运行应用。Perform static code analysis only; do not attempt to run the application."
+                instruction = f"{static_instruction}\n\n{instruction}" if instruction else static_instruction
             try:
                 r = requests.post(
                     f"{strix_base}/config-module/strix/scans",
                     json={
-                        "target_type": data.get("targetType") or "web_url",
-                        "targets": targets,
-                        "instruction": data.get("instruction") or None,
+                        "target_type": target_type,
+                        "targets": single_target,
+                        "instruction": instruction,
                         "scan_mode": data.get("scanMode") or "deep",
                         "job_execution_id": execution_id,
                     },

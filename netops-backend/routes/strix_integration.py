@@ -206,11 +206,20 @@ def get_strix_config(db: Session = Depends(get_db)):
     return [r.to_dict(mask_sensitive=True) for r in rows]
 
 
+# 前端脱敏占位符，若 PUT 带此值表示未修改、不覆盖库中真实 key
+_SENSITIVE_PLACEHOLDER = "********"
+
+
 @router.put("/config")
 def update_strix_config(body: StrixConfigUpdate, db: Session = Depends(get_db)):
-    """更新 Strix/LLM 配置（键值对写入 strix_config 表）。"""
+    """更新 Strix/LLM 配置（键值对写入 strix_config 表）。API Key 为脱敏占位符时不覆盖。"""
     key_values = body.dict(exclude_none=True)
     for k, v in key_values.items():
+        if v is None:
+            continue
+        # 敏感键若为脱敏占位符，表示前端未修改，不更新
+        if k and "key" in k.lower() and (v == _SENSITIVE_PLACEHOLDER or v.strip() == ""):
+            continue
         row = db.query(StrixConfig).filter(StrixConfig.config_key == k).first()
         if row:
             row.config_value = v

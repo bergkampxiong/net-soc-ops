@@ -26,7 +26,6 @@ const nodeCategories = {
     nodes: [
       { type: PDNodeType.DEVICE_CONNECT, label: '设备连接节点' },
       { type: PDNodeType.CONFIG_DEPLOY, label: '配置下发节点' },
-      { type: PDNodeType.COMMAND_EXECUTE, label: '命令执行节点' },
       { type: PDNodeType.CONFIG_BACKUP, label: '配置备份节点' },
       { type: PDNodeType.STATUS_CHECK, label: '状态检查节点' },
     ],

@@ -43,18 +43,6 @@ export interface ConfigDeployNode {
   isConfigured: boolean;
 }
 
-export interface CommandExecuteNode {
-  id: string;
-  type: 'commandExecute';
-  name: string;
-  description?: string;
-  commandType: 'cli' | 'script';
-  commandContent: string;
-  timeout: number;
-  expectedOutput?: string;
-  isConfigured: boolean;
-}
-
 export interface DeviceConnectNode {
   id: string;
   type: 'deviceConnect';

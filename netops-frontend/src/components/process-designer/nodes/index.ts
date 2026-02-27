@@ -5,6 +5,5 @@ export { PDConditionNode } from './pd-condition-node';
 export { PDLoopNode } from './pd-loop-node';
 export { PDDeviceConnectNode } from './pd-device-connect-node';
 export { PDConfigDeployNode } from './pd-config-deploy-node';
-export { PDCommandExecuteNode } from './pd-command-execute-node';
 export { PDConfigBackupNode } from './pd-config-backup-node';
 export { PDStatusCheckNode } from './pd-status-check-node'; 

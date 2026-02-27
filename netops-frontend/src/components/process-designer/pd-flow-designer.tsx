@@ -55,7 +55,6 @@ import { PDConditionNode } from './nodes/pd-condition-node';
 import { PDLoopNode } from './nodes/pd-loop-node';
 import { PDDeviceConnectNode } from './nodes/pd-device-connect-node';
 import { PDConfigDeployNode } from './nodes/pd-config-deploy-node';
-import { PDCommandExecuteNode } from './nodes/pd-command-execute-node';
 import { PDConfigBackupNode } from './nodes/pd-config-backup-node';
 import { PDStatusCheckNode } from './nodes/pd-status-check-node';
 
@@ -64,7 +63,6 @@ import { PDDeviceConnectPanel } from './panels/pd-device-connect-panel';
 import { PDTaskPanel } from './panels/pd-task-panel';
 import { PDConditionPanel } from './panels/pd-condition-panel';
 import { PDConfigDeployPanel } from './panels/pd-config-deploy-panel';
-import { PDCommandExecutePanel } from './panels/pd-command-execute-panel';
 import { PDConfigBackupPanel } from './panels/pd-config-backup-panel';
 import { PDStatusCheckPanel } from './panels/pd-status-check-panel';
 import { PDScanTargetPanel } from './panels/pd-scan-target-panel';
@@ -81,7 +79,6 @@ const nodeTypes = {
   loop: PDLoopNode,
   deviceConnect: PDDeviceConnectNode,
   configDeploy: PDConfigDeployNode,
-  commandExecute: PDCommandExecuteNode,
   configBackup: PDConfigBackupNode,
   statusCheck: PDStatusCheckNode,
   scanTarget: PDScanTargetNode,
@@ -121,11 +118,6 @@ const nodeConfigs = [
     icon: <DeploymentUnitOutlined style={{ fontSize: 26, color: '#eb2f96' }} />,
   },
   {
-    type: 'commandExecute',
-    title: '命令执行',
-    icon: <CodeOutlined style={{ fontSize: 26, color: '#fa8c16' }} />,
-  },
-  {
     type: 'configBackup',
     title: '配置备份',
     icon: <SaveOutlined style={{ fontSize: 26, color: '#2f54eb' }} />,
@@ -152,9 +144,18 @@ const initialNodes = [
     id: 'start-1',
     type: 'start',
     position: { x: 100, y: 100 },
-    data: { 
+    data: {
       label: '开始节点',
       icon: <PlayCircleOutlined style={{ fontSize: 16, color: '#1890ff' }} />
+    }
+  },
+  {
+    id: 'end-1',
+    type: 'end',
+    position: { x: 100, y: 220 },
+    data: {
+      label: '结束节点',
+      icon: <CloseOutlined style={{ fontSize: 16, color: '#ff4d4f' }} />
     }
   }
 ];
@@ -194,13 +195,11 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
   const [showTaskPanel, setShowTaskPanel] = useState(false);
   const [showConditionPanel, setShowConditionPanel] = useState(false);
   const [showConfigDeployPanel, setShowConfigDeployPanel] = useState(false);
-  const [showCommandExecutePanel, setShowCommandExecutePanel] = useState(false);
   const [showConfigBackupPanel, setShowConfigBackupPanel] = useState(false);
   const [showStatusCheckPanel, setShowStatusCheckPanel] = useState(false);
   const [selectedTaskNode, setSelectedTaskNode] = useState<Node | null>(null);
   const [selectedConditionNode, setSelectedConditionNode] = useState<Node | null>(null);
   const [selectedConfigDeployNode, setSelectedConfigDeployNode] = useState<Node | null>(null);
-  const [selectedCommandExecuteNode, setSelectedCommandExecuteNode] = useState<Node | null>(null);
   const [selectedConfigBackupNode, setSelectedConfigBackupNode] = useState<Node | null>(null);
   const [selectedStatusCheckNode, setSelectedStatusCheckNode] = useState<Node | null>(null);
   const [showScanTargetPanel, setShowScanTargetPanel] = useState(false);
@@ -210,6 +209,12 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
   const [saveModalVisible, setSaveModalVisible] = useState(false);
   const [saveForm] = Form.useForm();
   const [isSaving, setIsSaving] = useState(false);
+
+  // 保存时用 ref 读取最新 nodes/edges，避免闭包拿到旧状态导致渗透测试等节点未被保存
+  const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+  nodesRef.current = nodes;
+  edgesRef.current = edges;
 
   // 处理键盘删除事件
   const onKeyDown = useCallback((event: KeyboardEvent) => {
@@ -307,9 +312,6 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
     } else if (node.type === 'configDeploy') {
       setSelectedConfigDeployNode(node);
       setShowConfigDeployPanel(true);
-    } else if (node.type === 'commandExecute') {
-      setSelectedCommandExecuteNode(node);
-      setShowCommandExecutePanel(true);
     } else if (node.type === 'configBackup') {
       setSelectedConfigBackupNode(node);
       setShowConfigBackupPanel(true);
@@ -420,14 +422,17 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
     saveForm.resetFields();
   };
 
-  // 处理保存确认
+  // 处理保存确认（使用 ref 中的最新 nodes/edges，避免闭包陈旧导致刚添加的节点未写入）
   const handleSaveConfirm = async () => {
     try {
       const values = await saveForm.validateFields();
       setIsSaving(true);
 
+      const currentNodes = nodesRef.current;
+      const currentEdges = edgesRef.current;
+
       // 确保节点的数据被正确保存
-      const nodesWithData = nodes.map(node => {
+      const nodesWithData = currentNodes.map(node => {
         const nodeData = (node as CustomNode).data || {};
         const config = {
           ...nodeData,
@@ -444,7 +449,7 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
         name: values.name,
         description: values.description,
         nodes: nodesWithData,
-        edges,
+        edges: currentEdges,
         variables: {}, // TODO: 从节点配置中收集变量
       };
 
@@ -581,28 +586,6 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
       onDirtyChange?.(true);
     }
   }, [selectedConfigDeployNode, setNodes, onDirtyChange]);
-
-  // 处理命令执行节点配置保存
-  const handleCommandExecuteSave = useCallback((data: any) => {
-    if (selectedCommandExecuteNode) {
-      const updatedNode = {
-        ...selectedCommandExecuteNode,
-        data: {
-          ...selectedCommandExecuteNode.data,
-          ...data,
-          configured: true
-        }
-      };
-      setNodes((nds) =>
-        nds.map((node) =>
-          node.id === selectedCommandExecuteNode.id ? updatedNode : node
-        )
-      );
-      setShowCommandExecutePanel(false);
-      setIsDirty(true);
-      onDirtyChange?.(true);
-    }
-  }, [selectedCommandExecuteNode, setNodes, onDirtyChange]);
 
   // 处理配置备份节点配置保存
   const handleConfigBackupSave = useCallback((data: any) => {
@@ -783,14 +766,35 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
             保存
           </Button>
           <Button
-            onClick={() => {
-              if (processId) {
-                // TODO: 替换为实际的API调用
-                // 重新加载流程数据
-                setNodes(initialNodes);
-                setEdges([]);
-                setIsDirty(false);
-                onDirtyChange?.(false);
+            onClick={async () => {
+              if (processId && isDirty) {
+                try {
+                  const response = await processDefinitionApi.getDetail(processId);
+                  const pd = response.data.data;
+                  if (pd?.nodes?.length && pd?.edges) {
+                    const loadedNodes = pd.nodes.map((node: any) => ({
+                      id: node.id,
+                      type: node.type,
+                      position: node.position || { x: 0, y: 0 },
+                      data: { ...(node.data || {}), label: node.data?.label || '未命名节点' }
+                    }));
+                    const loadedEdges = pd.edges.map((edge: any) => ({
+                      id: edge.id,
+                      source: edge.source,
+                      target: edge.target,
+                      type: 'smoothstep',
+                      style: { strokeWidth: 1.5, stroke: '#1890ff' },
+                      markerEnd: { type: MarkerType.ArrowClosed, color: '#1890ff', width: 20, height: 20 }
+                    }));
+                    setNodes(loadedNodes);
+                    setEdges(loadedEdges);
+                  }
+                  setIsDirty(false);
+                  onDirtyChange?.(false);
+                  message.success('已从服务器重新加载');
+                } catch {
+                  message.error('重新加载失败');
+                }
               }
             }}
             disabled={!isDirty}
@@ -896,13 +900,6 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
         onSave={handleConfigDeploySave}
       />
 
-      <PDCommandExecutePanel
-        visible={showCommandExecutePanel}
-        onClose={() => setShowCommandExecutePanel(false)}
-        initialData={selectedCommandExecuteNode?.data}
-        onSave={handleCommandExecuteSave}
-      />
-
       <PDConfigBackupPanel
         visible={showConfigBackupPanel}
         onClose={() => setShowConfigBackupPanel(false)}
@@ -930,7 +927,7 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
         onClose={() => setShowPenetrationTestPanel(false)}
         initialData={selectedPenetrationTestNode?.data}
         onSave={handlePenetrationTestSave}
-        scanTargetNodes={nodes.filter((n) => n.type === 'scanTarget').map((n) => ({ id: n.id, label: (n as CustomNode).data?.label || n.id }))}
+        scanTargetNodes={nodes.filter((n) => n.type === 'scanTarget').map((n) => ({ id: n.id, label: (n as CustomNode).data?.label || n.id, targetType: (n as CustomNode).data?.targetType, staticOnly: (n as CustomNode).data?.staticOnly }))}
       />
 
       {/* 保存对话框 */}

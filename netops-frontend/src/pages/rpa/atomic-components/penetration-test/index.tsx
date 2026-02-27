@@ -1,52 +1,26 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card,
-  Tabs,
   Form,
   Input,
   Button,
-  Table,
-  Tag,
   message,
   Space,
   Typography,
-  Modal,
-  Select,
+  Row,
+  Col,
 } from 'antd';
-import { ReloadOutlined, PlayCircleOutlined, FileTextOutlined } from '@ant-design/icons';
+import { ReloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import request from '@/utils/request';
+import styles from './index.module.less';
 
 const { Title } = Typography;
 const STRIX_BASE = '/config-module/strix';
 
-// 扫描任务类型
-interface ScanTask {
-  id: number;
-  target_type: string;
-  target_value: string;
-  instruction: string | null;
-  scan_mode: string;
-  status: string;
-  run_name: string | null;
-  job_execution_id: number | null;
-  created_at: string;
-  finished_at: string | null;
-  summary: { stdout?: string; stderr?: string; error?: string } | null;
-  report_path: string | null;
-}
-
 const PenetrationTest: React.FC = () => {
   const [configForm] = Form.useForm();
-  const [scanForm] = Form.useForm();
   const [configLoading, setConfigLoading] = useState(false);
   const [configSaving, setConfigSaving] = useState(false);
-  const [scanList, setScanList] = useState<ScanTask[]>([]);
-  const [scanTotal, setScanTotal] = useState(0);
-  const [scanLoading, setScanLoading] = useState(false);
-  const [createLoading, setCreateLoading] = useState(false);
-  const [reportModalVisible, setReportModalVisible] = useState(false);
-  const [reportContent, setReportContent] = useState('');
-  const [reportLoading, setReportLoading] = useState(false);
 
   const fetchConfig = useCallback(async () => {
     setConfigLoading(true);
@@ -74,220 +48,84 @@ const PenetrationTest: React.FC = () => {
       await request.put(`${STRIX_BASE}/config`, values);
       message.success('配置已保存');
       fetchConfig();
-    } catch (e) {
-      if (e?.errorFields) message.error('请填写必填项');
+    } catch (e: unknown) {
+      if (e && typeof e === 'object' && 'errorFields' in e) message.error('请填写必填项');
       else message.error('保存失败');
     } finally {
       setConfigSaving(false);
     }
   };
 
-  const fetchScans = useCallback(async (page = 1, pageSize = 20) => {
-    setScanLoading(true);
-    try {
-      const res = await request.get<{ items: ScanTask[]; total: number }>(`${STRIX_BASE}/scans`, {
-        params: { skip: (page - 1) * pageSize, limit: pageSize },
-      });
-      const data = res.data ?? res;
-      setScanList(data.items || []);
-      setScanTotal(data.total ?? 0);
-    } catch {
-      message.error('获取扫描列表失败');
-    } finally {
-      setScanLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     fetchConfig();
   }, [fetchConfig]);
 
-  useEffect(() => {
-    fetchScans();
-  }, [fetchScans]);
-
-  const createScan = async () => {
-    try {
-      const values = await scanForm.validateFields();
-      setCreateLoading(true);
-      await request.post(`${STRIX_BASE}/scans`, {
-        target_type: values.target_type || 'web_url',
-        target_value: values.target_value?.trim() || undefined,
-        targets: values.target_value?.trim() ? values.target_value.trim().split(/\s+/).filter(Boolean) : undefined,
-        instruction: values.instruction || undefined,
-        scan_mode: values.scan_mode || 'deep',
-      });
-      message.success('扫描任务已创建');
-      scanForm.resetFields();
-      fetchScans();
-    } catch (e) {
-      if (e?.errorFields) message.error('请填写目标');
-      else message.error('创建失败');
-    } finally {
-      setCreateLoading(false);
-    }
-  };
-
-  const viewReport = async (taskId: number) => {
-    setReportModalVisible(true);
-    setReportContent('');
-    setReportLoading(true);
-    try {
-      const res = await request.get(`${STRIX_BASE}/scans/${taskId}/report`, {
-        responseType: 'text',
-      });
-      const raw = typeof res.data === 'string' ? res.data : (res.data as any)?.data ?? '';
-      setReportContent(raw || '报告暂不可用或任务未完成。');
-    } catch {
-      setReportContent('报告暂不可用或任务未完成。');
-    } finally {
-      setReportLoading(false);
-    }
-  };
-
-  const statusMap: Record<string, { color: string; text: string }> = {
-    pending: { color: 'default', text: '等待中' },
-    running: { color: 'processing', text: '运行中' },
-    success: { color: 'success', text: '成功' },
-    failed: { color: 'error', text: '失败' },
-    cancelled: { color: 'warning', text: '已取消' },
-  };
-
-  const scanColumns = [
-    { title: 'ID', dataIndex: 'id', key: 'id', width: 70 },
-    { title: '目标', dataIndex: 'target_value', key: 'target_value', ellipsis: true },
-    { title: '模式', dataIndex: 'scan_mode', key: 'scan_mode', width: 90 },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 90,
-      render: (s: string) => {
-        const t = statusMap[s] || { color: 'default', text: s };
-        return <Tag color={t.color}>{t.text}</Tag>;
-      },
-    },
-    { title: '创建时间', dataIndex: 'created_at', key: 'created_at', width: 180, render: (v: string) => v ? new Date(v).toLocaleString() : '-' },
-    {
-      title: '操作',
-      key: 'action',
-      width: 120,
-      render: (_: unknown, record: ScanTask) => (
-        <Button type="link" size="small" icon={<FileTextOutlined />} onClick={() => viewReport(record.id)}>
-          查看报告
-        </Button>
-      ),
-    },
-  ];
-
   return (
-    <div className="penetration-test-page" style={{ padding: 24 }}>
-      <Title level={4}>渗透测试（Strix）</Title>
-      <Tabs
-        items={[
-          {
-            key: 'config',
-            label: 'OpenAPI 配置',
-            children: (
-              <Card loading={configLoading}>
-                <Form form={configForm} layout="vertical" style={{ maxWidth: 560 }}>
-                  <Form.Item name="STRIX_LLM" label="STRIX_LLM" rules={[{ required: true }]}>
-                    <Input placeholder="如 openai/gpt-4 或 strix/gpt-5" />
-                  </Form.Item>
-                  <Form.Item name="LLM_API_KEY" label="LLM_API_KEY" rules={[{ required: true }]}>
-                    <Input.Password placeholder="API Key（保存后脱敏展示）" />
-                  </Form.Item>
-                  <Form.Item name="LLM_API_BASE" label="LLM_API_BASE">
-                    <Input placeholder="可选，自建/本地模型 base URL" />
-                  </Form.Item>
-                  <Form.Item name="STRIX_REASONING_EFFORT" label="STRIX_REASONING_EFFORT">
-                    <Input placeholder="可选，如 high / medium" />
-                  </Form.Item>
-                  <Space>
-                    <Button type="primary" loading={configSaving} onClick={saveConfig}>
-                      保存配置
-                    </Button>
-                    <Button icon={<ReloadOutlined />} onClick={fetchConfig}>
-                      刷新
-                    </Button>
-                  </Space>
-                </Form>
-              </Card>
-            ),
-          },
-          {
-            key: 'scans',
-            label: '扫描任务',
-            children: (
-              <>
-                <Card title="创建扫描" style={{ marginBottom: 16 }}>
-                  <Form form={scanForm} layout="inline" onFinish={createScan}>
-                    <Form.Item name="target_value" rules={[{ required: true, message: '请输入目标 URL 或路径' }]} style={{ minWidth: 280 }}>
-                      <Input placeholder="目标 URL 或路径，多个用空格分隔" />
-                    </Form.Item>
-                    <Form.Item name="scan_mode" initialValue="deep">
-                      <Select style={{ width: 120 }} options={[
-                        { value: 'quick', label: 'quick' },
-                        { value: 'standard', label: 'standard' },
-                        { value: 'deep', label: 'deep' },
-                      ]} />
-                    </Form.Item>
-                    <Form.Item name="instruction">
-                      <Input placeholder="可选指令" style={{ width: 200 }} />
-                    </Form.Item>
-                    <Form.Item>
-                      <Button type="primary" htmlType="submit" loading={createLoading} icon={<PlayCircleOutlined />}>
-                        创建并执行
-                      </Button>
-                    </Form.Item>
-                  </Form>
-                </Card>
-                <Card
-                  title="任务列表"
-                  extra={
-                    <Button size="small" icon={<ReloadOutlined />} onClick={() => fetchScans()}>
-                      刷新
-                    </Button>
-                  }
-                >
-                  <Table
-                    rowKey="id"
-                    loading={scanLoading}
-                    columns={scanColumns}
-                    dataSource={scanList}
-                    pagination={{
-                      total: scanTotal,
-                      pageSize: 20,
-                      showSizeChanger: false,
-                      onChange: (p) => fetchScans(p, 20),
-                    }}
-                    size="small"
-                  />
-                </Card>
-              </>
-            ),
-          },
-        ]}
-      />
-      <Modal
-        title="扫描报告"
-        open={reportModalVisible}
-        onCancel={() => setReportModalVisible(false)}
-        footer={null}
-        width={800}
-        destroyOnClose
-      >
-        {reportLoading ? (
-          <div style={{ padding: 24, textAlign: 'center' }}>加载中...</div>
-        ) : reportContent.trimStart().startsWith('<') ? (
-          <div
-            style={{ maxHeight: 480, overflow: 'auto' }}
-            dangerouslySetInnerHTML={{ __html: reportContent }}
-          />
-        ) : (
-          <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 480, overflow: 'auto' }}>{reportContent}</pre>
-        )}
-      </Modal>
+    <div className={styles.wrap}>
+      <div className={styles.header}>
+        <SafetyCertificateOutlined style={{ fontSize: 22, color: '#1677ff' }} />
+        <Title level={4} className={styles.title}>渗透测试 token 配置</Title>
+      </div>
+      <Row gutter={24}>
+        <Col xs={24} md={10} lg={8}>
+          <Card
+            loading={configLoading}
+            className={styles.cardConfig}
+            title="API 配置"
+          >
+            <Form form={configForm} layout="vertical">
+              <Form.Item name="STRIX_LLM" label="LLM 模型" rules={[{ required: true }]}>
+                <Input placeholder="如 openai/gpt-4、openai/gpt-4o（按实际模型填写）" />
+              </Form.Item>
+              <Form.Item name="LLM_API_KEY" label="API Key" rules={[{ required: true }]}>
+                <Input.Password
+                  placeholder="保存后脱敏展示，不可复制"
+                  autoComplete="off"
+                  onCopy={(e) => e.preventDefault()}
+                  style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+                />
+              </Form.Item>
+              <Form.Item name="LLM_API_BASE" label="API 地址（可选）">
+                <Input placeholder="自建/本地模型 base URL" />
+              </Form.Item>
+              <div className={styles.actions}>
+                <Space>
+                  <Button type="primary" loading={configSaving} onClick={saveConfig}>
+                    保存配置
+                  </Button>
+                  <Button icon={<ReloadOutlined />} onClick={fetchConfig}>
+                    刷新
+                  </Button>
+                </Space>
+              </div>
+            </Form>
+          </Card>
+        </Col>
+        <Col xs={24} md={14} lg={16}>
+          <Card
+            className={styles.cardHelp}
+            title={
+              <Space>
+                <span style={{ color: '#52c41a' }}>●</span>
+                <span>配置说明</span>
+              </Space>
+            }
+          >
+            <Typography.Title level={5} className={styles.exampleTitle}>示例一：OpenAI GPT</Typography.Title>
+            <ul className={styles.helpList}>
+              <li><strong>LLM 模型</strong>：<code>openai/gpt-4</code> 或 <code>openai/gpt-4o</code>（按实际模型名填写）</li>
+              <li><strong>API Key</strong>：OpenAI API Key（在 OpenAI 控制台创建）</li>
+              <li><strong>LLM_API_BASE</strong>：留空（使用官方）；若走代理或自建兼容接口可填 <code>https://your-proxy/v1</code></li>
+            </ul>
+            <Typography.Title level={5} className={`${styles.exampleTitle} ${styles.exampleTitleMinimax}`}>示例二：Minimax</Typography.Title>
+            <ul className={styles.helpList} style={{ marginBottom: 0 }}>
+              <li><strong>LLM 模型</strong>：填写 Minimax 模型标识，如 <code>minimax/abab6.5s</code>（以厂商文档为准）</li>
+              <li><strong>API Key</strong>：Minimax API Key（在 Minimax 开放平台申请）</li>
+              <li><strong>LLM_API_BASE</strong>：Minimax API 地址，如 <code>https://api.minimax.chat/v1</code></li>
+            </ul>
+          </Card>
+        </Col>
+      </Row>
     </div>
   );
 };
