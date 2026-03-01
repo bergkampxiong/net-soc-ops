@@ -1,8 +1,8 @@
 // 运行类型：一次作业 | 定期作业
 export type RunType = 'once' | 'scheduled';
 
-// 作业类型
-export type JobType = 'network_config' | 'device_check' | 'data_collection' | 'config_backup';
+// 作业类型（含流程发布生成的 config_backup、penetration_task）
+export type JobType = 'network_config' | 'device_check' | 'data_collection' | 'config_backup' | 'penetration_task';
 
 // 作业状态
 export type JobStatus = 'created' | 'active' | 'paused' | 'completed' | 'failed' | 'terminated';

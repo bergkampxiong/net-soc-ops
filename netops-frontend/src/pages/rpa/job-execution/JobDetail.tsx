@@ -26,6 +26,7 @@ import {
   CalendarOutlined,
 } from '@ant-design/icons';
 import request from '@/utils/request';
+import { jobApi } from '@/api/job';
 import { processDefinitionApi } from '@/api/process-designer';
 import type { JobListItem, JobExecution } from './types';
 
@@ -205,7 +206,8 @@ const JobDetail: React.FC = () => {
   // 操作处理函数
   const handleExecute = async () => {
     try {
-      await request.post(`/jobs/${id}/execute`);
+      const timeout = jobApi.getExecuteTimeout(job?.job_type);
+      await request.post(`/jobs/${id}/execute`, {}, { timeout });
       message.success('作业已开始执行');
       fetchJobDetail();
       fetchExecutions();
@@ -384,7 +386,7 @@ const JobDetail: React.FC = () => {
             <Descriptions bordered>
               <Descriptions.Item label="作业名称">{job.name}</Descriptions.Item>
               <Descriptions.Item label="作业类型">
-                {job.job_type === 'config_backup' ? '配置备份' : job.job_type}
+                {job.job_type === 'config_backup' ? '配置备份' : job.job_type === 'penetration_task' ? '渗透任务' : job.job_type}
               </Descriptions.Item>
               <Descriptions.Item label="运行类型">
                 {job.run_type === 'scheduled' ? '定期作业' : '一次作业'}

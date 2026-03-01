@@ -249,17 +249,26 @@ async def publish_process_definition(process_id: str, db: Session = Depends(get_
         raise HTTPException(status_code=404, detail="流程定义不存在")
     db.commit()
 
-    # 查询流程名称并创建/更新作业（幂等：同一流程仅一条作业）
-    row = db.execute(text("SELECT name FROM process_definitions WHERE id = :id"), {'id': process_id}).fetchone()
+    # 查询流程名称与 nodes，根据是否含渗透测试节点决定作业类型
+    row = db.execute(text("SELECT name, nodes FROM process_definitions WHERE id = :id"), {'id': process_id}).fetchone()
     name = row[0] if row else process_id
+    nodes_raw = row[1] if row and len(row) > 1 else None
+    job_type = "config_backup"
+    if nodes_raw:
+        try:
+            nodes_list = json.loads(nodes_raw) if isinstance(nodes_raw, str) else (nodes_raw or [])
+            if any((n.get("type") == "penetrationTest" for n in nodes_list)):
+                job_type = "penetration_task"
+        except (TypeError, ValueError):
+            pass
     job_service = JobService(db)
     existing = job_service.get_job_by_process_definition_id(process_id)
     if existing:
-        job_service.update_job(existing.id, JobUpdate(name=name, job_type=existing.job_type))
+        job_service.update_job(existing.id, JobUpdate(name=name, job_type=job_type))
     else:
         job_service.create_job(JobCreate(
             name=name,
-            job_type="config_backup",
+            job_type=job_type,
             process_definition_id=process_id,
             run_type="once",
         ))

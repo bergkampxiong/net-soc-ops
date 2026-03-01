@@ -14,7 +14,7 @@ import {
   Descriptions,
 } from 'antd';
 import { ReloadOutlined, FileTextOutlined, ArrowLeftOutlined, PlusOutlined, EyeOutlined } from '@ant-design/icons';
-import request from '@/utils/request';
+import request, { LONG_REQUEST_TIMEOUT } from '@/utils/request';
 
 const STRIX_BASE = '/config-module/strix';
 
@@ -99,16 +99,42 @@ const PenetrationReports: React.FC = () => {
     }
   }, [id, fetchList]);
 
-  const baseUrl = (request.defaults.baseURL as string) || '/api';
+  // 用带认证的 request 拉取报告后以 blob 打开/下载，避免 window.open 无 token 被重定向到登录页
+  const openReportInNewTab = async (url: string, taskId: number, label: string) => {
+    try {
+      const res = await request.get(url, { responseType: 'blob' });
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data]);
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch {
+      message.error(`${label}打开失败`);
+    }
+  };
+
+  const downloadReportAsFile = async (url: string, filename: string, label: string) => {
+    try {
+      const res = await request.get(url, { responseType: 'blob' });
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data]);
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      message.error(`${label}下载失败`);
+    }
+  };
 
   const downloadReport = (taskId: number) => {
-    window.open(`${baseUrl}${STRIX_BASE}/scans/${taskId}/report`, '_blank');
+    openReportInNewTab(`${STRIX_BASE}/scans/${taskId}/report`, taskId, '原始报告');
   };
 
   const generateUnifiedReport = async (taskId: number) => {
     setGeneratingId(taskId);
     try {
-      await request.post(`${STRIX_BASE}/scans/${taskId}/unified-report`);
+      await request.post(`${STRIX_BASE}/scans/${taskId}/unified-report`, {}, { timeout: LONG_REQUEST_TIMEOUT });
       message.success('统一报告已生成');
       if (id && Number(id) === taskId) {
         request.get<ScanItem>(`${STRIX_BASE}/scans/${taskId}`).then((res) => setDetail(res.data ?? res));
@@ -129,11 +155,19 @@ const PenetrationReports: React.FC = () => {
   };
 
   const downloadUnifiedReport = (taskId: number) => {
-    window.open(`${baseUrl}${STRIX_BASE}/scans/${taskId}/unified-report`, '_blank');
+    downloadReportAsFile(
+      `${STRIX_BASE}/scans/${taskId}/unified-report`,
+      `unified-report-${taskId}.md`,
+      '统一报告'
+    );
   };
 
   const previewUnifiedReport = (taskId: number) => {
-    window.open(`${baseUrl}${STRIX_BASE}/scans/${taskId}/unified-report?format=html`, '_blank');
+    openReportInNewTab(
+      `${STRIX_BASE}/scans/${taskId}/unified-report?format=html`,
+      taskId,
+      '预览统一报告'
+    );
   };
 
   if (id) {

@@ -192,17 +192,44 @@ def _find_report_html(path: str):
     return None, f"Report directory: {path}. No HTML file found."
 
 
+def _find_report_any(path: str):
+    """先找 HTML，再找 penetration_test_report.md；返回 (绝对路径, media_type) 或 (None, 错误信息)。"""
+    found, err = _find_report_html(path)
+    if found:
+        return found, "text/html"
+    if not path or not os.path.isdir(path):
+        return None, err or "Report not ready or path missing."
+    md_name = "penetration_test_report.md"
+    md_path = os.path.join(path, md_name)
+    if os.path.isfile(md_path):
+        return md_path, "text/markdown"
+    for sub in os.listdir(path):
+        sub_path = os.path.join(path, sub)
+        if not os.path.isdir(sub_path):
+            continue
+        sub_md = os.path.join(sub_path, md_name)
+        if os.path.isfile(sub_md):
+            return sub_md, "text/markdown"
+    return None, err or "No HTML or penetration_test_report.md found."
+
+
 @router.get("/scans/{task_id}/report")
 def get_scan_report(task_id: int, db: Session = Depends(get_db)):
-    """返回报告目录下的 index.html 或首个 html 文件；若无则返回文本说明。支持报告在子目录（strix_runs/xxx）。"""
+    """返回报告目录下的 HTML 或 penetration_test_report.md；若无则返回文本说明。支持报告在子目录（strix_runs/xxx）。"""
     task = db.query(StrixScanTask).filter(StrixScanTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Scan task not found")
     path = (task.report_path or "").strip()
-    found, err = _find_report_html(path)
+    found, result = _find_report_any(path)
     if found:
-        return FileResponse(found, media_type="text/html")
-    return PlainTextResponse(content=err or "Report not ready.", status_code=404)
+        media_type = result
+        return FileResponse(
+            found,
+            media_type=media_type,
+            filename=os.path.basename(found),
+        )
+    err = result if isinstance(result, str) else "Report not ready."
+    return PlainTextResponse(content=err, status_code=404)
 
 
 # ---------- 统一渗透测试报告 ----------

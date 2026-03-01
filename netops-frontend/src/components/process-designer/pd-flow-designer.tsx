@@ -216,13 +216,40 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
   nodesRef.current = nodes;
   edgesRef.current = edges;
 
-  // 处理键盘删除事件
-  const onKeyDown = useCallback((event: KeyboardEvent) => {
-    if (event.key === 'Delete' || event.key === 'Backspace') {
+  // 任一配置抽屉打开时禁用键盘删除，避免配置过程中节点被误删
+  const isAnyConfigPanelOpen =
+    showDeviceConnectPanel ||
+    showTaskPanel ||
+    showConditionPanel ||
+    showConfigDeployPanel ||
+    showConfigBackupPanel ||
+    showStatusCheckPanel ||
+    showScanTargetPanel ||
+    showPenetrationTestPanel;
+
+  // 处理键盘删除事件：仅在焦点在画布上且未打开配置面板时删除节点
+  const onKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+      if (isAnyConfigPanelOpen) return;
+      const target = event.target as HTMLElement;
+      if (!target) return;
+      const tagName = target.tagName?.toUpperCase();
+      const isInputLike =
+        tagName === 'INPUT' ||
+        tagName === 'TEXTAREA' ||
+        tagName === 'SELECT' ||
+        target.isContentEditable;
+      if (isInputLike) return;
       setNodes((nodes) => nodes.filter((node) => !node.selected));
       setEdges((edges) => edges.filter((edge) => !edge.selected));
-    }
-  }, [setNodes, setEdges]);
+    },
+    [
+      setNodes,
+      setEdges,
+      isAnyConfigPanelOpen,
+    ]
+  );
 
   // 添加键盘事件监听
   useEffect(() => {

@@ -3,6 +3,7 @@ import { Table, Card, Button, Space, Tag, message, Modal, Form, Input, Select, D
 import { ReloadOutlined, DeleteOutlined, PlayCircleOutlined, PauseCircleOutlined, StopOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import request from '@/utils/request';
+import { jobApi } from '@/api/job';
 import type { Job } from './types';
 
 const { RangePicker } = DatePicker;
@@ -46,7 +47,7 @@ const JobList: React.FC = () => {
       title: '作业类型',
       dataIndex: 'job_type',
       key: 'job_type',
-      render: (v: string) => (v === 'config_backup' ? '配置备份' : v),
+      render: (v: string) => (v === 'config_backup' ? '配置备份' : v === 'penetration_task' ? '渗透任务' : v),
     },
     {
       title: '运行类型',
@@ -89,7 +90,7 @@ const JobList: React.FC = () => {
           <Button
             type="link"
             icon={<PlayCircleOutlined />}
-            onClick={() => handleExecute(record.id)}
+            onClick={() => handleExecute(record.id, record.job_type)}
             disabled={record.status === 'active'}
           >
             执行
@@ -132,9 +133,10 @@ const JobList: React.FC = () => {
   ];
 
   // 操作处理函数
-  const handleExecute = async (id: number) => {
+  const handleExecute = async (id: number, jobType?: string) => {
     try {
-      await request.post(`/jobs/${id}/execute`);
+      const timeout = jobApi.getExecuteTimeout(jobType);
+      await request.post(`/jobs/${id}/execute`, {}, { timeout });
       message.success('作业已开始执行');
       fetchJobs();
     } catch (error) {

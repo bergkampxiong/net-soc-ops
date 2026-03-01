@@ -72,6 +72,8 @@ const JobForm: React.FC = () => {
             <Option value="network_config">网络配置</Option>
             <Option value="device_check">设备巡检</Option>
             <Option value="data_collection">数据采集</Option>
+            <Option value="config_backup">配置备份</Option>
+            <Option value="penetration_task">渗透任务</Option>
           </Select>
         </Form.Item>
 
