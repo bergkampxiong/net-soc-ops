@@ -12,8 +12,9 @@ import {
   Select,
   message,
   Descriptions,
+  Popconfirm,
 } from 'antd';
-import { ReloadOutlined, FileTextOutlined, ArrowLeftOutlined, PlusOutlined, EyeOutlined } from '@ant-design/icons';
+import { ReloadOutlined, FileTextOutlined, ArrowLeftOutlined, PlusOutlined, EyeOutlined, DeleteOutlined } from '@ant-design/icons';
 import request, { LONG_REQUEST_TIMEOUT } from '@/utils/request';
 
 const STRIX_BASE = '/config-module/strix';
@@ -59,6 +60,9 @@ const PenetrationReports: React.FC = () => {
   const [page, setPage] = useState(1);
   const pageSize = 20;
   const [generatingId, setGeneratingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [batchDeleting, setBatchDeleting] = useState(false);
 
   useEffect(() => {
     if (jobExecutionIdFromUrl) {
@@ -170,6 +174,46 @@ const PenetrationReports: React.FC = () => {
     );
   };
 
+  const handleDelete = async (taskId: number) => {
+    setDeletingId(taskId);
+    try {
+      await request.delete(`${STRIX_BASE}/scans/${taskId}`);
+      message.success('已删除');
+      if (id && Number(id) === taskId) {
+        navigate('/rpa/task-job-management/penetration-reports');
+      }
+      fetchList();
+    } catch {
+      message.error('删除失败');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先勾选要删除的报告');
+      return;
+    }
+    setBatchDeleting(true);
+    try {
+      const ids = selectedRowKeys as number[];
+      for (const taskId of ids) {
+        await request.delete(`${STRIX_BASE}/scans/${taskId}`);
+      }
+      message.success(`已删除 ${ids.length} 条报告`);
+      setSelectedRowKeys([]);
+      if (id && ids.includes(Number(id))) {
+        navigate('/rpa/task-job-management/penetration-reports');
+      }
+      fetchList();
+    } catch {
+      message.error('批量删除失败');
+    } finally {
+      setBatchDeleting(false);
+    }
+  };
+
   if (id) {
     return (
       <div style={{ padding: 24 }}>
@@ -214,6 +258,16 @@ const PenetrationReports: React.FC = () => {
                       生成统一报告
                     </Button>
                   )}
+                  <Popconfirm
+                    title="确定删除该渗透测试报告记录？"
+                    onConfirm={() => handleDelete(detail.id)}
+                    okText="确定"
+                    cancelText="取消"
+                  >
+                    <Button danger icon={<DeleteOutlined />} loading={deletingId === detail.id}>
+                      删除
+                    </Button>
+                  </Popconfirm>
                 </Space>
                 {!detail.unified_report_path && (
                   <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
@@ -247,7 +301,7 @@ const PenetrationReports: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: 220,
+      width: 260,
       render: (_: unknown, record: ScanItem) => (
         <Space wrap>
           <Button type="link" size="small" onClick={() => navigate(`/rpa/task-job-management/penetration-reports/${record.id}`)}>
@@ -294,10 +348,25 @@ const PenetrationReports: React.FC = () => {
             </Form.Item>
           </Form>
           <Button icon={<ReloadOutlined />} onClick={fetchList}>刷新</Button>
+          <Popconfirm
+            title={`确定删除已勾选的 ${selectedRowKeys.length} 条报告？`}
+            onConfirm={handleBatchDelete}
+            okText="确定"
+            cancelText="取消"
+            disabled={selectedRowKeys.length === 0}
+          >
+            <Button danger icon={<DeleteOutlined />} loading={batchDeleting} disabled={selectedRowKeys.length === 0}>
+              删除
+            </Button>
+          </Popconfirm>
         </Space>
         <Table
           rowKey="id"
           loading={loading}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(keys),
+          }}
           columns={columns}
           dataSource={list}
           pagination={{

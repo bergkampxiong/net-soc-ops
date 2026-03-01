@@ -1,6 +1,7 @@
 # Strix 集成 API：扫描任务创建/列表/详情/报告/取消；统一报告生成/下载/预览；OpenAPI 配置 GET/PUT
 import json
 import os
+import shutil
 import threading
 import logging
 from datetime import datetime, timezone
@@ -302,6 +303,34 @@ def cancel_scan(task_id: int, db: Session = Depends(get_db)):
     task.finished_at = datetime.utcnow()
     db.commit()
     return {"id": task_id, "status": "cancelled"}
+
+
+def _ensure_path_under_strix_workspace(path: str) -> bool:
+    """校验 path 在 data/strix_workspace 下，避免误删系统目录。"""
+    if not path or not os.path.isabs(path):
+        return False
+    backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    workspace_root = os.path.realpath(os.path.join(backend_root, "data", "strix_workspace"))
+    path_real = os.path.realpath(path)
+    return path_real.startswith(workspace_root + os.sep) or path_real == workspace_root
+
+
+@router.delete("/scans/{task_id}")
+def delete_scan(task_id: int, db: Session = Depends(get_db)):
+    """删除渗透测试报告记录，并删除磁盘上的报告目录。"""
+    task = db.query(StrixScanTask).filter(StrixScanTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Scan task not found")
+    report_path = (task.report_path or "").strip()
+    db.delete(task)
+    db.commit()
+    if report_path and _ensure_path_under_strix_workspace(report_path) and os.path.isdir(report_path):
+        try:
+            shutil.rmtree(report_path)
+            logger.info("已删除报告目录: %s", report_path)
+        except OSError as e:
+            logger.warning("删除报告目录失败 %s: %s", report_path, e)
+    return {"id": task_id, "message": "deleted"}
 
 
 # ---------- Config (Phase 2) ----------
