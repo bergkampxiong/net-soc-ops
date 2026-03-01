@@ -165,22 +165,41 @@ def get_scan(task_id: int, db: Session = Depends(get_db)):
     return task.to_dict()
 
 
+def _find_report_html(path: str):
+    """在 path 或其子目录中查找 index.html 或首个 .html 文件，返回 (绝对路径, None) 或 (None, 错误信息)。"""
+    if not path or not os.path.isdir(path):
+        return None, "Report not ready or path missing."
+    index = os.path.join(path, "index.html")
+    if os.path.isfile(index):
+        return index, None
+    for f in os.listdir(path):
+        if f.endswith(".html"):
+            return os.path.join(path, f), None
+    # 兼容：report_path 可能为 strix_runs 父目录，报告在子目录（如 172-18-40-99-8080_e44c）
+    for sub in os.listdir(path):
+        sub_path = os.path.join(path, sub)
+        if not os.path.isdir(sub_path):
+            continue
+        idx = os.path.join(sub_path, "index.html")
+        if os.path.isfile(idx):
+            return idx, None
+        for f in os.listdir(sub_path):
+            if f.endswith(".html"):
+                return os.path.join(sub_path, f), None
+    return None, f"Report directory: {path}. No HTML file found."
+
+
 @router.get("/scans/{task_id}/report")
 def get_scan_report(task_id: int, db: Session = Depends(get_db)):
-    """返回报告目录下的 index.html 或首个 html 文件；若无则返回文本说明。"""
+    """返回报告目录下的 index.html 或首个 html 文件；若无则返回文本说明。支持报告在子目录（strix_runs/xxx）。"""
     task = db.query(StrixScanTask).filter(StrixScanTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Scan task not found")
     path = (task.report_path or "").strip()
-    if not path or not os.path.isdir(path):
-        return PlainTextResponse(content="Report not ready or path missing.", status_code=404)
-    index = os.path.join(path, "index.html")
-    if os.path.isfile(index):
-        return FileResponse(index, media_type="text/html")
-    for f in os.listdir(path):
-        if f.endswith(".html"):
-            return FileResponse(os.path.join(path, f), media_type="text/html")
-    return PlainTextResponse(content=f"Report directory: {path}. No HTML file found.")
+    found, err = _find_report_html(path)
+    if found:
+        return FileResponse(found, media_type="text/html")
+    return PlainTextResponse(content=err or "Report not ready.", status_code=404)
 
 
 @router.post("/scans/{task_id}/cancel")

@@ -73,15 +73,30 @@ def run_strix_sync(
             text=True,
             timeout=timeout,
         )
-        # 常见输出目录：strix 可能在 cwd 下创建 strix_runs/<name>
-        possible_report = os.path.join(cwd, "strix_runs", name)
+        # Strix 实际输出在 strix_runs 下，子目录名常为基于目标的 run_name（如 172-18-40-99-8080_e44c），未必等于 name
+        strix_runs_dir = os.path.join(cwd, "strix_runs")
+        possible_report = os.path.join(strix_runs_dir, name)
+        if not os.path.isdir(possible_report) and os.path.isdir(strix_runs_dir):
+            for sub in sorted(os.listdir(strix_runs_dir)):
+                sub_path = os.path.join(strix_runs_dir, sub)
+                if not os.path.isdir(sub_path):
+                    continue
+                if any(f.endswith(".html") or f == "penetration_test_report.md" for f in os.listdir(sub_path)):
+                    possible_report = sub_path
+                    break
+            else:
+                possible_report = strix_runs_dir
         if not os.path.isdir(possible_report):
             for d in os.listdir(cwd) if os.path.isdir(cwd) else []:
                 if d.startswith("strix"):
                     possible_report = os.path.join(cwd, d)
                     break
+            else:
+                possible_report = cwd
+        # Strix 约定：0=正常结束，2=发现漏洞后结束（main.py 中 non_interactive 且 vulnerability_reports 时 sys.exit(2)），均视为扫描成功
+        success = result.returncode in (0, 2)
         return {
-            "success": result.returncode == 0,
+            "success": success,
             "returncode": result.returncode,
             "stdout": result.stdout or "",
             "stderr": result.stderr or "",

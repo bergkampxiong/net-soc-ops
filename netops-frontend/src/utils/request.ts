@@ -20,6 +20,9 @@ interface CustomAxiosInstance extends Omit<AxiosInstance, 'get' | 'delete' | 'po
   (config: any): Promise<any>;  // 添加request方法的类型定义
 }
 
+// 长时间任务（如渗透测试、作业执行）使用的超时时间（毫秒），默认 10 分钟
+export const LONG_REQUEST_TIMEOUT = 600000;
+
 // 创建axios实例
 // baseURL设置为/api，这样：
 // 1. 调用 request.get('user/list') 会自动变成 /api/user/list

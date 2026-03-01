@@ -163,8 +163,8 @@ async def health():
 @app.on_event("shutdown")
 async def shutdown_event():
     """应用关闭时执行的操作"""
-    # 停止连接管理器
-    device_connection_manager.stop()
+    # 停止连接管理器（stop 为 async，必须 await）
+    await device_connection_manager.stop()
     
     # 停止调度器
     scheduler.shutdown()
