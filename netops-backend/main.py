@@ -21,6 +21,7 @@ import database.config_management_models  # 导入配置管理模型
 # 导入路由
 from routes import auth, users, audit, ldap, security, config_management, config_generator_router, config_module
 from routes.strix_integration import router as strix_router
+from routes.system_global_config import router as system_global_config_router
 from routes.monitoring_integration import router as monitoring_integration_router
 from routes.cmdb import router as cmdb_router
 from routes.device import router as device_router, connections, ssh_connections
@@ -73,8 +74,9 @@ def init_db():
     try:
         # 只创建新表，不删除现有表
         Base.metadata.create_all(bind=engine)
-        # Strix 集成表（导入以注册到 database.base.Base.metadata）
+        # Strix 集成表与系统全局配置表（导入以注册到 database.base.Base.metadata）
         import database.strix_models  # noqa: F401
+        import database.system_global_config_models  # noqa: F401
         from database.base import Base as StrixBase
         StrixBase.metadata.create_all(bind=engine, checkfirst=True)
         print("Database tables created successfully")
@@ -97,6 +99,7 @@ app.include_router(config_management.router, prefix="/api", tags=["config"])
 app.include_router(config_generator_router, prefix="/api/config-generator", tags=["config-generator"])
 app.include_router(config_module.router, prefix="/api/config-module")
 app.include_router(strix_router, prefix="/api/config-module")
+app.include_router(system_global_config_router, prefix="/api")
 app.include_router(job_config_router, prefix="/api")
 app.include_router(connections.router)
 app.include_router(ssh_connections.router, prefix="/api")

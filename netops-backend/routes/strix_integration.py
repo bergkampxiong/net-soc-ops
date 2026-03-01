@@ -1,8 +1,9 @@
-# Strix 集成 API：扫描任务创建/列表/详情/报告/取消；OpenAPI 配置 GET/PUT
+# Strix 集成 API：扫描任务创建/列表/详情/报告/取消；统一报告生成/下载/预览；OpenAPI 配置 GET/PUT
 import json
 import os
 import threading
 import logging
+from datetime import datetime, timezone
 from typing import Optional, List, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, PlainTextResponse
@@ -12,6 +13,8 @@ from sqlalchemy.orm import Session
 from database.session import get_db
 from database.strix_models import StrixScanTask, StrixConfig
 from utils.strix_runner import run_strix_sync, get_strix_env_from_config
+from routes.system_global_config import get_global_config_kv
+from utils.unified_report_builder import build_unified_report, UNIFIED_REPORT_MD, UNIFIED_REPORT_HTML
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +203,63 @@ def get_scan_report(task_id: int, db: Session = Depends(get_db)):
     if found:
         return FileResponse(found, media_type="text/html")
     return PlainTextResponse(content=err or "Report not ready.", status_code=404)
+
+
+# ---------- 统一渗透测试报告 ----------
+@router.post("/scans/{task_id}/unified-report")
+def create_unified_report(task_id: int, db: Session = Depends(get_db)):
+    """触发生成统一报告（读取 Strix 输出，可选 LLM 中文化，落盘）。"""
+    task = db.query(StrixScanTask).filter(StrixScanTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Scan task not found")
+    path = (task.report_path or "").strip()
+    if not path or not os.path.isdir(path):
+        raise HTTPException(status_code=400, detail="Report path not ready or missing")
+    global_kv = get_global_config_kv(db)
+    api_key = global_kv.get("GLOBAL_LLM_API_KEY")
+    try:
+        md_path, html_path, _ = build_unified_report(
+            report_path=path,
+            task_target_value=task.target_value,
+            task_created_at=task.created_at.isoformat() if task.created_at else None,
+            task_finished_at=task.finished_at.isoformat() if task.finished_at else None,
+            api_key=api_key,
+            api_base=global_kv.get("GLOBAL_LLM_API_BASE"),
+            model=global_kv.get("GLOBAL_LLM_MODEL"),
+            use_llm=bool(api_key),
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    task.unified_report_path = md_path
+    task.unified_report_generated_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True, "unified_report_path": md_path, "ready": True}
+
+
+@router.get("/scans/{task_id}/unified-report")
+def get_unified_report(
+    task_id: int,
+    format: Optional[str] = Query(None, description="html 则返回 HTML 预览"),
+    db: Session = Depends(get_db),
+):
+    """下载或预览统一报告。已生成则返回 .md 或 .html 文件流；未生成返回 404。"""
+    task = db.query(StrixScanTask).filter(StrixScanTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Scan task not found")
+    base_path = (task.unified_report_path or "").strip()
+    if not base_path or not os.path.isfile(base_path):
+        raise HTTPException(status_code=404, detail="Unified report not generated. Call POST first.")
+    base_dir = os.path.dirname(base_path)
+    if format and format.lower() == "html":
+        html_path = os.path.join(base_dir, UNIFIED_REPORT_HTML)
+        if os.path.isfile(html_path):
+            return FileResponse(html_path, media_type="text/html")
+        raise HTTPException(status_code=404, detail="HTML version not available")
+    return FileResponse(
+        base_path,
+        media_type="text/markdown",
+        filename=os.path.basename(base_path),
+    )
 
 
 @router.post("/scans/{task_id}/cancel")

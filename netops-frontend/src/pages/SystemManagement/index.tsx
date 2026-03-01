@@ -1,9 +1,9 @@
 import React from 'react';
 import { Tabs } from 'antd';
-import { 
-  UserOutlined, SafetyOutlined, 
-  AuditOutlined, LockOutlined, 
-  ApiOutlined 
+import {
+  UserOutlined, SafetyOutlined,
+  AuditOutlined, LockOutlined,
+  ApiOutlined,
 } from '@ant-design/icons';
 
 import UserManagement from './UserManagement';
@@ -11,6 +11,7 @@ import LDAPConfig from './LDAPConfig';
 import AuditLogs from './AuditLogs';
 import SecuritySettings from './SecuritySettings';
 import TwoFactorAuth from './TwoFactorAuth';
+import GlobalConfig from './GlobalConfig';
 
 const SystemManagement: React.FC = () => {
   const items = [
@@ -38,7 +39,12 @@ const SystemManagement: React.FC = () => {
       key: 'audit',
       label: <span><AuditOutlined />审计日志</span>,
       children: <AuditLogs />
-    }
+    },
+    {
+      key: 'global-config',
+      label: <span><ApiOutlined />OpenAPI-Key</span>,
+      children: <GlobalConfig />
+    },
   ];
 
   return (

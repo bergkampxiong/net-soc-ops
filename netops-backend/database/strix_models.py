@@ -22,6 +22,8 @@ class StrixScanTask(Base):
     finished_at = Column(DateTime(timezone=True), nullable=True, comment="结束时间")
     summary = Column(Text, nullable=True, comment="摘要 JSON: 漏洞数、严重程度等")
     report_path = Column(Text, nullable=True, comment="报告文件路径（相对或绝对）")
+    unified_report_path = Column(Text, nullable=True, comment="统一报告文件路径（由 int_all_db ensure 添加）")
+    unified_report_generated_at = Column(DateTime(timezone=True), nullable=True, comment="统一报告生成时间（由 int_all_db ensure 添加）")
 
     def to_dict(self):
         import json
@@ -38,6 +40,8 @@ class StrixScanTask(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
             "report_path": self.report_path,
+            "unified_report_path": self.unified_report_path,
+            "unified_report_generated_at": self.unified_report_generated_at.isoformat() if self.unified_report_generated_at else None,
         }
         if self.summary:
             try:

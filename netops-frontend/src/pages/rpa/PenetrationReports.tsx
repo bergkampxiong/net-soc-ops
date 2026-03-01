@@ -13,7 +13,7 @@ import {
   message,
   Descriptions,
 } from 'antd';
-import { ReloadOutlined, FileTextOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { ReloadOutlined, FileTextOutlined, ArrowLeftOutlined, PlusOutlined, EyeOutlined } from '@ant-design/icons';
 import request from '@/utils/request';
 
 const STRIX_BASE = '/config-module/strix';
@@ -31,6 +31,8 @@ interface ScanItem {
   finished_at: string | null;
   summary: { high?: number; medium?: number; low?: number } | null;
   report_path: string | null;
+  unified_report_path?: string | null;
+  unified_report_generated_at?: string | null;
 }
 
 const statusMap: Record<string, { color: string; text: string }> = {
@@ -56,6 +58,7 @@ const PenetrationReports: React.FC = () => {
   );
   const [page, setPage] = useState(1);
   const pageSize = 20;
+  const [generatingId, setGeneratingId] = useState<number | null>(null);
 
   useEffect(() => {
     if (jobExecutionIdFromUrl) {
@@ -96,9 +99,41 @@ const PenetrationReports: React.FC = () => {
     }
   }, [id, fetchList]);
 
+  const baseUrl = (request.defaults.baseURL as string) || '/api';
+
   const downloadReport = (taskId: number) => {
-    const base = (request.defaults.baseURL as string) || '/api';
-    window.open(`${base}${STRIX_BASE}/scans/${taskId}/report`, '_blank');
+    window.open(`${baseUrl}${STRIX_BASE}/scans/${taskId}/report`, '_blank');
+  };
+
+  const generateUnifiedReport = async (taskId: number) => {
+    setGeneratingId(taskId);
+    try {
+      await request.post(`${STRIX_BASE}/scans/${taskId}/unified-report`);
+      message.success('统一报告已生成');
+      if (id && Number(id) === taskId) {
+        request.get<ScanItem>(`${STRIX_BASE}/scans/${taskId}`).then((res) => setDetail(res.data ?? res));
+      } else {
+        fetchList();
+      }
+    } catch (e: unknown) {
+      const err = e && typeof e === 'object' && 'response' in e ? (e as { response?: { data?: { detail?: string } } }).response?.data?.detail : null;
+      const msg = typeof err === 'string' ? err : '生成失败';
+      if (msg.includes('not ready') || msg.includes('missing')) {
+        message.warning('报告目录未就绪，请等待扫描完成后再生成统一报告');
+      } else {
+        message.error(msg || '生成统一报告失败');
+      }
+    } finally {
+      setGeneratingId(null);
+    }
+  };
+
+  const downloadUnifiedReport = (taskId: number) => {
+    window.open(`${baseUrl}${STRIX_BASE}/scans/${taskId}/unified-report`, '_blank');
+  };
+
+  const previewUnifiedReport = (taskId: number) => {
+    window.open(`${baseUrl}${STRIX_BASE}/scans/${taskId}/unified-report?format=html`, '_blank');
   };
 
   if (id) {
@@ -123,9 +158,34 @@ const PenetrationReports: React.FC = () => {
                 <Descriptions.Item label="结束时间">{detail.finished_at ? new Date(detail.finished_at).toLocaleString() : '-'}</Descriptions.Item>
               </Descriptions>
               <div style={{ marginTop: 16 }}>
-                <Button type="primary" icon={<FileTextOutlined />} onClick={() => downloadReport(detail.id)}>
-                  下载报告
-                </Button>
+                <Space wrap>
+                  <Button type="primary" icon={<FileTextOutlined />} onClick={() => downloadReport(detail.id)}>
+                    下载原始报告
+                  </Button>
+                  {detail.unified_report_path ? (
+                    <>
+                      <Button icon={<FileTextOutlined />} onClick={() => downloadUnifiedReport(detail.id)}>
+                        下载统一报告
+                      </Button>
+                      <Button icon={<EyeOutlined />} onClick={() => previewUnifiedReport(detail.id)}>
+                        预览统一报告
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      icon={<PlusOutlined />}
+                      loading={generatingId === detail.id}
+                      onClick={() => generateUnifiedReport(detail.id)}
+                    >
+                      生成统一报告
+                    </Button>
+                  )}
+                </Space>
+                {!detail.unified_report_path && (
+                  <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+                    生成后可下载/预览合并中文化的单一报告。若需中文化请先在系统管理中配置 OpenAI API Key。
+                  </Typography.Text>
+                )}
               </div>
             </>
           )}
@@ -153,15 +213,34 @@ const PenetrationReports: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: 140,
+      width: 220,
       render: (_: unknown, record: ScanItem) => (
-        <Space>
+        <Space wrap>
           <Button type="link" size="small" onClick={() => navigate(`/rpa/task-job-management/penetration-reports/${record.id}`)}>
             详情
           </Button>
           <Button type="link" size="small" onClick={() => downloadReport(record.id)}>
-            下载报告
+            原始报告
           </Button>
+          {record.unified_report_path ? (
+            <>
+              <Button type="link" size="small" onClick={() => downloadUnifiedReport(record.id)}>
+                统一报告
+              </Button>
+              <Button type="link" size="small" onClick={() => previewUnifiedReport(record.id)}>
+                预览
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="link"
+              size="small"
+              loading={generatingId === record.id}
+              onClick={() => generateUnifiedReport(record.id)}
+            >
+              生成统一报告
+            </Button>
+          )}
         </Space>
       ),
     },

@@ -32,6 +32,7 @@ from database.config_module_models import (
     ConfigEosInfo,
 )
 from database.strix_models import StrixScanTask, StrixConfig
+from database.system_global_config_models import SystemGlobalConfig
 from app.models.job import Job, JobExecution
 
 # 创建密码哈希上下文
@@ -590,6 +591,36 @@ def init_strix_tables(engine):
         raise
 
 
+def ensure_strix_scan_task_unified_report(engine):
+    """为 strix_scan_tasks 表添加统一报告相关列（兼容已有库）。"""
+    try:
+        inspector = inspect(engine)
+        if "strix_scan_tasks" not in inspector.get_table_names():
+            return
+        columns = [col["name"] for col in inspector.get_columns("strix_scan_tasks")]
+        with engine.connect() as conn:
+            if "unified_report_path" not in columns:
+                conn.execute(text("ALTER TABLE strix_scan_tasks ADD COLUMN unified_report_path TEXT"))
+                conn.commit()
+                print("已添加 unified_report_path 列到 strix_scan_tasks")
+            if "unified_report_generated_at" not in columns:
+                conn.execute(text("ALTER TABLE strix_scan_tasks ADD COLUMN unified_report_generated_at TIMESTAMP WITH TIME ZONE"))
+                conn.commit()
+                print("已添加 unified_report_generated_at 列到 strix_scan_tasks")
+    except Exception as e:
+        print(f"ensure_strix_scan_task_unified_report 失败: {e}")
+
+
+def init_system_global_config_tables(engine):
+    """初始化系统全局配置表（如全局 OpenAI API Key）。"""
+    try:
+        SystemGlobalConfig.__table__.create(engine, checkfirst=True)
+        print("系统全局配置表（system_global_config）创建完成")
+    except Exception as e:
+        print(f"系统全局配置表初始化失败: {str(e)}")
+        raise
+
+
 def init_databases():
     """初始化所有数据库"""
     try:
@@ -642,6 +673,10 @@ def init_databases():
             
             # 初始化 Strix 集成表
             init_strix_tables(engine)
+            ensure_strix_scan_task_unified_report(engine)
+            
+            # 初始化系统全局配置表（渗透测试统一报告等全局功能用）
+            init_system_global_config_tables(engine)
             
             print("所有数据库初始化完成")
             

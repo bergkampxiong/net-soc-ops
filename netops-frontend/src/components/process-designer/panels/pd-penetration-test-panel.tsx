@@ -22,6 +22,10 @@ export interface PenetrationTestNodeData {
   presetId?: string;
   label?: string;
   configured?: boolean;
+  /** 非静态测试时可选：测试账号，用于已认证扫描 */
+  testUsername?: string;
+  /** 非静态测试时可选：测试密码，仅内存拼入 instruction，不落库 */
+  testPassword?: string;
 }
 
 interface PDPenetrationTestPanelProps {
@@ -62,6 +66,8 @@ export const PDPenetrationTestPanel: React.FC<PDPenetrationTestPanelProps> = ({
         targetNodeId: initialData?.targetNodeId,
         instruction: initialData?.instruction,
         scanMode: initialData?.scanMode ?? 'deep',
+        testUsername: initialData?.testUsername,
+        testPassword: initialData?.testPassword,
       });
     }
   }, [visible, initialData, form]);
@@ -79,6 +85,8 @@ export const PDPenetrationTestPanel: React.FC<PDPenetrationTestPanelProps> = ({
         targetNodeId,
         instruction: values.instruction || undefined,
         scanMode: values.scanMode ?? 'deep',
+        testUsername: values.testUsername || undefined,
+        testPassword: values.testPassword || undefined,
         configured: true,
       });
       onClose();
@@ -156,6 +164,36 @@ export const PDPenetrationTestPanel: React.FC<PDPenetrationTestPanelProps> = ({
           rules={[{ required: true }]}
         >
           <Select options={SCAN_MODES} />
+        </Form.Item>
+        <Form.Item noStyle shouldUpdate={(prev, curr) => prev.targetNodeId !== curr.targetNodeId}>
+          {({ getFieldValue }) => {
+            const id = getFieldValue('targetNodeId');
+            const node = id ? scanTargetNodes.find((n) => n.id === id) : null;
+            const staticOnly = node?.staticOnly === true;
+            return (
+              <>
+                {!staticOnly && (
+                  <Alert
+                    type="info"
+                    showIcon
+                    message="测试账号与密码（可选）"
+                    description="非静态测试时，可填写被测系统的测试账号与密码，以便进行已认证扫描，提高漏洞发现率；仅用于您已授权的测试环境。"
+                    style={{ marginBottom: 16 }}
+                  />
+                )}
+                <Form.Item
+                  name="testUsername"
+                  label="测试账号"
+                  extra={staticOnly ? '仅静态扫描不需要系统账号密码。' : undefined}
+                >
+                  <Input placeholder="登录用户名" disabled={staticOnly} />
+                </Form.Item>
+                <Form.Item name="testPassword" label="测试密码">
+                  <Input.Password placeholder="登录密码" disabled={staticOnly} autoComplete="off" />
+                </Form.Item>
+              </>
+            );
+          }}
         </Form.Item>
         <Form.Item name="instruction" label="自定义指令（可选）">
           <Input.TextArea rows={2} placeholder="如：仅测认证与越权" />

@@ -268,6 +268,18 @@ class JobService:
             # 仅支持单目标，每次执行一个
             single_target = [targets[0]]
             instruction = data.get("instruction") or None
+            # 非静态测试时可将测试账号密码拼入 instruction 前部，仅内存使用，不落库不写日志
+            test_username = data.get("testUsername")
+            test_password = data.get("testPassword")
+            if (test_username or test_password) and not static_only:
+                cred_prefix = "使用以下测试账号进行已认证扫描："
+                parts = []
+                if test_username:
+                    parts.append(f"用户名 {test_username}")
+                if test_password:
+                    parts.append("密码 [已配置]")
+                cred_prefix += "，".join(parts) + "。请先登录后再进行需认证的接口与页面测试。"
+                instruction = f"{cred_prefix}\n\n{instruction}" if instruction else cred_prefix
             if static_only:
                 static_instruction = "仅做静态代码审计，不要尝试运行应用。Perform static code analysis only; do not attempt to run the application."
                 instruction = f"{static_instruction}\n\n{instruction}" if instruction else static_instruction
