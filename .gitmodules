@@ -1,4 +1,0 @@
-[submodule "netops-backend/strix"]
-	path = netops-backend/strix
-	url = https://github.com/usestrix/strix.git
-	branch = main
