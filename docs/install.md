@@ -11,14 +11,18 @@
 - **数据库**：PostgreSQL、Redis（可使用项目提供的 Docker 脚本一键安装，见第二节）
 - **可选**：Docker（用于脚本安装 PostgreSQL + Redis）
 
-**一键安装脚本**（安装 Python3/npm、交互配置数据库与 Redis 并写入 `.env`、安装前后端依赖、初始化库表）：
+**一键安装脚本**（安装 Python3/npm、交互配置数据库与 Redis、安装前后端依赖、初始化库表）：
 
 ```bash
 bash scripts/install-netops.sh
 ```
 
 - 建议将项目放在 `/app/net-soc-ops` 下；也可在任意克隆路径执行，脚本以当前仓库为项目根。
-- 执行过程中会提示输入 PostgreSQL（主机/端口/用户/密码/库名）与 Redis（主机/端口/DB），并生成 `netops-backend/.env`。若数据库尚未安装，可先执行 `sudo bash scripts/setup-docker-databases.sh`。
+- 执行过程中会提示输入 PostgreSQL（主机/端口/用户/密码/库名）与 Redis（主机/端口/DB）。脚本会**同时写入**：
+  - `netops-backend/.env`（环境变量）
+  - `netops-backend/database/config.py`（后端读用的数据库/Redis 配置）
+- 数据库/Redis 地址也可在脚本内默认配置处修改，或通过参数传入，例如：`bash scripts/install-netops.sh --db-host=192.168.1.100 --db-port=5432`。
+- 若数据库尚未安装，可先执行 `sudo bash scripts/setup-docker-databases.sh`。
 
 ---
 
@@ -32,7 +36,7 @@ bash scripts/install-netops.sh
 
 **方式 B：使用已有数据库**
 
-- 在 `netops-backend/.env` 中配置 `DATABASE_URL`、`CMDB_DATABASE_URL`、`REDIS_URL`（或通过 `database/config.py` 所用环境变量），与现有库连接信息一致即可。
+- 通过安装脚本交互输入已有库连接信息，脚本会写入 `netops-backend/.env` 与 `netops-backend/database/config.py`。若需修改，可重新运行安装脚本并选择覆盖，或手动编辑上述两处使与现有库一致。
 
 ---
 

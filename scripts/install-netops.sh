@@ -2,7 +2,9 @@
 # NetOps 前后端安装脚本：安装 Python3、Node/npm（若缺失），由用户输入数据库/Redis 连接参数并写入 .env，安装依赖并初始化库表。
 # 不安装数据库：PostgreSQL/Redis 需在其它机器或环境单独安装，本脚本仅配置连接参数。
 # 安装目录约定：项目建议放在 /app/net-soc-ops 下；也可在任意路径执行，脚本以当前仓库为项目根。
-# 使用：bash scripts/install-netops.sh  或  sudo bash scripts/install-netops.sh（安装系统包时可能需要 sudo）
+# 使用：bash scripts/install-netops.sh [选项]
+#       选项示例：--db-host=172.19.128.242 --db-port=5432 --db-user=amber --db-name=netops
+#       也可在下方「脚本内默认配置」中直接修改默认值。
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,15 +12,43 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND_DIR="$PROJECT_ROOT/netops-backend"
 FRONTEND_DIR="$PROJECT_ROOT/netops-frontend"
 ENV_FILE="$BACKEND_DIR/.env"
+VENV_ACTIVATE="$BACKEND_DIR/venv/bin/activate"
 
-# 默认数据库/Redis 参数（仅用于交互时的默认提示，实际以用户输入或现有 .env 为准）
-DEFAULT_DB_HOST="${DB_HOST:-127.0.0.1}"
-DEFAULT_DB_PORT="${DB_PORT:-5432}"
-DEFAULT_DB_USER="${DB_USER:-amber}"
-DEFAULT_DB_NAME="${DB_NAME:-netops}"
-DEFAULT_REDIS_HOST="${REDIS_HOST:-127.0.0.1}"
-DEFAULT_REDIS_PORT="${REDIS_PORT:-6379}"
-DEFAULT_REDIS_DB="${REDIS_DB:-0}"
+# ---------- 脚本内默认配置：其他用户在新环境安装时直接回车即用此处参数写入 .env 与 database/config.py ----------
+# 交付给客户前可在此修改为对方环境的数据库/Redis 地址，安装时客户只需输入密码即可。
+SCRIPT_DEFAULT_DB_HOST="127.0.0.1"
+SCRIPT_DEFAULT_DB_PORT="5432"
+SCRIPT_DEFAULT_DB_USER="amber"
+SCRIPT_DEFAULT_DB_NAME="netops"
+SCRIPT_DEFAULT_REDIS_HOST="127.0.0.1"
+SCRIPT_DEFAULT_REDIS_PORT="6379"
+SCRIPT_DEFAULT_REDIS_DB="0"
+
+# 解析命令行参数（--db-host=IP 等），覆盖下面的默认值
+parse_install_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --db-host=*)   DEFAULT_DB_HOST="${1#*=}" ;;
+      --db-port=*)   DEFAULT_DB_PORT="${1#*=}" ;;
+      --db-user=*)   DEFAULT_DB_USER="${1#*=}" ;;
+      --db-name=*)   DEFAULT_DB_NAME="${1#*=}" ;;
+      --redis-host=*) DEFAULT_REDIS_HOST="${1#*=}" ;;
+      --redis-port=*) DEFAULT_REDIS_PORT="${1#*=}" ;;
+      --redis-db=*)  DEFAULT_REDIS_DB="${1#*=}" ;;
+    esac
+    shift
+  done
+}
+parse_install_args "$@"
+
+# 默认数据库/Redis 参数：命令行 > 环境变量 > 脚本内默认（交互时直接回车即用此默认）
+DEFAULT_DB_HOST="${DEFAULT_DB_HOST:-${DB_HOST:-$SCRIPT_DEFAULT_DB_HOST}}"
+DEFAULT_DB_PORT="${DEFAULT_DB_PORT:-${DB_PORT:-$SCRIPT_DEFAULT_DB_PORT}}"
+DEFAULT_DB_USER="${DEFAULT_DB_USER:-${DB_USER:-$SCRIPT_DEFAULT_DB_USER}}"
+DEFAULT_DB_NAME="${DEFAULT_DB_NAME:-${DB_NAME:-$SCRIPT_DEFAULT_DB_NAME}}"
+DEFAULT_REDIS_HOST="${DEFAULT_REDIS_HOST:-${REDIS_HOST:-$SCRIPT_DEFAULT_REDIS_HOST}}"
+DEFAULT_REDIS_PORT="${DEFAULT_REDIS_PORT:-${REDIS_PORT:-$SCRIPT_DEFAULT_REDIS_PORT}}"
+DEFAULT_REDIS_DB="${DEFAULT_REDIS_DB:-${REDIS_DB:-$SCRIPT_DEFAULT_REDIS_DB}}"
 
 echo "========== NetOps 安装脚本 =========="
 echo "项目根目录: $PROJECT_ROOT"
@@ -68,6 +98,46 @@ install_node_npm() {
     exit 1
   fi
   echo "[Node/npm] 安装完成: node $(node -v), npm $(npm -v)"
+}
+
+# ---------- 2.5 确保 python3-venv 可用（Debian/Ubuntu 创建 venv 需此包）----------
+ensure_python3_venv() {
+  if python3 -c "import ensurepip" 2>/dev/null; then
+    return
+  fi
+  echo "[python3-venv] 当前 Python 无法创建 venv（缺少 ensurepip），尝试安装 python3-venv..."
+  if [[ -f /etc/debian_version ]]; then
+    PYVER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null) || true
+    if [[ -n "$PYVER" ]]; then
+      sudo apt-get update -qq
+      sudo apt-get install -y "python${PYVER}-venv" 2>/dev/null || sudo apt-get install -y python3-venv
+    else
+      sudo apt-get update -qq
+      sudo apt-get install -y python3-venv
+    fi
+    echo "[python3-venv] 安装完成"
+  else
+    echo "错误: 当前系统无法创建 Python 虚拟环境，请手动安装 python3-venv 或等价包后重试。"
+    exit 1
+  fi
+}
+
+# ---------- 2.6 确保 pip 编译依赖（python-ldap 等需 Python 头文件与 OpenLDAP 开发库）----------
+ensure_pip_build_deps() {
+  if [[ ! -f /etc/debian_version ]]; then
+    return
+  fi
+  echo "[构建依赖] 安装 python3-dev、libldap2-dev、libsasl2-dev（供 python-ldap 编译）..."
+  sudo apt-get update -qq
+  sudo apt-get install -y python3-dev libldap2-dev libsasl2-dev 2>/dev/null || {
+    PYVER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null) || true
+    if [[ -n "$PYVER" ]]; then
+      sudo apt-get install -y "python${PYVER}-dev" libldap2-dev libsasl2-dev
+    else
+      sudo apt-get install -y python3-dev libldap2-dev libsasl2-dev
+    fi
+  }
+  echo "[构建依赖] 完成"
 }
 
 # ---------- 3. 收集数据库与 Redis 环境变量 ----------
@@ -133,8 +203,75 @@ REDIS_HOST=$REDIS_HOST
 REDIS_PORT=$REDIS_PORT
 REDIS_DB=$REDIS_DB
 EOF
-  echo ""
   echo "已写入 $ENV_FILE"
+
+  # 同步写入 database/config.py，便于其他模块与 int_all_db 直接读同一套配置
+  export BACKEND_DIR
+  export _CFG_DB_HOST="$DB_HOST"
+  export _CFG_DB_PORT="$DB_PORT"
+  export _CFG_DB_USER="$DB_USER"
+  export _CFG_DB_NAME="$DB_NAME"
+  export _CFG_DB_PASS="$DB_PASSWORD"
+  export _CFG_REDIS_HOST="$REDIS_HOST"
+  export _CFG_REDIS_PORT="$REDIS_PORT"
+  export _CFG_REDIS_DB="$REDIS_DB"
+  python3 << 'PYCONFIG'
+import os
+h = os.environ.get("_CFG_DB_HOST", "127.0.0.1")
+p = int(os.environ.get("_CFG_DB_PORT", "5432"))
+u = os.environ.get("_CFG_DB_USER", "netops")
+db = os.environ.get("_CFG_DB_NAME", "netops")
+pw = os.environ.get("_CFG_DB_PASS", "")
+rh = os.environ.get("_CFG_REDIS_HOST", "127.0.0.1")
+rp = int(os.environ.get("_CFG_REDIS_PORT", "6379"))
+rd = int(os.environ.get("_CFG_REDIS_DB", "0"))
+content = '''import os
+from typing import Dict
+from urllib.parse import quote_plus
+
+# 数据库配置
+DATABASE_CONFIG = {
+    "host": ''' + repr(h) + ''',
+    "port": ''' + str(p) + ''',
+    "database": ''' + repr(db) + ''',
+    "user": ''' + repr(u) + ''',
+    "password": ''' + repr(pw) + ''',
+}
+
+# Redis配置
+REDIS_CONFIG = {
+    "host": ''' + repr(rh) + ''',
+    "port": ''' + str(rp) + ''',
+    "db": ''' + str(rd) + ''',
+}
+
+# 构建数据库URL
+def get_database_url(db_name: str = "netops") -> str:
+    """构建数据库连接URL"""
+    config = DATABASE_CONFIG.copy()
+    config["database"] = db_name
+    password = quote_plus(config['password'])
+    return f"postgresql://{config['user']}:{password}@{config['host']}:{config['port']}/{config['database']}"
+
+# 构建Redis URL
+def get_redis_url(db: int = 0) -> str:
+    """构建Redis连接URL"""
+    config = REDIS_CONFIG.copy()
+    config["db"] = db
+    return f"redis://{config['host']}:{config['port']}/{config['db']}"
+
+# 导出环境变量
+os.environ["DATABASE_URL"] = get_database_url()
+os.environ["CMDB_DATABASE_URL"] = get_database_url()  # 使用同一个数据库
+os.environ["REDIS_URL"] = get_redis_url()
+'''
+out_path = os.path.join(os.environ.get("BACKEND_DIR", ""), "database", "config.py")
+with open(out_path, "w", encoding="utf-8") as f:
+    f.write(content)
+PYCONFIG
+  unset _CFG_DB_HOST _CFG_DB_PORT _CFG_DB_USER _CFG_DB_NAME _CFG_DB_PASS _CFG_REDIS_HOST _CFG_REDIS_PORT _CFG_REDIS_DB
+  echo "已写入 $BACKEND_DIR/database/config.py"
+  echo ""
 }
 
 # ---------- 4. 后端：venv + pip + 数据库初始化 ----------
@@ -150,15 +287,20 @@ install_backend() {
   fi
   echo ""
   echo "========== 后端依赖与数据库初始化 =========="
-  if [[ ! -d venv ]]; then
-    python3 -m venv venv
-    echo "已创建虚拟环境 venv"
+  if [[ ! -f "$VENV_ACTIVATE" ]]; then
+    python3 -m venv "$BACKEND_DIR/venv"
+    echo "已创建虚拟环境 $BACKEND_DIR/venv"
   fi
-  source venv/bin/activate
+  source "$VENV_ACTIVATE"
   pip install -q -r requirements.txt
   echo "已安装 Python 依赖"
   if [[ -f int_all_db.py ]]; then
-    python3 int_all_db.py
+    if ! python3 int_all_db.py; then
+      echo ""
+      echo "数据库初始化失败: 无法连接 PostgreSQL（请检查 .env 中 DB_HOST/端口及数据库是否已启动、网络是否可达）。"
+      echo "修复连接后请手动执行: cd $BACKEND_DIR && source venv/bin/activate && python3 int_all_db.py"
+      echo ""
+    fi
   else
     echo "未找到 int_all_db.py，请手动执行数据库初始化。"
   fi
@@ -185,6 +327,8 @@ install_frontend() {
 
 # ---------- 主流程 ----------
 install_python3
+ensure_python3_venv
+ensure_pip_build_deps
 install_node_npm
 write_env_file
 install_backend
