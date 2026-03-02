@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # NetOps 前后端服务启动脚本：先启动后端（后台），再启动前端（前台）；Ctrl+C 退出时会一并停止后端。
-# 使用：bash scripts/start-netops.sh
+# 首次使用请先执行：bash scripts/install-netops.sh（安装 Python/Node 依赖并初始化数据库）
+# 使用：bash scripts/start-netops.sh  或从项目根目录执行
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND_DIR="$PROJECT_ROOT/netops-backend"
 FRONTEND_DIR="$PROJECT_ROOT/netops-frontend"
+VENV_ACTIVATE="$BACKEND_DIR/venv/bin/activate"
 BACKEND_PID=""
 
 cleanup() {
@@ -25,12 +27,14 @@ if [[ ! -d "$BACKEND_DIR" ]]; then
   echo "错误: 未找到后端目录 $BACKEND_DIR"
   exit 1
 fi
-cd "$BACKEND_DIR"
-if [[ ! -d venv ]]; then
-  echo "未检测到虚拟环境，正在创建 venv..."
-  python3 -m venv venv
+if [[ ! -f "$VENV_ACTIVATE" ]]; then
+  echo "错误: 未检测到虚拟环境（缺少 $VENV_ACTIVATE）"
+  echo "首次启动请先执行安装脚本（会安装 Python 依赖并初始化数据库）："
+  echo "  bash $SCRIPT_DIR/install-netops.sh"
+  exit 1
 fi
-source venv/bin/activate
+cd "$BACKEND_DIR"
+source "$VENV_ACTIVATE"
 echo "启动后端: $BACKEND_DIR (端口 8000)"
 python3 main.py &
 BACKEND_PID=$!
