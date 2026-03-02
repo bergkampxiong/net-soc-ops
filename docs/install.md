@@ -4,12 +4,21 @@
 
 ---
 
-## 一、环境准备
+## 一、环境准备与一键安装（可选）
 
 - **Python**：3.10+（后端）
 - **Node.js**：16+（前端，建议 LTS）
 - **数据库**：PostgreSQL、Redis（可使用项目提供的 Docker 脚本一键安装，见第二节）
 - **可选**：Docker（用于脚本安装 PostgreSQL + Redis）
+
+**一键安装脚本**（安装 Python3/npm、交互配置数据库与 Redis 并写入 `.env`、安装前后端依赖、初始化库表）：
+
+```bash
+bash scripts/install-netops.sh
+```
+
+- 建议将项目放在 `/app/net-soc-ops` 下；也可在任意克隆路径执行，脚本以当前仓库为项目根。
+- 执行过程中会提示输入 PostgreSQL（主机/端口/用户/密码/库名）与 Redis（主机/端口/DB），并生成 `netops-backend/.env`。若数据库尚未安装，可先执行 `sudo bash scripts/setup-docker-databases.sh`。
 
 ---
 

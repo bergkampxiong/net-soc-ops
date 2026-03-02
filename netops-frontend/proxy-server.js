@@ -3,7 +3,7 @@ const httpProxy = require('http-proxy');
 
 // 创建代理服务器
 const proxy = httpProxy.createProxyServer({
-  target: 'http://172.18.40.99:8000',
+  target: 'http://127.0.0.1:8000',
   changeOrigin: true,
   ws: true,  // 启用WebSocket支持
   secure: false
@@ -62,7 +62,7 @@ proxy.on('proxyReq', (proxyReq, req, res) => {
   proxyReq.setHeader('X-Forwarded-For', clientIp);
   proxyReq.setHeader('X-Real-IP', clientIp);
   
-  const targetUrl = `http://172.18.40.99:8000${req.url}`;
+  const targetUrl = `http://127.0.0.1:8000${req.url}`;
   console.log('转发请求:', {
     originalUrl: req.url,
     targetUrl: targetUrl,

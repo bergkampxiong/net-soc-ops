@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
@@ -12,18 +15,29 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 
-# 导入数据库配置和模型
+# 导入数据库配置和模型（所有表须在此或下方 import 中注册到对应 Base）
+# database.models.Base -> users, audit_logs, refresh_tokens, ldap_config, used_totp, security_settings,
+#   monitoring_webhooks, monitoring_alert_events, category_device_groups, category_device_group_members,
+#   credential_mgt_credentials, config_files, config_versions
+# database.session.Base -> credentials
+# CMDBBase -> cmdb_device_types, cmdb_vendors, cmdb_locations, cmdb_departments, cmdb_asset_statuses,
+#   cmdb_system_types, cmdb_assets, cmdb_network_devices, cmdb_network_interfaces, cmdb_servers,
+#   cmdb_virtual_machines, cmdb_k8s_clusters, cmdb_k8s_nodes, cmdb_k8s_pods, cmdb_inventory_tasks, cmdb_inventory_items
+# database.base.Base -> device_connections, device_connection_pools, device_connection_stats, rpa_config_files,
+#   config_module_backups, config_module_change_templates, config_compliance_policies, config_compliance_results,
+#   config_eos_info, strix_scan_tasks, strix_config, system_global_config, frontend_cert_config, ldap_templates,
+#   jobs, job_executions
 from database.config import get_database_url
 from database.base import Base
 from database.cmdb_models import (
-    CMDBBase, DeviceType, Vendor, Location, Department, 
+    CMDBBase, DeviceType, Vendor, Location, Department,
     AssetStatus, Asset, NetworkDevice, Server, VirtualMachine, K8sCluster,
-    SystemType
+    SystemType,
 )
-from database.models import User, UsedTOTP, RefreshToken, MonitoringWebhook, MonitoringAlertEvent
-from database.category_models import Base as CategoryBase, Credential, CredentialType
+from database.models import Base as ModelsBase, User, UsedTOTP, RefreshToken, MonitoringWebhook, MonitoringAlertEvent
+from database.category_models import Credential, CredentialType
 from database.config_management_models import Base as ConfigBase
-from database.device_connection_models import DeviceConnection
+from database.device_connection_models import DeviceConnection, DeviceConnectionPool, DeviceConnectionStats
 from database.config_module_models import (
     ConfigModuleBackup,
     ConfigChangeTemplate,
@@ -34,7 +48,11 @@ from database.config_module_models import (
 from database.strix_models import StrixScanTask, StrixConfig
 from database.system_global_config_models import SystemGlobalConfig
 from database.frontend_cert_config_models import FrontendCertConfig
+from database.session import Base as SessionBase
 from app.models.job import Job, JobExecution
+import database.config_models  # noqa: F401  # 将 config_files, config_versions 注册到 ModelsBase
+import database.credential_models  # noqa: F401  # 将 credentials 注册到 SessionBase
+import database.ldap_models  # noqa: F401  # 将 ldap_templates 注册到 database.base.Base
 
 # 创建密码哈希上下文
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -302,6 +320,8 @@ def init_device_connection_tables(engine):
         
         # 创建设备连接管理模块的表
         DeviceConnection.__table__.create(engine, checkfirst=True)
+        DeviceConnectionPool.__table__.create(engine, checkfirst=True)
+        DeviceConnectionStats.__table__.create(engine, checkfirst=True)
         
         # 检查device_connections表是否存在description和is_active列
         inspector = inspect(engine)
@@ -652,6 +672,12 @@ def init_databases():
         db = SessionLocal()
         
         try:
+            # 按 Base 统一建表（users/audit_logs/.../config_files/config_versions）
+            ModelsBase.metadata.create_all(bind=engine, checkfirst=True)
+            # credentials 表（session.Base）
+            SessionBase.metadata.create_all(bind=engine, checkfirst=True)
+            # CMDB 全部表
+            CMDBBase.metadata.create_all(bind=engine, checkfirst=True)
             # 确保 users 表有 last_activity_at 列（会话无操作超时）
             ensure_user_last_activity_at(engine)
             # 初始化监控系统集成表

@@ -1,3 +1,4 @@
+import os
 from redis import Redis
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -7,10 +8,15 @@ import time
 class ConnectionPoolManager:
     """连接池管理器"""
     def __init__(self):
+        redis_host = os.getenv("REDIS_HOST", "172.18.40.80")
+        redis_port = int(os.getenv("REDIS_PORT", "6379"))
+        redis_db = int(os.getenv("REDIS_DB", "0"))
+        redis_password = os.getenv("REDIS_PASSWORD") or None
         self.redis_client = Redis(
-            host='172.18.40.80',
-            port=6379,
-            db=0,
+            host=redis_host,
+            port=redis_port,
+            db=redis_db,
+            password=redis_password,
             decode_responses=True
         )
         self._init_default_config()
