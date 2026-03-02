@@ -39,6 +39,11 @@ const request = axios.create({
 // 请求拦截器
 request.interceptors.request.use(
   (config) => {
+    // 强制使用相对路径 /api，避免被改为绝对地址（如 https://127.0.0.1:8000）导致跨域或协议错误
+    if (config.baseURL && (config.baseURL.includes('127.0.0.1') || config.baseURL.includes('localhost:8000'))) {
+      config.baseURL = '/api';
+    }
+
     // 从localStorage获取token
     const token = localStorage.getItem('token');
     if (token) {

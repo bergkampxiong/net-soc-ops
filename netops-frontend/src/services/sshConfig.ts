@@ -75,7 +75,7 @@ const deviceTypes = [
  * @returns Promise<SSHConfig[]> SSH配置列表
  */
 export async function getSSHConfigs(): Promise<SSHConfig[]> {
-  const response = await request.get('device/connections');
+  const response = await request.get('device/connections/');
   return response.data;
 }
 
@@ -110,7 +110,7 @@ export async function createSSHConfig(data: SSHConfigCreate): Promise<SSHConfig>
     };
 
     console.log('创建SSH连接配置，请求数据:', configData);
-    const response = await request.post('device/connections', configData);
+    const response = await request.post('device/connections/', configData);
     console.log('创建SSH配置成功，响应数据:', response);
     return response.data;
   } catch (error: any) {
@@ -138,7 +138,7 @@ export async function createSSHConfig(data: SSHConfigCreate): Promise<SSHConfig>
 export async function updateSSHConfig(id: number, data: Partial<SSHConfigCreate>): Promise<SSHConfig> {
   try {
     console.log('更新SSH配置，ID:', id, '数据:', data);
-    const response = await request.put(`device/connections/${id}`, data);
+    const response = await request.put(`device/connections/${id}/`, data);
     console.log('更新SSH配置成功，响应数据:', response);
     return response.data;
   } catch (error: any) {
@@ -162,7 +162,7 @@ export async function updateSSHConfig(id: number, data: Partial<SSHConfigCreate>
  * @param id 要删除的配置ID
  */
 export async function deleteSSHConfig(id: number): Promise<void> {
-  await request.delete(`device/connections/${id}`);
+  await request.delete(`device/connections/${id}/`);
 }
 
 /**

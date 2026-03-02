@@ -22,5 +22,12 @@ module.exports = {
     port: 8080,
     // 仅当 REACT_APP_DEV_HTTPS=true 时启用 HTTPS；有 .cert 则用长期有效证书，否则用 dev-server 默认自签名
     ...(devHttps ? (hasCert ? { https: { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) } } : { https: true }) : {}),
+    // 显式配置 /api 代理，避免 craco 覆盖 package.json 的 proxy（HTTPS 开发时尤其需要）
+    proxy: {
+      '/api': {
+        target: process.env.REACT_APP_API_PROXY_TARGET || 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+    },
   },
 }; 
