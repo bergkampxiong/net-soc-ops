@@ -33,6 +33,7 @@ from database.config_module_models import (
 )
 from database.strix_models import StrixScanTask, StrixConfig
 from database.system_global_config_models import SystemGlobalConfig
+from database.frontend_cert_config_models import FrontendCertConfig
 from app.models.job import Job, JobExecution
 
 # 创建密码哈希上下文
@@ -621,6 +622,20 @@ def init_system_global_config_tables(engine):
         raise
 
 
+def init_frontend_cert_config_tables(engine, db):
+    """初始化前端证书配置表（自签名/导入 CA，开发 HTTPS）。"""
+    try:
+        FrontendCertConfig.__table__.create(engine, checkfirst=True)
+        if db.query(FrontendCertConfig).first() is None:
+            db.add(FrontendCertConfig(cert_mode="self_signed", validity_days=3650, enable_https=False))
+            db.commit()
+        print("前端证书配置表（frontend_cert_config）创建完成")
+    except Exception as e:
+        print(f"前端证书配置表初始化失败: {str(e)}")
+        db.rollback()
+        raise
+
+
 def init_databases():
     """初始化所有数据库"""
     try:
@@ -677,7 +692,10 @@ def init_databases():
             
             # 初始化系统全局配置表（渗透测试统一报告等全局功能用）
             init_system_global_config_tables(engine)
-            
+
+            # 初始化前端证书配置表（证书管理）
+            init_frontend_cert_config_tables(engine, db)
+
             print("所有数据库初始化完成")
             
         finally:

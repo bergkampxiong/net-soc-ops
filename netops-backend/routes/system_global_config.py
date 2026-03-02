@@ -19,7 +19,7 @@ router = APIRouter(
 # 前端脱敏占位符，PUT 带此值表示未修改、不覆盖
 _SENSITIVE_PLACEHOLDER = "********"
 
-# 全局 LLM 配置：模型名称、API Key、API Base（统一格式，任一厂商通用）
+# 全局配置键：LLM（证书配置已迁移至 frontend_cert_config 表）
 GLOBAL_CONFIG_KEYS = ("GLOBAL_LLM_MODEL", "GLOBAL_LLM_API_KEY", "GLOBAL_LLM_API_BASE")
 
 

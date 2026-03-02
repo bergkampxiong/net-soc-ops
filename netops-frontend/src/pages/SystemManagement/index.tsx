@@ -3,7 +3,7 @@ import { Tabs } from 'antd';
 import {
   UserOutlined, SafetyOutlined,
   AuditOutlined, LockOutlined,
-  ApiOutlined,
+  ApiOutlined, SafetyCertificateOutlined,
 } from '@ant-design/icons';
 
 import UserManagement from './UserManagement';
@@ -12,6 +12,7 @@ import AuditLogs from './AuditLogs';
 import SecuritySettings from './SecuritySettings';
 import TwoFactorAuth from './TwoFactorAuth';
 import GlobalConfig from './GlobalConfig';
+import CertConfig from './CertConfig';
 
 const SystemManagement: React.FC = () => {
   const items = [
@@ -44,6 +45,11 @@ const SystemManagement: React.FC = () => {
       key: 'global-config',
       label: <span><ApiOutlined />OpenAPI-Key</span>,
       children: <GlobalConfig />
+    },
+    {
+      key: 'cert-config',
+      label: <span><SafetyCertificateOutlined />证书配置</span>,
+      children: <CertConfig />
     },
   ];
 
