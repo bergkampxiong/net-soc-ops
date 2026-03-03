@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from database.session import get_db
 from database.strix_models import StrixScanTask, StrixConfig
-from utils.strix_runner import run_strix_sync, get_strix_env_from_config
+from utils.strix_runner import run_strix_sync, get_strix_env_from_config, check_strix_activation
 from routes.system_global_config import get_global_config_kv
 from utils.unified_report_builder import build_unified_report, UNIFIED_REPORT_MD, UNIFIED_REPORT_HTML
 
@@ -331,6 +331,20 @@ def delete_scan(task_id: int, db: Session = Depends(get_db)):
         except OSError as e:
             logger.warning("删除报告目录失败 %s: %s", report_path, e)
     return {"id": task_id, "message": "deleted"}
+
+
+# ---------- 激活状态检查 ----------
+@router.get("/status")
+def get_strix_status():
+    """检查 Strix 是否已激活：源码目录存在且 CLI 可执行。用于部署后自检或前端展示。"""
+    source_ok, cli_ok, message, cli_path = check_strix_activation()
+    return {
+        "source_present": source_ok,
+        "cli_available": cli_ok,
+        "activated": source_ok and cli_ok,
+        "message": message,
+        "cli_path": cli_path,
+    }
 
 
 # ---------- Config (Phase 2) ----------

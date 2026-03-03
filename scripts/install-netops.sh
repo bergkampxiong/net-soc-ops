@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# NetOps 前后端安装脚本：安装 Python3、Node/npm（若缺失），由用户输入数据库/Redis 连接参数并写入 .env，安装依赖并初始化库表。
+# NetOps 前后端安装脚本：安装 Docker（含桥接与数据目录）、Python3、Node/npm（若缺失），由用户输入数据库/Redis 连接参数并写入 .env，安装依赖并初始化库表。
 # 不安装数据库：PostgreSQL/Redis 需在其它机器或环境单独安装，本脚本仅配置连接参数。
+# Docker：若未安装则安装；桥接 192.168.0.0/16、子网 /25；镜像与数据目录置于 /app 下。
 # 安装目录约定：项目建议放在 /app/net-soc-ops 下；也可在任意路径执行，脚本以当前仓库为项目根。
 # 使用：bash scripts/install-netops.sh [选项]
 #       选项示例：--db-host=172.19.128.242 --db-port=5432 --db-user=amber --db-name=netops
@@ -53,6 +54,68 @@ DEFAULT_REDIS_DB="${DEFAULT_REDIS_DB:-${REDIS_DB:-$SCRIPT_DEFAULT_REDIS_DB}}"
 echo "========== NetOps 安装脚本 =========="
 echo "项目根目录: $PROJECT_ROOT"
 echo ""
+
+# ---------- 0. Docker 安装与配置（桥接 192.168.0.0/16、/25，镜像与数据放到 /app 下）----------
+DOCKER_APP_ROOT="/app"
+DOCKER_DATA_ROOT="${DOCKER_APP_ROOT}/docker"
+DOCKER_BRIDGE_BIP="192.168.0.1/25"
+DOCKER_DEFAULT_POOL_BASE="192.168.0.0/16"
+DOCKER_DEFAULT_POOL_SIZE=25
+
+install_docker_and_configure() {
+  if [[ ! -d "$DOCKER_APP_ROOT" ]]; then
+    echo "[Docker] 创建目录 $DOCKER_APP_ROOT（需 sudo）..."
+    sudo mkdir -p "$DOCKER_APP_ROOT" 2>/dev/null || true
+    if [[ ! -d "$DOCKER_APP_ROOT" ]]; then
+      echo "请使用 sudo 创建目录: sudo mkdir -p $DOCKER_APP_ROOT && sudo chown \$(whoami) $DOCKER_APP_ROOT"
+      exit 1
+    fi
+  fi
+  sudo mkdir -p "$DOCKER_DATA_ROOT" 2>/dev/null || true
+
+  if ! command -v docker &>/dev/null; then
+    echo "[Docker] 未检测到 Docker，开始安装（需要 sudo）..."
+    if [[ -f /etc/os-release ]]; then
+      # shellcheck source=/dev/null
+      source /etc/os-release
+      if [[ "$ID" =~ ^(debian|ubuntu)$ ]]; then
+        curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+        sudo sh /tmp/get-docker.sh
+        sudo usermod -aG docker "$USER" 2>/dev/null || true
+      elif [[ "$ID" =~ ^(rhel|centos|fedora|rocky|almalinux)$ ]]; then
+        sudo yum install -y yum-utils
+        sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+        sudo yum install -y docker-ce docker-ce-cli containerd.io
+        sudo systemctl enable --now docker
+        sudo usermod -aG docker "$USER" 2>/dev/null || true
+      else
+        echo "未识别的发行版 ($ID)，请手动安装 Docker 后重试。"
+        exit 1
+      fi
+    else
+      echo "无法检测系统类型，请手动安装 Docker 后重试。"
+      exit 1
+    fi
+    echo "[Docker] 安装完成。"
+  else
+    echo "[Docker] 已安装: $(docker --version 2>/dev/null || true)"
+  fi
+
+  DAEMON_JSON=/etc/docker/daemon.json
+  if sudo test -w /etc/docker 2>/dev/null; then
+    if sudo test -f "$DAEMON_JSON" 2>/dev/null; then
+      sudo cp "$DAEMON_JSON" "${DAEMON_JSON}.bak.$(date +%Y%m%d%H%M%S)" 2>/dev/null || true
+    fi
+    # data-root：镜像与容器数据存于 /app 下；桥接 192.168.0.0/16，子网 /25
+    DAEMON_CONTENT="{\"data-root\": \"$DOCKER_DATA_ROOT\", \"bip\": \"$DOCKER_BRIDGE_BIP\", \"default-address-pools\": [{\"base\": \"$DOCKER_DEFAULT_POOL_BASE\", \"size\": $DOCKER_DEFAULT_POOL_SIZE}]}"
+    echo "$DAEMON_CONTENT" | sudo tee "$DAEMON_JSON" >/dev/null
+    echo "[Docker] 已配置: 数据目录=$DOCKER_DATA_ROOT, 桥接=$DOCKER_BRIDGE_BIP, 地址池=$DOCKER_DEFAULT_POOL_BASE/$DOCKER_DEFAULT_POOL_SIZE"
+    sudo systemctl restart docker 2>/dev/null || sudo service docker restart 2>/dev/null || true
+    sleep 2
+  else
+    echo "[Docker] 无法写入 $DAEMON_JSON（需要 root），跳过桥接与数据目录配置。"
+  fi
+}
 
 # ---------- 1. 检测并安装 Python3 ----------
 install_python3() {
@@ -326,6 +389,7 @@ install_frontend() {
 }
 
 # ---------- 主流程 ----------
+install_docker_and_configure
 install_python3
 ensure_python3_venv
 ensure_pip_build_deps
