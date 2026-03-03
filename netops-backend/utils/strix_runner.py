@@ -1,7 +1,6 @@
 # Strix CLI 子进程调用：在指定工作目录执行 strix -n --target <目标> [选项]
-# 推荐激活方式（任务执行 + 报告读取/统一报告均适用）：
-#   在 netops-backend/strix 目录执行 poetry install，netops 会自动使用 .venv/bin/strix，无需配置环境变量。
-#   或设置 STRIX_CLI_PATH 指向任意可执行的 strix 二进制/脚本路径。
+# 安装方式：执行 scripts/install-strix.sh，将 Strix 二进制安装到 netops-backend/strix/bin/，不使用 .venv。
+# 或设置 STRIX_CLI_PATH 指向任意可执行的 strix 二进制路径。
 import os
 import subprocess
 import uuid
@@ -15,48 +14,44 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# 解析 Strix CLI 路径：1) 环境变量 STRIX_CLI_PATH（若为绝对路径且存在）2) 项目内 .venv/bin/strix（或指向可访问目标的 symlink）3) 系统 PATH 的 strix
+# 安装目录：与 install-strix.sh 一致，优先 /app/net-soc-ops/netops-backend/strix/bin，否则项目内 netops-backend/strix/bin
+def _strix_install_bin() -> str:
+    backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    local_bin = os.path.join(backend_root, "strix", "bin", "strix")
+    if os.path.isfile(local_bin) and os.access(local_bin, os.X_OK):
+        return local_bin
+    app_bin = "/app/net-soc-ops/netops-backend/strix/bin/strix"
+    if os.path.isfile(app_bin) and os.access(app_bin, os.X_OK):
+        return app_bin
+    return ""
+
+
+# 解析 Strix CLI 路径：1) 环境变量 STRIX_CLI_PATH（若存在且可执行）2) 安装目录 bin/strix（install-strix.sh）3) 系统 PATH 的 strix
 def _resolve_strix_cmd() -> str:
     env_path = os.environ.get("STRIX_CLI_PATH", "").strip()
-    if env_path and (os.path.isabs(env_path) or os.sep in env_path) and os.path.isfile(env_path):
+    if env_path and (os.path.isabs(env_path) or os.sep in env_path) and os.path.isfile(env_path) and os.access(env_path, os.X_OK):
         return env_path
-    backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    poetry_strix = os.path.join(backend_root, "strix", ".venv", "bin", "strix")
-    if os.path.lexists(poetry_strix):  # 存在（含断开的 symlink）
-        try:
-            real = os.path.realpath(poetry_strix)
-            if os.path.isfile(real) or (os.path.isfile(poetry_strix) and not os.path.islink(poetry_strix)):
-                return real if os.path.isfile(real) else poetry_strix
-        except OSError:
-            pass
-        if os.path.isfile(poetry_strix):
-            return poetry_strix
+    install_bin = _strix_install_bin()
+    if install_bin:
+        return install_bin
     return env_path if env_path else "strix"
-
-
-# 每次调用时解析 CLI 路径，避免后端先启动、后执行 activate-strix.sh 时仍用旧结果（无需重启后端）
 
 
 def check_strix_activation() -> Tuple[bool, bool, str, Optional[str]]:
     """
-    检查 Strix 是否已激活（源码存在且 CLI 可执行）。
-    返回 (源码目录存在, CLI 可执行, 说明信息, 检测到的 CLI 路径或 None)。
+    检查 Strix 是否已安装且 CLI 可执行（不依赖源码或 .venv）。
+    返回 (安装目录存在, CLI 可执行, 说明信息, 检测到的 CLI 路径或 None)。
     """
-    backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    strix_dir = os.path.join(backend_root, "strix")
-    pyproject = os.path.join(strix_dir, "pyproject.toml")
-    main_py = os.path.join(strix_dir, "strix", "interface", "main.py")
-
-    source_ok = os.path.isdir(strix_dir) and os.path.isfile(pyproject) and os.path.isfile(main_py)
-    if not source_ok:
-        return False, False, "Strix 源码目录缺失或结构不完整（需 strix/pyproject.toml 与 strix/strix/interface/main.py）", None
-
-    cli_path = os.environ.get("STRIX_CLI_PATH") or "strix"
-    if os.path.isabs(cli_path) or os.sep in cli_path:
-        if not os.path.isfile(cli_path):
-            return True, False, f"STRIX_CLI_PATH 指向的路径不存在: {cli_path}", cli_path
-
+    install_bin = _strix_install_bin()
     strix_cmd = _resolve_strix_cmd()
+    source_ok = bool(install_bin) or (os.environ.get("STRIX_CLI_PATH", "").strip() and os.path.isfile(strix_cmd))
+
+    if not strix_cmd or strix_cmd == "strix":
+        if not source_ok:
+            return False, False, "Strix 未安装。请执行 scripts/install-strix.sh，或设置 STRIX_CLI_PATH 指向 strix 二进制。", None
+    elif not os.path.isfile(strix_cmd):
+        return True, False, f"STRIX_CLI_PATH 指向的路径不存在或不可执行: {strix_cmd}", strix_cmd
+
     try:
         result = subprocess.run(
             [strix_cmd, "--help"],
@@ -68,19 +63,15 @@ def check_strix_activation() -> Tuple[bool, bool, str, Optional[str]]:
         cli_ok = result.returncode == 0 or (result.stdout or result.stderr or "").strip() != ""
     except FileNotFoundError:
         cli_ok = False
-        result = None
     except subprocess.TimeoutExpired:
         cli_ok = False
-        result = None
     except Exception as e:
         logger.warning("Strix CLI 检查异常: %s", e)
         cli_ok = False
-        result = None
 
     if not cli_ok:
-        return True, False, "Strix 源码存在，但 CLI 未安装或不可执行（请在 netops-backend/strix 目录下执行 poetry install 并确保 strix 在 PATH，或设置 STRIX_CLI_PATH）", strix_cmd
-
-    return True, True, "Strix 已激活，CLI 可正常调用", strix_cmd
+        return source_ok, False, "Strix 已安装但 CLI 不可执行（请重新运行 scripts/install-strix.sh 或检查 STRIX_CLI_PATH）", strix_cmd
+    return (source_ok or True), True, "Strix 已就绪，CLI 可正常调用（未使用 .venv）", strix_cmd
 
 
 def get_strix_env_from_config(config_kv: Dict[str, str]) -> Dict[str, str]:

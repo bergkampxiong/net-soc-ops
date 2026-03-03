@@ -57,6 +57,9 @@ database_backups/
 # 前端开发 HTTPS 自签名证书（勿提交私钥）
 netops-frontend/.cert/
 
+# Strix 由 scripts/install-strix.sh 安装，不纳入版本
+netops-backend/strix/
+
 # Other
 .cursor/
 .cache/
