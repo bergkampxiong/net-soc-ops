@@ -52,7 +52,11 @@ esac
 
 requested_version="${VERSION:-}"
 if [[ -z "$requested_version" ]]; then
-  specific_version=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
+  api_json=$(curl -sSf "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null) || true
+  if command -v jq &>/dev/null && [[ -n "$api_json" ]]; then
+    specific_version=$(echo "$api_json" | jq -r '.tag_name // empty' | sed 's/^v//')
+  fi
+  [[ -z "$specific_version" ]] && specific_version=$(echo "$api_json" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p' 2>/dev/null)
   [[ -z "$specific_version" ]] && specific_version="0.8.2"
 else
   specific_version="$requested_version"
