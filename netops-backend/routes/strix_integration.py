@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from database.session import get_db
 from database.strix_models import StrixScanTask, StrixConfig
-from utils.strix_runner import run_strix_sync, get_strix_env_from_config, check_strix_activation
+from utils.strix_runner import run_strix_sync, get_strix_env_from_config, check_strix_activation, test_llm_config
 from routes.system_global_config import get_global_config_kv
 from utils.unified_report_builder import build_unified_report, UNIFIED_REPORT_MD, UNIFIED_REPORT_HTML
 
@@ -348,6 +348,14 @@ def get_strix_status():
 
 
 # ---------- Config (Phase 2) ----------
+@router.post("/test-llm")
+def test_strix_llm(db: Session = Depends(get_db)):
+    """使用当前已保存的 Strix/LLM 配置发起一次最小请求，验证 API Key 是否可用。"""
+    config_kv = _load_strix_config_kv(db)
+    ok, message = test_llm_config(config_kv)
+    return {"ok": ok, "message": message}
+
+
 @router.get("/config")
 def get_strix_config(db: Session = Depends(get_db)):
     """获取 Strix/LLM 配置，敏感字段脱敏。"""

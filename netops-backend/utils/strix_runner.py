@@ -8,6 +8,11 @@ import uuid
 import logging
 from typing import Optional, List, Dict, Any, Tuple
 
+try:
+    import httpx
+except ImportError:
+    httpx = None
+
 logger = logging.getLogger(__name__)
 
 # 解析 Strix CLI 路径：1) 环境变量 STRIX_CLI_PATH（若为绝对路径且存在）2) 项目内 .venv/bin/strix（或指向可访问目标的 symlink）3) 系统 PATH 的 strix
@@ -94,6 +99,50 @@ def get_strix_env_from_config(config_kv: Dict[str, str]) -> Dict[str, str]:
     return env
 
 
+def test_llm_config(config_kv: Optional[Dict[str, str]]) -> Tuple[bool, str]:
+    """
+    使用当前配置的 LLM API Key/Base/Model 发起一次最小 chat 请求，验证是否可用。
+    返回 (成功与否, 说明信息)。
+    """
+    if not config_kv:
+        return False, "未配置 LLM：请先配置 STRIX_LLM 与 LLM_API_KEY"
+    model = (config_kv.get("STRIX_LLM") or "").strip()
+    api_key = (config_kv.get("LLM_API_KEY") or "").strip()
+    api_base = (config_kv.get("LLM_API_BASE") or "").strip()
+    if not model:
+        return False, "未配置 STRIX_LLM（模型名）"
+    if not api_key:
+        return False, "未配置 LLM_API_KEY"
+    if not httpx:
+        return False, "缺少 httpx 依赖，无法发起测试请求"
+    # OpenAI 兼容：POST {base}/chat/completions
+    base_url = (api_base or "https://api.openai.com/v1").rstrip("/")
+    url = f"{base_url}/chat/completions"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    # OpenAI 官方要求 model 为短名（如 gpt-4o）；部分代理接受 openai/gpt-4o
+    model_in_request = model.split("/")[-1] if "/" in model else model
+    payload = {
+        "model": model_in_request,
+        "messages": [{"role": "user", "content": "Say OK"}],
+        "max_tokens": 5,
+    }
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            resp = client.post(url, json=payload, headers=headers)
+    except httpx.TimeoutException:
+        return False, "请求超时，请检查网络或 LLM_API_BASE 是否可达"
+    except Exception as e:
+        return False, f"请求异常: {e!s}"
+    if resp.status_code == 200:
+        return True, "LLM API 连接正常"
+    try:
+        err_body = resp.json()
+        err_msg = err_body.get("error", {}).get("message") or err_body.get("message") or resp.text[:200]
+    except Exception:
+        err_msg = resp.text[:200] if resp.text else f"HTTP {resp.status_code}"
+    return False, f"API 返回错误 ({resp.status_code}): {err_msg}"
+
+
 def run_strix_sync(
     target: str,
     targets: Optional[List[str]] = None,
@@ -110,10 +159,26 @@ def run_strix_sync(
     """
     if not workspace_dir:
         workspace_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "..", "data", "strix_workspace")
-    os.makedirs(workspace_dir, exist_ok=True)
+    try:
+        os.makedirs(workspace_dir, exist_ok=True)
+    except OSError as e:
+        if e.errno == 13:  # Permission denied
+            raise PermissionError(
+                f"无法创建 Strix 工作目录 {workspace_dir}，请将 netops-backend/data 属主改为运行后端的用户，例如: "
+                "sudo chown -R $(whoami) netops-backend/data"
+            ) from e
+        raise
     name = run_name or f"netops_{uuid.uuid4().hex[:12]}"
     cwd = os.path.join(workspace_dir, name)
-    os.makedirs(cwd, exist_ok=True)
+    try:
+        os.makedirs(cwd, exist_ok=True)
+    except OSError as e:
+        if e.errno == 13:
+            raise PermissionError(
+                f"无法创建任务目录 {cwd}，请将 netops-backend/data 属主改为运行后端的用户，例如: "
+                "sudo chown -R $(whoami) netops-backend/data"
+            ) from e
+        raise
 
     strix_cmd = _resolve_strix_cmd()
     cmd = [strix_cmd, "-n", "--non-interactive"]
