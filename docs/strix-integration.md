@@ -135,6 +135,7 @@
 ## 六、可能的问题与排查方向
 
 - **Strix 未激活**：执行 `scripts/install-strix.sh` 或将 `STRIX_CLI_PATH` 指向 strix 二进制；调用 `GET /api/config-module/strix/status` 查看 source_present、cli_available、message。
+- **报告提示「仅请求模式」「需代理模式与认证权限重新测试」**：Strix 的浏览器、代理与完整认证扫描依赖 **Docker 沙箱**。若 Docker 未运行或未拉取 `ghcr.io/usestrix/strix-sandbox` 镜像，Strix 会退化为仅 HTTP 请求模式，无法使用代理和登录态测试。**处理**：启动 Docker，执行 `docker pull ghcr.io/usestrix/strix-sandbox:0.1.12`，然后重新发起扫描。凭据已通过渗透测试节点中的「测试账号」写入 `--instruction`，沙箱就绪后 Strix 会按指令进行认证扫描。自检：`GET /api/config-module/strix/status` 返回 `sandbox_available: true` 表示可做代理/认证扫描。
 - **扫描失败/超时**：查看任务 summary（stdout/stderr）、`data/strix_workspace` 下对应 run 的 `strix_runs` 输出；确认 LLM 配置与 `POST /test-llm` 是否通过。
 - **作业渗透节点不执行**：确认 `CONFIG_MODULE_API_URL` 指向当前后端；流程中扫描目标节点已配置目标且渗透测试节点已关联目标。
 - **统一报告生成失败**：确认任务 `report_path` 指向的目录内存在 Strix 生成的 `penetration_test_report.md`（或子目录结构符合 `unified_report_builder` 预期）；若使用 LLM 中文化，需配置可用 LLM。

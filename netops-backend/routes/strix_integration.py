@@ -28,6 +28,8 @@ router = APIRouter(
 # 后台任务进程句柄，用于取消：task_id -> process
 _strix_processes: dict = {}
 _lock = threading.Lock()
+# 仅内存：task_id -> 带真实密码的 instruction，供 _run_scan_task 使用一次后即删，不落库
+_task_runtime_instruction: dict = {}
 
 
 # ---------- Schemas ----------
@@ -39,6 +41,9 @@ class ScanCreate(BaseModel):
     instruction_file: Optional[str] = None
     scan_mode: Optional[str] = "deep"
     job_execution_id: Optional[int] = None
+    # 可选：测试账号密码，仅用于本次扫描拼入 instruction 传给 Strix，不落库（存库用脱敏版）
+    test_username: Optional[str] = None
+    test_password: Optional[str] = None
 
 
 class StrixConfigUpdate(BaseModel):
@@ -77,11 +82,14 @@ def _run_scan_task(task_id: int, workspace_dir: str):
         if not targets and target:
             targets = [target]
 
+        # 若有运行时 instruction（含真实密码），仅用于本次调用，不落库
+        instruction = _task_runtime_instruction.pop(task_id, None) or task.instruction
+
         result = run_strix_sync(
             target=target or "",
             targets=targets,
             scan_mode=task.scan_mode or "deep",
-            instruction=task.instruction,
+            instruction=instruction,
             workspace_dir=workspace_dir,
             run_name=task.run_name,
             env_override=env,
@@ -113,15 +121,37 @@ def _run_scan_task(task_id: int, workspace_dir: str):
 
 
 # ---------- Scans ----------
+def _build_instruction_with_credentials(
+    instruction: Optional[str],
+    test_username: Optional[str],
+    test_password: Optional[str],
+    mask_password: bool,
+) -> str:
+    """拼装带凭据的 instruction；mask_password 为 True 时密码显示为 [已配置]（用于存库/日志）。"""
+    if not test_username and not test_password:
+        return instruction or ""
+    parts = []
+    if test_username:
+        parts.append(f"用户名 {test_username}")
+    if test_password:
+        parts.append("密码 [已配置]" if mask_password else f"密码 {test_password}")
+    cred_prefix = "使用以下测试账号进行已认证扫描：" + "，".join(parts) + "。请先登录后再进行需认证的接口与页面测试。"
+    return f"{cred_prefix}\n\n{instruction}" if instruction else cred_prefix
+
+
 @router.post("/scans")
 def create_scan(body: ScanCreate, db: Session = Depends(get_db)):
-    """创建扫描任务并异步执行。"""
+    """创建扫描任务并异步执行。支持 test_username/test_password，仅运行时拼入 instruction 传给 Strix，不落库。"""
     import uuid
     run_name = f"netops_{uuid.uuid4().hex[:12]}"
+    # 存库用脱敏版；若调用方传了 test_username/test_password，运行时用带真实密码的 instruction
+    instruction_for_db = _build_instruction_with_credentials(
+        body.instruction, body.test_username, body.test_password, mask_password=True
+    )
     task = StrixScanTask(
         target_type=body.target_type or "web_url",
         target_value=json.dumps(body.targets) if body.targets else body.target_value,
-        instruction=body.instruction,
+        instruction=instruction_for_db,
         scan_mode=body.scan_mode or "deep",
         status="pending",
         run_name=run_name,
@@ -131,6 +161,12 @@ def create_scan(body: ScanCreate, db: Session = Depends(get_db)):
     db.add(task)
     db.commit()
     db.refresh(task)
+    if body.test_username or body.test_password:
+        runtime_instruction = _build_instruction_with_credentials(
+            body.instruction, body.test_username, body.test_password, mask_password=False
+        )
+        with _lock:
+            _task_runtime_instruction[task.id] = runtime_instruction
 
     backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     workspace_dir = os.path.join(backend_root, "data", "strix_workspace")
@@ -224,13 +260,15 @@ def get_scan_report(task_id: int, db: Session = Depends(get_db)):
     found, result = _find_report_any(path)
     if found:
         media_type = result
+        if "charset=" not in (media_type or ""):
+            media_type = (media_type or "application/octet-stream") + "; charset=utf-8"
         return FileResponse(
             found,
             media_type=media_type,
             filename=os.path.basename(found),
         )
     err = result if isinstance(result, str) else "Report not ready."
-    return PlainTextResponse(content=err, status_code=404)
+    return PlainTextResponse(content=err, status_code=404, headers={"Content-Type": "text/plain; charset=utf-8"})
 
 
 # ---------- 统一渗透测试报告 ----------
@@ -281,11 +319,11 @@ def get_unified_report(
     if format and format.lower() == "html":
         html_path = os.path.join(base_dir, UNIFIED_REPORT_HTML)
         if os.path.isfile(html_path):
-            return FileResponse(html_path, media_type="text/html")
+            return FileResponse(html_path, media_type="text/html; charset=utf-8")
         raise HTTPException(status_code=404, detail="HTML version not available")
     return FileResponse(
         base_path,
-        media_type="text/markdown",
+        media_type="text/markdown; charset=utf-8",
         filename=os.path.basename(base_path),
     )
 
@@ -333,17 +371,47 @@ def delete_scan(task_id: int, db: Session = Depends(get_db)):
     return {"id": task_id, "message": "deleted"}
 
 
+def _check_docker_sandbox() -> tuple[bool, str]:
+    """检查 Docker 是否可用且 strix-sandbox 镜像存在；代理模式与认证扫描依赖沙箱。"""
+    try:
+        import subprocess
+        r = subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if r.returncode != 0:
+            return False, "Docker 未运行或不可用，Strix 将仅以请求模式运行（无法使用浏览器/代理与完整认证扫描）"
+        r2 = subprocess.run(
+            ["docker", "image", "inspect", "ghcr.io/usestrix/strix-sandbox:0.1.12"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if r2.returncode != 0:
+            return False, "未找到 strix-sandbox 镜像，请执行: docker pull ghcr.io/usestrix/strix-sandbox:0.1.12"
+        return True, "Docker 与沙箱镜像就绪，可进行代理模式与认证扫描"
+    except FileNotFoundError:
+        return False, "未安装 Docker，Strix 将仅以请求模式运行（无法使用浏览器/代理与完整认证扫描）"
+    except Exception as e:
+        return False, f"Docker 检查异常: {e}"
+
+
 # ---------- 激活状态检查 ----------
 @router.get("/status")
 def get_strix_status():
-    """检查 Strix 是否已激活：源码目录存在且 CLI 可执行。用于部署后自检或前端展示。"""
+    """检查 Strix 是否已激活：CLI 可执行；并检查 Docker 沙箱是否就绪（代理/认证扫描依赖）。"""
     source_ok, cli_ok, message, cli_path = check_strix_activation()
+    sandbox_ok, sandbox_message = _check_docker_sandbox()
     return {
         "source_present": source_ok,
         "cli_available": cli_ok,
         "activated": source_ok and cli_ok,
         "message": message,
         "cli_path": cli_path,
+        "sandbox_available": sandbox_ok,
+        "sandbox_message": sandbox_message,
     }
 
 
