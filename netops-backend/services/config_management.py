@@ -19,7 +19,7 @@ class ConfigManagementService:
     
     def create_config(self, config: ConfigFileCreate, user_id: str) -> ConfigFile:
         config_id = str(uuid.uuid4())
-        now = datetime.now().isoformat()
+        now = datetime.utcnow().isoformat()
         config_dict = config.dict()
         config_dict.update({
             "id": config_id,
@@ -82,7 +82,7 @@ class ConfigManagementService:
             return None
         
         update_data = config.dict(exclude_unset=True)
-        update_data["updated_at"] = datetime.now().isoformat()
+        update_data["updated_at"] = datetime.utcnow().isoformat()
         update_data["updated_by"] = user_id
         
         for key, value in update_data.items():
@@ -109,7 +109,7 @@ class ConfigManagementService:
             content=content,
             comment=comment,
             created_by=user_id,
-            created_at=datetime.now().isoformat(),
+            created_at=datetime.utcnow().isoformat(),
             version=self._get_next_version(config_id)
         )
         self.db.add(version)

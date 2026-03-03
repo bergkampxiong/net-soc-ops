@@ -2,6 +2,7 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean
 from sqlalchemy.sql import func
 from database.base import Base
+from utils.datetime_utils import utc_to_beijing_str
 
 
 class StrixScanTask(Base):
@@ -37,11 +38,11 @@ class StrixScanTask(Base):
             "run_name": self.run_name,
             "job_execution_id": self.job_execution_id,
             "created_by": self.created_by,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+            "created_at": utc_to_beijing_str(self.created_at),
+            "finished_at": utc_to_beijing_str(self.finished_at),
             "report_path": self.report_path,
             "unified_report_path": self.unified_report_path,
-            "unified_report_generated_at": self.unified_report_generated_at.isoformat() if self.unified_report_generated_at else None,
+            "unified_report_generated_at": utc_to_beijing_str(self.unified_report_generated_at),
         }
         if self.summary:
             try:
@@ -70,5 +71,5 @@ class StrixConfig(Base):
         return {
             "config_key": self.config_key,
             "config_value": val,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "updated_at": utc_to_beijing_str(self.updated_at),
         }

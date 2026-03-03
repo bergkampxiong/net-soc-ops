@@ -10,6 +10,7 @@ import logging
 
 from database.session import get_db
 from database.cmdb_models import Asset as AssetModel
+from utils.datetime_utils import utc_to_beijing_str
 from database.config_module_models import (
     ConfigModuleBackup,
     ConfigChangeTemplate,
@@ -170,7 +171,7 @@ def list_backup_devices(
             "device_host": latest.device_host,
             "device_name": latest.device_name,
             "backup_count": len(group),
-            "latest_created_at": latest.created_at.isoformat() if latest.created_at else None,
+            "latest_created_at": utc_to_beijing_str(latest.created_at),
         })
     _enrich_devices_with_cmdb(result)
     # 多条件筛选：device_name / device_host / model / vendor 任一传入则按条件 AND 过滤

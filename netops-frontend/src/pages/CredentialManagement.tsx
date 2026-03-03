@@ -38,6 +38,7 @@ import {
   CloseCircleOutlined,
   ExclamationCircleOutlined
 } from '@ant-design/icons';
+import { formatBeijingToSecond } from '@/utils/formatTime';
 import request from '../utils/request';
 
 const { Title, Text } = Typography;
@@ -265,13 +266,13 @@ const CredentialManagement: React.FC = () => {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
-      render: (text: string) => new Date(text).toLocaleString(),
+      render: (text: string) => formatBeijingToSecond(text),
     },
     {
       title: '更新时间',
       dataIndex: 'updated_at',
       key: 'updated_at',
-      render: (text: string) => new Date(text).toLocaleString(),
+      render: (text: string) => formatBeijingToSecond(text),
     },
     {
       title: '操作',
@@ -594,10 +595,10 @@ const CredentialManagement: React.FC = () => {
             </Descriptions.Item>
             <Descriptions.Item label="描述">{currentCredential.description || '-'}</Descriptions.Item>
             <Descriptions.Item label="创建时间">
-              {new Date(currentCredential.created_at).toLocaleString()}
+              {formatBeijingToSecond(currentCredential.created_at)}
             </Descriptions.Item>
             <Descriptions.Item label="更新时间">
-              {new Date(currentCredential.updated_at).toLocaleString()}
+              {formatBeijingToSecond(currentCredential.updated_at)}
             </Descriptions.Item>
             
             {currentCredential.credential_type === CredentialType.SSH_PASSWORD && (

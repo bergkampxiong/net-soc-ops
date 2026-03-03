@@ -4,6 +4,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, ReloadOutli
 import type { ColumnsType } from 'antd/es/table';
 import styles from './index.module.less';
 import request from '../../../../utils/request';
+import { formatBeijingToSecond } from '../../../../utils/formatTime';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
@@ -162,7 +163,7 @@ const ConfigManagement: React.FC = () => {
       title: '更新时间',
       dataIndex: 'updated_at',
       key: 'updated_at',
-      render: (date) => dayjs(date).format('YYYY-MM-DD HH:mm:ss'),
+      render: (date) => formatBeijingToSecond(date),
     },
     {
       title: '操作',

@@ -4,6 +4,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, CodeOutlined } from '@ant-d
 import SSHConfigModal from './SSHConfigModal';
 import SSHCodeViewer from './SSHCodeViewer';
 import { getSSHConfigs, deleteSSHConfig, SSHConfig } from '../../../../services/sshConfig';
+import { formatBeijingToSecond } from '../../../../utils/formatTime';
 
 const { TabPane } = Tabs;
 
@@ -81,6 +82,7 @@ const DeviceConnections: React.FC = () => {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
+      render: (t: string) => formatBeijingToSecond(t),
     },
     {
       title: '操作',

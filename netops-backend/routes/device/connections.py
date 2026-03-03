@@ -22,7 +22,7 @@ def _zero_device_stats() -> Dict[str, Any]:
         "waiting_connections": 0,
         "max_wait_time": 0,
         "avg_wait_time": 0,
-        "created_at": datetime.now().isoformat(),
+        "created_at": datetime.utcnow().isoformat(),
     }
 
 
@@ -55,7 +55,7 @@ def _get_device_stats_from_redis(redis_client) -> Dict[str, Any]:
         "waiting_connections": 0,
         "max_wait_time": 0,
         "avg_wait_time": 0,
-        "created_at": datetime.now().isoformat(),
+        "created_at": datetime.utcnow().isoformat(),
     }
 
 # 配置日志
@@ -171,7 +171,7 @@ async def get_pool_status(
             "waiting_connections": int(stats.get("waiting_connections", 0)),
             "max_wait_time": int(stats.get("max_wait_time", 0)),
             "avg_wait_time": float(stats.get("avg_wait_time", 0)),
-            "created_at": stats.get("created_at", datetime.now().isoformat()),
+            "created_at": stats.get("created_at", datetime.utcnow().isoformat()),
         }
     except Exception as e:
         logger.warning(f"获取连接池状态失败: {str(e)}，返回零统计")
@@ -247,7 +247,7 @@ async def cleanup_pool(
                 "waiting_connections": 0,
                 "max_wait_time": 0,
                 "avg_wait_time": 0,
-                "created_at": datetime.now().isoformat(),
+                "created_at": datetime.utcnow().isoformat(),
             }, "redis")
             return None
         # 清理网络设备连接池（与 device_connection_manager 使用的键一致）

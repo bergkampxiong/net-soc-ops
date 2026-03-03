@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, Tuple, List
 import requests
+from utils.datetime_utils import utc_to_beijing_str
 
 logger = logging.getLogger(__name__)
 
@@ -158,10 +159,10 @@ def build_unified_report(
             target_display = ", ".join(str(x) for x in target_display) if isinstance(target_display, list) else str(target_display)
         except Exception:
             pass
-    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    now_display = utc_to_beijing_str(datetime.now(timezone.utc)) or ""
     intro = f"""# 安全渗透测试报告
 
-**报告生成时间：** {now_utc}
+**报告生成时间：** {now_display}（北京时间）
 **测试目标：** {target_display or '-'}
 **测试时间范围：** {task_created_at or '-'} 至 {task_finished_at or '-'}
 **执行方：** Strix + net-soc-ops

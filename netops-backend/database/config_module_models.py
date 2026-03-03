@@ -2,6 +2,7 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey
 from sqlalchemy.sql import func
 from database.base import Base
+from utils.datetime_utils import utc_to_beijing_str
 
 
 class ConfigModuleBackup(Base):
@@ -30,7 +31,7 @@ class ConfigModuleBackup(Base):
             "source": self.source,
             "remark": self.remark,
             "version_no": self.version_no,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_at": utc_to_beijing_str(self.created_at),
             "created_by": self.created_by,
         }
         if include_content:
@@ -58,8 +59,8 @@ class ConfigChangeTemplate(Base):
             "device_type": self.device_type,
             "tags": self.tags,
             "description": self.description,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": utc_to_beijing_str(self.created_at),
+            "updated_at": utc_to_beijing_str(self.updated_at),
         }
         if include_content:
             d["content"] = self.content
@@ -86,7 +87,7 @@ class ConfigCompliancePolicy(Base):
             "rule_content": self.rule_content,
             "device_type": self.device_type,
             "description": self.description,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_at": utc_to_beijing_str(self.created_at),
         }
 
 
@@ -110,7 +111,7 @@ class ConfigComplianceResult(Base):
             "device_id": self.device_id,
             "passed": self.passed,
             "detail": self.detail,
-            "executed_at": self.executed_at.isoformat() if self.executed_at else None,
+            "executed_at": utc_to_beijing_str(self.executed_at),
         }
 
 
@@ -131,6 +132,6 @@ class ConfigEosInfo(Base):
             "device_or_model": self.device_or_model,
             "eos_date": self.eos_date,
             "description": self.description,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": utc_to_beijing_str(self.created_at),
+            "updated_at": utc_to_beijing_str(self.updated_at),
         }

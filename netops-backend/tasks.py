@@ -86,12 +86,12 @@ def backup_network_devices(devices=None):
             time.sleep(3)  # 模拟备份时间
             
             # 模拟备份文件
-            backup_file = f"backup_{device}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.cfg"
+            backup_file = f"backup_{device}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.cfg"
             
             results[device] = {
                 "status": "success",
                 "backup_file": backup_file,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.utcnow().isoformat()
             }
             
             logger.info(f"设备 {device} 备份完成")
@@ -100,7 +100,7 @@ def backup_network_devices(devices=None):
             results[device] = {
                 "status": "error",
                 "error": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.utcnow().isoformat()
             }
     
     logger.info("所有设备备份完成")
@@ -133,7 +133,7 @@ def monitor_bandwidth(devices=None):
             results[device] = {
                 "status": "success",
                 "bandwidth_usage": f"{bandwidth_usage}%",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.utcnow().isoformat()
             }
             
             # 如果带宽使用率过高，记录警告
@@ -146,7 +146,7 @@ def monitor_bandwidth(devices=None):
             results[device] = {
                 "status": "error",
                 "error": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.utcnow().isoformat()
             }
     
     logger.info("所有设备带宽监控完成")
@@ -190,7 +190,7 @@ def update_firewall_rules(firewall="Firewall-Main", rules=None):
                 "status": "success",
                 "firewall": firewall,
                 "rules_count": len(rules),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.utcnow().isoformat()
             }
         else:
             error_msg = "规则验证失败"
@@ -199,7 +199,7 @@ def update_firewall_rules(firewall="Firewall-Main", rules=None):
                 "status": "error",
                 "firewall": firewall,
                 "error": error_msg,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.utcnow().isoformat()
             }
     except Exception as e:
         error_msg = f"更新防火墙规则时出错: {str(e)}"
@@ -208,7 +208,7 @@ def update_firewall_rules(firewall="Firewall-Main", rules=None):
             "status": "error",
             "firewall": firewall,
             "error": error_msg,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.utcnow().isoformat()
         }
 
 if __name__ == "__main__":

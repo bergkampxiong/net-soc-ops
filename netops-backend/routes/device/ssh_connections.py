@@ -54,8 +54,8 @@ async def get_device_connections(
                 "keepalive": conn.keepalive,
                 "verbose": conn.verbose,
                 "description": conn.description,
-                "created_at": conn.created_at or datetime.now(),  # 确保有值
-                "updated_at": conn.updated_at or datetime.now(),  # 确保有值
+                "created_at": conn.created_at or datetime.utcnow(),  # 确保有值
+                "updated_at": conn.updated_at or datetime.utcnow(),  # 确保有值
                 "is_active": conn.is_active,
                 "username": username,  # 使用凭证中的username
                 "password": password   # 使用凭证中的password
@@ -135,8 +135,8 @@ async def create_device_connection(
                 "keepalive": db_connection.keepalive,
                 "verbose": db_connection.verbose,
                 "description": db_connection.description,
-                "created_at": db_connection.created_at or datetime.now(),  # 确保有值
-                "updated_at": db_connection.updated_at or datetime.now(),  # 确保有值
+                "created_at": db_connection.created_at or datetime.utcnow(),  # 确保有值
+                "updated_at": db_connection.updated_at or datetime.utcnow(),  # 确保有值
                 "is_active": db_connection.is_active,
                 "username": username,  # 使用凭证中的username
                 "password": password   # 使用凭证中的password
@@ -163,8 +163,8 @@ async def create_device_connection(
                 "verbose": db_connection.verbose,
                 "description": db_connection.description,
                 "is_active": db_connection.is_active,
-                "created_at": datetime.now(),
-                "updated_at": datetime.now(),
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
                 "username": username,
                 "password": password
             }
@@ -219,8 +219,8 @@ async def get_device_connection(
             "keepalive": connection.keepalive,
             "verbose": connection.verbose,
             "description": connection.description,
-            "created_at": connection.created_at or datetime.now(),
-            "updated_at": connection.updated_at or datetime.now(),
+            "created_at": connection.created_at or datetime.utcnow(),
+            "updated_at": connection.updated_at or datetime.utcnow(),
             "is_active": connection.is_active,
             "username": username,  # 使用凭证中的username
             "password": password   # 使用凭证中的password
@@ -291,8 +291,8 @@ async def update_device_connection(
             "keepalive": db_connection.keepalive,
             "verbose": db_connection.verbose,
             "description": db_connection.description,
-            "created_at": db_connection.created_at or datetime.now(),
-            "updated_at": db_connection.updated_at or datetime.now(),
+            "created_at": db_connection.created_at or datetime.utcnow(),
+            "updated_at": db_connection.updated_at or datetime.utcnow(),
             "is_active": db_connection.is_active,
             "username": username,  # 使用凭证中的username
             "password": password   # 使用凭证中的password

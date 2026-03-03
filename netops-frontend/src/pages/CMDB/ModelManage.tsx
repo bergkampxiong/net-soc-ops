@@ -8,6 +8,7 @@ import {
   ReloadOutlined, DatabaseOutlined 
 } from '@ant-design/icons';
 import request from '../../utils/request';
+import { formatBeijingToSecond } from '../../utils/formatTime';
 import './ModelManage.css';
 
 const { TabPane } = Tabs;
@@ -176,13 +177,13 @@ const CMDBModelManage: React.FC = () => {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
-      render: (text: string) => new Date(text).toLocaleString(),
+      render: (text: string) => formatBeijingToSecond(text),
     },
     {
       title: '更新时间',
       dataIndex: 'updated_at',
       key: 'updated_at',
-      render: (text: string) => new Date(text).toLocaleString(),
+      render: (text: string) => formatBeijingToSecond(text),
     },
     {
       title: '操作',

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from database.session import get_db
 from database.strix_models import StrixScanTask, StrixConfig
 from utils.strix_runner import run_strix_sync, get_strix_env_from_config, check_strix_activation, test_llm_config
+from utils.datetime_utils import utc_to_beijing_str
 from routes.system_global_config import get_global_config_kv
 from utils.unified_report_builder import build_unified_report, UNIFIED_REPORT_MD, UNIFIED_REPORT_HTML
 
@@ -100,7 +101,15 @@ def _run_scan_task(task_id: int, workspace_dir: str):
         from sqlalchemy import func
         task.finished_at = datetime.utcnow()
         if result.get("stdout") or result.get("stderr"):
-            task.summary = json.dumps({"stdout": result.get("stdout", "")[:2000], "stderr": result.get("stderr", "")[:2000]})
+            def _ensure_str(v):
+                if v is None:
+                    return ""
+                if isinstance(v, bytes):
+                    return v.decode("utf-8", errors="replace")
+                return str(v)
+            sout = _ensure_str(result.get("stdout"))[:2000]
+            serr = _ensure_str(result.get("stderr"))[:2000]
+            task.summary = json.dumps({"stdout": sout, "stderr": serr})
         db.commit()
     except Exception as e:
         logger.exception("Strix task %s run error", task_id)
@@ -287,8 +296,8 @@ def create_unified_report(task_id: int, db: Session = Depends(get_db)):
         md_path, html_path, _ = build_unified_report(
             report_path=path,
             task_target_value=task.target_value,
-            task_created_at=task.created_at.isoformat() if task.created_at else None,
-            task_finished_at=task.finished_at.isoformat() if task.finished_at else None,
+            task_created_at=utc_to_beijing_str(task.created_at),
+            task_finished_at=utc_to_beijing_str(task.finished_at),
             api_key=api_key,
             api_base=global_kv.get("GLOBAL_LLM_API_BASE"),
             model=global_kv.get("GLOBAL_LLM_MODEL"),

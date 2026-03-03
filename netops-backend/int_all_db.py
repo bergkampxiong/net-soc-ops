@@ -114,8 +114,8 @@ def init_system_types(db):
                 new_system_type = SystemType(
                     name=system_type_name,
                     description=f"默认系统类型: {system_type_name}",
-                    created_at=datetime.now().isoformat(),
-                    updated_at=datetime.now().isoformat()
+                    created_at=datetime.utcnow().isoformat(),
+                    updated_at=datetime.utcnow().isoformat()
                 )
                 db.add(new_system_type)
         

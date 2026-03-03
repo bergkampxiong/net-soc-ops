@@ -9,6 +9,7 @@ from sqlalchemy import text
 from ..models.process_management import ProcessDefinition, ProcessDefinitionVersion
 from ..schemas.process_management import ProcessDefinitionCreate, ProcessDefinitionUpdate
 from database.session import get_db
+from utils.datetime_utils import utc_to_beijing_str
 from ..process_designer.code_generator import CodeGenerator
 from ..schemas.job import JobCreate, JobUpdate
 from ..services.job import JobService
@@ -19,12 +20,9 @@ router = APIRouter(prefix="/api/process-definitions", tags=["流程管理"])
 def _row_to_process_dict(row) -> dict:
     """将查询行转为 ProcessDefinition 可用的字典，兼容 nodes/edges/variables 为 JSON 字符串的情况"""
     row_dict = dict(getattr(row, "_mapping", row))
-    if row_dict.get("created_at") and hasattr(row_dict["created_at"], "isoformat"):
-        row_dict["created_at"] = row_dict["created_at"].isoformat()
-    if row_dict.get("updated_at") and hasattr(row_dict["updated_at"], "isoformat"):
-        row_dict["updated_at"] = row_dict["updated_at"].isoformat()
-    if row_dict.get("deleted_at") and hasattr(row_dict["deleted_at"], "isoformat"):
-        row_dict["deleted_at"] = row_dict["deleted_at"].isoformat()
+    row_dict["created_at"] = utc_to_beijing_str(row_dict.get("created_at"))
+    row_dict["updated_at"] = utc_to_beijing_str(row_dict.get("updated_at"))
+    row_dict["deleted_at"] = utc_to_beijing_str(row_dict.get("deleted_at"))
     for key, default in (("nodes", []), ("edges", []), ("variables", {})):
         val = row_dict.get(key)
         if val is None:
@@ -57,7 +55,7 @@ async def get_process_definitions(db: Session = Depends(get_db)):
 async def create_process_definition(process: ProcessDefinitionCreate, db: Session = Depends(get_db)):
     """创建流程定义"""
     process_id = str(uuid4())
-    now = datetime.now().isoformat()
+    now = datetime.utcnow().isoformat()
     
     # 将 JSON 数据序列化为字符串
     nodes_json = json.dumps(process.nodes)
@@ -151,7 +149,7 @@ async def update_process_definition(process_id: str, process: ProcessDefinitionU
     if not existing_process:
         raise HTTPException(status_code=404, detail="流程定义不存在")
     
-    now = datetime.now().isoformat()
+    now = datetime.utcnow().isoformat()
     ep = _row_to_process_dict(existing_process)
     nodes_ver = ep["nodes"]
     edges_ver = ep["edges"]
@@ -224,7 +222,7 @@ async def delete_process_definition(process_id: str, db: Session = Depends(get_d
         WHERE id = :id AND deleted_at IS NULL
     """), {
         'id': process_id,
-        'deleted_at': datetime.now().isoformat()
+        'deleted_at': datetime.utcnow().isoformat()
     })
     
     if result.rowcount == 0:
@@ -243,7 +241,7 @@ async def publish_process_definition(process_id: str, db: Session = Depends(get_
         WHERE id = :id AND deleted_at IS NULL
     """), {
         'id': process_id,
-        'updated_at': datetime.now().isoformat()
+        'updated_at': datetime.utcnow().isoformat()
     })
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="流程定义不存在")
@@ -284,7 +282,7 @@ async def disable_process_definition(process_id: str, db: Session = Depends(get_
         WHERE id = :id AND deleted_at IS NULL
     """), {
         'id': process_id,
-        'updated_at': datetime.now().isoformat()
+        'updated_at': datetime.utcnow().isoformat()
     })
     
     if result.rowcount == 0:
@@ -307,7 +305,7 @@ async def get_process_versions(process_id: str, db: Session = Depends(get_db)):
     for row in result.mappings():
         row_dict = dict(row)
         # 将 datetime 对象转换为 ISO 格式字符串
-        row_dict['created_at'] = row_dict['created_at'].isoformat() if row_dict['created_at'] else None
+        row_dict['created_at'] = utc_to_beijing_str(row_dict['created_at']) if row_dict.get('created_at') else None
         versions.append(ProcessDefinitionVersion(**row_dict))
     
     return versions
@@ -325,7 +323,7 @@ async def rollback_process_version(process_id: str, version: int, db: Session = 
     if not version_data:
         raise HTTPException(status_code=404, detail="指定版本不存在")
     
-    now = datetime.now().isoformat()
+    now = datetime.utcnow().isoformat()
     
     # 更新流程定义
     db.execute(text("""

@@ -42,8 +42,8 @@ def create_device_type(
     db_device_type = DeviceTypeModel(
         name=device_type.name,
         description=device_type.description,
-        created_at=datetime.now().isoformat(),
-        updated_at=datetime.now().isoformat()
+        created_at=datetime.utcnow().isoformat(),
+        updated_at=datetime.utcnow().isoformat()
     )
     db.add(db_device_type)
     db.commit()
@@ -76,7 +76,7 @@ def update_device_type(
     for key, value in update_data.items():
         setattr(db_device_type, key, value)
     
-    db_device_type.updated_at = datetime.now().isoformat()
+    db_device_type.updated_at = datetime.utcnow().isoformat()
     db.commit()
     db.refresh(db_device_type)
     return db_device_type
@@ -117,8 +117,8 @@ def create_vendor(
         description=vendor.description,
         contact=vendor.contact,
         website=vendor.website,
-        created_at=datetime.now().isoformat(),
-        updated_at=datetime.now().isoformat()
+        created_at=datetime.utcnow().isoformat(),
+        updated_at=datetime.utcnow().isoformat()
     )
     db.add(db_vendor)
     db.commit()
@@ -151,7 +151,7 @@ def update_vendor(
     for key, value in update_data.items():
         setattr(db_vendor, key, value)
     
-    db_vendor.updated_at = datetime.now().isoformat()
+    db_vendor.updated_at = datetime.utcnow().isoformat()
     db.commit()
     db.refresh(db_vendor)
     return db_vendor
@@ -191,8 +191,8 @@ def create_location(
         name=location.name,
         address=location.address,
         description=location.description,
-        created_at=datetime.now().isoformat(),
-        updated_at=datetime.now().isoformat()
+        created_at=datetime.utcnow().isoformat(),
+        updated_at=datetime.utcnow().isoformat()
     )
     db.add(db_location)
     db.commit()
@@ -225,7 +225,7 @@ def update_location(
     for key, value in update_data.items():
         setattr(db_location, key, value)
     
-    db_location.updated_at = datetime.now().isoformat()
+    db_location.updated_at = datetime.utcnow().isoformat()
     db.commit()
     db.refresh(db_location)
     return db_location
@@ -264,8 +264,8 @@ def create_department(
     db_department = DepartmentModel(
         name=department.name,
         description=department.description,
-        created_at=datetime.now().isoformat(),
-        updated_at=datetime.now().isoformat()
+        created_at=datetime.utcnow().isoformat(),
+        updated_at=datetime.utcnow().isoformat()
     )
     db.add(db_department)
     db.commit()
@@ -298,7 +298,7 @@ def update_department(
     for key, value in update_data.items():
         setattr(db_department, key, value)
     
-    db_department.updated_at = datetime.now().isoformat()
+    db_department.updated_at = datetime.utcnow().isoformat()
     db.commit()
     db.refresh(db_department)
     return db_department
@@ -337,8 +337,8 @@ def create_asset_status(
     db_asset_status = AssetStatusModel(
         name=asset_status.name,
         description=asset_status.description,
-        created_at=datetime.now().isoformat(),
-        updated_at=datetime.now().isoformat()
+        created_at=datetime.utcnow().isoformat(),
+        updated_at=datetime.utcnow().isoformat()
     )
     db.add(db_asset_status)
     db.commit()
@@ -371,7 +371,7 @@ def update_asset_status(
     for key, value in update_data.items():
         setattr(db_asset_status, key, value)
     
-    db_asset_status.updated_at = datetime.now().isoformat()
+    db_asset_status.updated_at = datetime.utcnow().isoformat()
     db.commit()
     db.refresh(db_asset_status)
     return db_asset_status
@@ -426,8 +426,8 @@ def create_system_type(
     db_system_type = SystemTypeModel(
         name=name,
         description=description,
-        created_at=datetime.now().isoformat(),
-        updated_at=datetime.now().isoformat()
+        created_at=datetime.utcnow().isoformat(),
+        updated_at=datetime.utcnow().isoformat()
     )
     db.add(db_system_type)
     db.commit()
@@ -451,7 +451,7 @@ def update_system_type(
     if description is not None:
         db_system_type.description = description
     
-    db_system_type.updated_at = datetime.now().isoformat()
+    db_system_type.updated_at = datetime.utcnow().isoformat()
     db.commit()
     db.refresh(db_system_type)
     return db_system_type

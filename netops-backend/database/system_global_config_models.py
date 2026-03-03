@@ -2,6 +2,7 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime
 from sqlalchemy.sql import func
 from database.base import Base
+from utils.datetime_utils import utc_to_beijing_str
 
 
 class SystemGlobalConfig(Base):
@@ -20,5 +21,5 @@ class SystemGlobalConfig(Base):
         return {
             "config_key": self.config_key,
             "config_value": val,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "updated_at": utc_to_beijing_str(self.updated_at),
         }

@@ -106,12 +106,12 @@ def create_asset(
         cpu_count=asset.cpu_count,
         memory_capacity=asset.memory_capacity,
         storage_capacity=asset.storage_capacity,
-        created_at=datetime.now().isoformat(),
-        updated_at=datetime.now().isoformat()
+        created_at=datetime.utcnow().isoformat(),
+        updated_at=datetime.utcnow().isoformat()
     )
     db.add(db_asset)
     db.flush()
-    now = datetime.now().isoformat()
+    now = datetime.utcnow().isoformat()
     if asset.model or asset.version:
         nd = NetworkDeviceModel(
             asset_id=db_asset.id,
@@ -154,8 +154,8 @@ def update_asset(
         if hasattr(db_asset, key):
             setattr(db_asset, key, value)
 
-    db_asset.updated_at = datetime.now().isoformat()
-    now = datetime.now().isoformat()
+    db_asset.updated_at = datetime.utcnow().isoformat()
+    now = datetime.utcnow().isoformat()
     if model_value is not None or "version" in update_data:
         nd = db.query(NetworkDeviceModel).filter(NetworkDeviceModel.asset_id == asset_id).first()
         if nd:
@@ -345,8 +345,8 @@ async def import_assets_from_csv(
                     new_device_type = DeviceTypeModel(
                         name=device_type_name,
                         description=f"从CSV导入创建的设备类型: {device_type_name}",
-                        created_at=datetime.now().isoformat(),
-                        updated_at=datetime.now().isoformat()
+                        created_at=datetime.utcnow().isoformat(),
+                        updated_at=datetime.utcnow().isoformat()
                     )
                     db.add(new_device_type)
                     db.flush()
@@ -362,8 +362,8 @@ async def import_assets_from_csv(
                         new_vendor = VendorModel(
                             name=vendor_name,
                             description=f"从CSV导入创建的厂商: {vendor_name}",
-                            created_at=datetime.now().isoformat(),
-                            updated_at=datetime.now().isoformat()
+                            created_at=datetime.utcnow().isoformat(),
+                            updated_at=datetime.utcnow().isoformat()
                         )
                         db.add(new_vendor)
                         db.flush()
@@ -377,8 +377,8 @@ async def import_assets_from_csv(
                     new_status = AssetStatusModel(
                         name=status_name,
                         description=f"从CSV导入创建的状态: {status_name}",
-                        created_at=datetime.now().isoformat(),
-                        updated_at=datetime.now().isoformat()
+                        created_at=datetime.utcnow().isoformat(),
+                        updated_at=datetime.utcnow().isoformat()
                     )
                     db.add(new_status)
                     db.flush()
@@ -392,8 +392,8 @@ async def import_assets_from_csv(
                     new_system_type = SystemTypeModel(
                         name=system_type_name,
                         description=f"从CSV导入创建的系统类型: {system_type_name}",
-                        created_at=datetime.now().isoformat(),
-                        updated_at=datetime.now().isoformat()
+                        created_at=datetime.utcnow().isoformat(),
+                        updated_at=datetime.utcnow().isoformat()
                     )
                     db.add(new_system_type)
                     db.flush()
@@ -409,8 +409,8 @@ async def import_assets_from_csv(
                         new_location = LocationModel(
                             name=location_name,
                             description=f"从CSV导入创建的位置: {location_name}",
-                            created_at=datetime.now().isoformat(),
-                            updated_at=datetime.now().isoformat()
+                            created_at=datetime.utcnow().isoformat(),
+                            updated_at=datetime.utcnow().isoformat()
                         )
                         db.add(new_location)
                         db.flush()
@@ -426,8 +426,8 @@ async def import_assets_from_csv(
                         new_department = DepartmentModel(
                             name=department_name,
                             description=f"从CSV导入创建的部门: {department_name}",
-                            created_at=datetime.now().isoformat(),
-                            updated_at=datetime.now().isoformat()
+                            created_at=datetime.utcnow().isoformat(),
+                            updated_at=datetime.utcnow().isoformat()
                         )
                         db.add(new_department)
                         db.flush()
@@ -491,7 +491,7 @@ async def import_assets_from_csv(
                     'online_date': online_date,
                     'warranty_expiry': warranty_expiry,
                     'notes': row.get('备注'),
-                    'updated_at': datetime.now().isoformat()
+                    'updated_at': datetime.utcnow().isoformat()
                 }
                 
                 if existing_asset:
@@ -500,7 +500,7 @@ async def import_assets_from_csv(
                         setattr(existing_asset, key, value)
                 else:
                     # 创建新资产
-                    asset_data['created_at'] = datetime.now().isoformat()
+                    asset_data['created_at'] = datetime.utcnow().isoformat()
                     new_asset = AssetModel(**asset_data)
                     db.add(new_asset)
                 

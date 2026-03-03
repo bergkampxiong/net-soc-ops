@@ -13,7 +13,7 @@ import {
   rollbackProcessVersion
 } from '../../api/process-management';
 import { useNavigate } from 'react-router-dom';
-import moment from 'moment';
+import { formatBeijingToSecond } from '@/utils/formatTime';
 
 const { TextArea } = Input;
 
@@ -179,7 +179,7 @@ const ProcessManagement: React.FC = () => {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
-      render: (text: string) => moment(text).format('YYYY-MM-DD HH:mm:ss'),
+      render: (text: string) => formatBeijingToSecond(text),
     },
     {
       title: '操作',

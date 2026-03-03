@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from database.session import get_db
 from database.models import MonitoringWebhook, MonitoringAlertEvent
 from auth.authentication import get_current_active_user
+from utils.datetime_utils import utc_to_beijing_str
 from database.models import User
 
 router = APIRouter(prefix="/api/monitoring-integration", tags=["监控系统集成"])
@@ -223,7 +224,7 @@ def create_webhook(
         "path_slug": wh.path_slug,
         "enabled": wh.enabled,
         "remark": wh.remark,
-        "created_at": wh.created_at.isoformat() if wh.created_at else None,
+        "created_at": utc_to_beijing_str(wh.created_at),
         "webhook_url": url,
     }
 
@@ -244,7 +245,7 @@ def list_webhooks(
             "path_slug": r.path_slug,
             "enabled": r.enabled,
             "remark": r.remark,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "created_at": utc_to_beijing_str(r.created_at),
             "webhook_url": f"{base}/api/monitoring-integration/webhook/{r.path_slug}",
         }
         for r in rows
@@ -269,7 +270,7 @@ def get_webhook(
         "path_slug": wh.path_slug,
         "enabled": wh.enabled,
         "remark": wh.remark,
-        "created_at": wh.created_at.isoformat() if wh.created_at else None,
+        "created_at": utc_to_beijing_str(wh.created_at),
         "webhook_url": f"{base}/api/monitoring-integration/webhook/{wh.path_slug}",
     }
 
@@ -478,9 +479,9 @@ def _alert_row_to_list_item(r: MonitoringAlertEvent) -> dict:
         "city": _display_value(city),
         "severity": r.severity,
         "status": r.status,
-        "alert_time": alert_time.isoformat() if alert_time else None,
-        "triggered_at": r.triggered_at.isoformat() if r.triggered_at else None,
-        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "alert_time": utc_to_beijing_str(alert_time),
+        "triggered_at": utc_to_beijing_str(r.triggered_at),
+        "created_at": utc_to_beijing_str(r.created_at),
     }
 
 
@@ -522,9 +523,9 @@ def _alert_row_to_dict(r: MonitoringAlertEvent) -> dict:
         "severity": r.severity,
         "status": r.status,
         "raw_payload": r.raw_payload,
-        "alert_time": alert_time.isoformat() if alert_time else None,
-        "triggered_at": r.triggered_at.isoformat() if r.triggered_at else None,
-        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "alert_time": utc_to_beijing_str(alert_time),
+        "triggered_at": utc_to_beijing_str(r.triggered_at),
+        "created_at": utc_to_beijing_str(r.created_at),
         "metadata": getattr(r, "metadata_", None),
     }
 

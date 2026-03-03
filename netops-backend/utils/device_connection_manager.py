@@ -103,7 +103,7 @@ class DeviceConnectionManager:
     async def _cleanup_idle_connections(self):
         """清理空闲连接"""
         if self.redis_client is None:
-            current_time = datetime.now()
+            current_time = datetime.utcnow()
             for pool_key, last_used in self._connection_times.items():
                 if current_time - last_used > timedelta(minutes=30):  # 30分钟未使用的连接将被清理
                     try:
@@ -112,7 +112,7 @@ class DeviceConnectionManager:
                         logger.error(f"清理主机 {pool_key} 的连接时发生错误: {str(e)}")
         else:
             try:
-                current_time = datetime.now()
+                current_time = datetime.utcnow()
                 # 获取所有连接池键
                 pool_keys = self.redis_client.keys("device_connection:*")
                 for pool_key in pool_keys:
@@ -344,7 +344,7 @@ class DeviceConnectionManager:
                 try:
                     self._connection_stats["current"] += 1
                     self._connection_stats["total"] += 1
-                    self._connection_times[pool_key] = datetime.now()
+                    self._connection_times[pool_key] = datetime.utcnow()
                     self._connection_status[pool_key] = ConnectionStatus.ACTIVE
                     
                     # 将新连接添加到连接池
@@ -356,7 +356,7 @@ class DeviceConnectionManager:
         else:
             try:
                 self.redis_client.rpush(pool_key, pickle.dumps(connection))
-                self.redis_client.set(f"device_connection_last_used:{pool_key}", datetime.now().timestamp())
+                self.redis_client.set(f"device_connection_last_used:{pool_key}", datetime.utcnow().timestamp())
             except redis.ConnectionError as e:
                 logger.error(f"Redis 连接错误: {str(e)}")
                 # 如果 Redis 连接失败，切换到内存存储
@@ -426,7 +426,7 @@ class DeviceConnectionManager:
                     # 更新统计信息
                     this._connection_stats["current"] += 1
                     this._connection_stats["total"] += 1
-                    this._connection_times[pool_key] = datetime.now()
+                    this._connection_times[pool_key] = datetime.utcnow()
                     this._connection_status[pool_key] = ConnectionStatus.ACTIVE
                     
                     # 将新连接添加到连接池
@@ -454,7 +454,7 @@ class DeviceConnectionManager:
                         else:
                             # 在成功获取连接后更新状态
                             this.redis_client.set(f"device_connection_status:{connection_id}:{host}", ConnectionStatus.ACTIVE.value)
-                            this.redis_client.set(f"device_connection_last_used:{connection_id}:{host}", datetime.now().timestamp())
+                            this.redis_client.set(f"device_connection_last_used:{connection_id}:{host}", datetime.utcnow().timestamp())
                             return connection
                     except:
                         connection_data = None
@@ -494,7 +494,7 @@ class DeviceConnectionManager:
                     # 更新统计信息
                     this.redis_client.hincrby(stats_key, 'current_connections', 1)
                     this.redis_client.hincrby(stats_key, 'total_connections', 1)
-                    this.redis_client.hset(stats_key, 'last_used', datetime.now().timestamp())
+                    this.redis_client.hset(stats_key, 'last_used', datetime.utcnow().timestamp())
                     
                     # 将新连接添加到连接池
                     await this._add_connection_to_pool(pool_key, netmiko_conn)
@@ -650,7 +650,7 @@ class DeviceConnectionManager:
                     'current_connections': 0,
                     'total_connections': 0,
                     'failed_connections': 0,
-                    'last_used': datetime.now().timestamp()
+                    'last_used': datetime.utcnow().timestamp()
                 })
                 logger.info("成功初始化 Redis 连接池")
             else:

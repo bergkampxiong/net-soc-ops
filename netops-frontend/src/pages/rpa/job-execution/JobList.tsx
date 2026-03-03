@@ -3,6 +3,7 @@ import { Table, Card, Button, Space, Tag, message, Modal, Form, Input, Select, D
 import { ReloadOutlined, DeleteOutlined, PlayCircleOutlined, PauseCircleOutlined, StopOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import request from '@/utils/request';
+import { formatBeijingToSecond } from '@/utils/formatTime';
 import { jobApi } from '@/api/job';
 import type { Job } from './types';
 
@@ -74,13 +75,13 @@ const JobList: React.FC = () => {
       title: '最后执行时间',
       dataIndex: 'last_run_at',
       key: 'last_run_at',
-      render: (time: string) => time ? new Date(time).toLocaleString() : '-',
+      render: (time: string) => formatBeijingToSecond(time),
     },
     {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
-      render: (time: string) => new Date(time).toLocaleString(),
+      render: (time: string) => formatBeijingToSecond(time),
     },
     {
       title: '操作',

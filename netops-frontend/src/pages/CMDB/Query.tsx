@@ -9,6 +9,7 @@ import {
   PlusOutlined, DeleteOutlined, EditOutlined
 } from '@ant-design/icons';
 import request from '../../utils/request';
+import { formatBeijingToSecond } from '../../utils/formatTime';
 import './Query.css';
 import moment from 'moment';
 
@@ -737,7 +738,7 @@ const CMDBQuery: React.FC = () => {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
-      render: (date) => moment(date).format('YYYY-MM-DD HH:mm:ss'),
+      render: (date) => formatBeijingToSecond(date),
       sorter: (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
       width: 150,
     },
@@ -745,7 +746,7 @@ const CMDBQuery: React.FC = () => {
       title: '更新时间',
       dataIndex: 'updated_at',
       key: 'updated_at',
-      render: (date) => moment(date).format('YYYY-MM-DD HH:mm:ss'),
+      render: (date) => formatBeijingToSecond(date),
       sorter: (a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime(),
       width: 150,
     },

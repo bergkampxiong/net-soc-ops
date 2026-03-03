@@ -30,6 +30,7 @@ import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import request from '../../utils/request';
+import { formatBeijingToSecond } from '../../utils/formatTime';
 
 const { RangePicker } = DatePicker;
 const { Title } = Typography;
@@ -149,10 +150,11 @@ const AuditLogs: React.FC = () => {
 
   const columns = [
     {
-      title: '时间',
+title: '时间',
       dataIndex: 'timestamp',
       key: 'timestamp',
-      sorter: (a: AuditLog, b: AuditLog) => 
+      render: (t: string) => formatBeijingToSecond(t),
+      sorter: (a: AuditLog, b: AuditLog) =>
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
     },
     {
@@ -303,7 +305,7 @@ const AuditLogs: React.FC = () => {
         >
           {selectedLog && (
             <div>
-              <p><strong>时间：</strong>{selectedLog.timestamp}</p>
+              <p><strong>时间：</strong>{formatBeijingToSecond(selectedLog.timestamp)}</p>
               <p><strong>用户：</strong>{selectedLog.username}</p>
               <p><strong>操作：</strong>{selectedLog.action}</p>
               <p><strong>资源：</strong>{selectedLog.resource}</p>

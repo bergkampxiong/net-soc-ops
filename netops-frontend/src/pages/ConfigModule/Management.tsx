@@ -17,6 +17,7 @@ import {
 } from 'antd';
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import request from '../../utils/request';
+import { formatBeijingToSecond } from '../../utils/formatTime';
 
 interface DeviceRow {
   device_key: string;
@@ -323,7 +324,7 @@ const ConfigModuleManagement: React.FC = () => {
               key: 'latest_created_at',
               width: 120,
               ellipsis: true,
-              render: (t: string) => (t ? new Date(t).toLocaleString() : '-'),
+              render: (t: string) => formatBeijingToSecond(t),
             },
           ]}
         />
@@ -383,7 +384,7 @@ const ConfigModuleManagement: React.FC = () => {
                 dataIndex: 'created_at',
                 key: 'created_at',
                 width: 180,
-                render: (t: string) => (t ? new Date(t).toLocaleString() : '-'),
+                render: (t: string) => formatBeijingToSecond(t),
               },
               {
                 title: '操作',

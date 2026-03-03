@@ -3,6 +3,7 @@ import { Card, Table, Button, Modal, Form, Input, Select, Tag, Space, message, U
 import { PlusOutlined, EditOutlined, DeleteOutlined, HistoryOutlined, CopyOutlined, ImportOutlined, ExportOutlined, SearchOutlined, RollbackOutlined, DiffOutlined, FormatPainterOutlined } from '@ant-design/icons';
 import MonacoEditor from '@monaco-editor/react';
 import request from '../../utils/request';
+import { formatBeijingToSecond } from '../../utils/formatTime';
 import type { RangePickerProps } from 'antd/es/date-picker';
 import moment from 'moment';
 import ConfigEditor from '../../components/ConfigEditor';
@@ -268,7 +269,7 @@ const ConfigManagement: React.FC = () => {
       title: '更新时间',
       dataIndex: 'updated_at',
       key: 'updated_at',
-      render: (text: string) => new Date(text).toLocaleString(),
+      render: (text: string) => formatBeijingToSecond(text),
     },
     {
       title: '操作',
@@ -312,7 +313,7 @@ const ConfigManagement: React.FC = () => {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
-      render: (text: string) => new Date(text).toLocaleString(),
+      render: (text: string) => formatBeijingToSecond(text),
     },
     {
       title: '操作',

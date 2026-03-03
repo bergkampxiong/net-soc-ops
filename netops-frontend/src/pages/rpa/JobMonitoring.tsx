@@ -22,6 +22,7 @@ import {
   LinkOutlined,
 } from '@ant-design/icons';
 import request from '@/utils/request';
+import { formatBeijingToSecond } from '@/utils/formatTime';
 import type {
   JobExecutionListItem,
   JobExecutionListResponse,
@@ -185,14 +186,14 @@ const JobMonitoring: React.FC = () => {
       dataIndex: 'start_time',
       key: 'start_time',
       width: 170,
-      render: (t: string) => (t ? new Date(t).toLocaleString() : '-'),
+      render: (t: string) => formatBeijingToSecond(t),
     },
     {
       title: '结束时间',
       dataIndex: 'end_time',
       key: 'end_time',
       width: 170,
-      render: (t: string) => (t ? new Date(t).toLocaleString() : '-'),
+      render: (t: string) => formatBeijingToSecond(t),
     },
     {
       title: '执行结果',

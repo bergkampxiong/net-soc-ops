@@ -57,7 +57,7 @@ class SSHConnectionManager:
         async with self._pool_locks[pool_id]:
             if host in self._pools[pool_id]:
                 # 更新统计信息
-                self._stats[pool_id]["last_used"] = datetime.now()
+                self._stats[pool_id]["last_used"] = datetime.utcnow()
                 return self._pools[pool_id][host]
 
             # 检查是否达到最大连接数
@@ -78,7 +78,7 @@ class SSHConnectionManager:
                 self._pools[pool_id][host] = conn
                 self._stats[pool_id]["current_connections"] += 1
                 self._stats[pool_id]["total_connections"] += 1
-                self._stats[pool_id]["last_used"] = datetime.now()
+                self._stats[pool_id]["last_used"] = datetime.utcnow()
 
                 # 更新数据库中的统计信息
                 stats = db.query(ConnectionStats).filter(ConnectionStats.pool_id == pool_id).first()

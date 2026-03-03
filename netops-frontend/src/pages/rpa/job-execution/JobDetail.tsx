@@ -15,6 +15,7 @@ import {
   Tabs,
   Typography,
 } from 'antd';
+import { formatBeijingToSecond } from '@/utils/formatTime';
 import {
   PlayCircleOutlined,
   PauseCircleOutlined,
@@ -150,13 +151,13 @@ const JobDetail: React.FC = () => {
       title: '开始时间',
       dataIndex: 'start_time',
       key: 'start_time',
-      render: (time: string) => new Date(time).toLocaleString(),
+      render: (time: string) => formatBeijingToSecond(time),
     },
     {
       title: '结束时间',
       dataIndex: 'end_time',
       key: 'end_time',
-      render: (time: string) => time ? new Date(time).toLocaleString() : '-',
+      render: (time: string) => formatBeijingToSecond(time),
     },
     {
       title: '执行结果',
@@ -408,16 +409,16 @@ const JobDetail: React.FC = () => {
                   : '已创建'}
               </Descriptions.Item>
               <Descriptions.Item label="创建时间">
-                {new Date(job.created_at).toLocaleString()}
+                {formatBeijingToSecond(job.created_at)}
               </Descriptions.Item>
               <Descriptions.Item label="更新时间">
-                {new Date(job.updated_at).toLocaleString()}
+                {formatBeijingToSecond(job.updated_at)}
               </Descriptions.Item>
               <Descriptions.Item label="最后执行时间">
-                {job.last_run_at ? new Date(job.last_run_at).toLocaleString() : '-'}
+                {formatBeijingToSecond(job.last_run_at)}
               </Descriptions.Item>
               <Descriptions.Item label="下次执行时间">
-                {job.next_run_at ? new Date(job.next_run_at).toLocaleString() : '-'}
+                {formatBeijingToSecond(job.next_run_at)}
               </Descriptions.Item>
               <Descriptions.Item label="创建人">{job.created_by}</Descriptions.Item>
               <Descriptions.Item label="更新人">{job.updated_by}</Descriptions.Item>

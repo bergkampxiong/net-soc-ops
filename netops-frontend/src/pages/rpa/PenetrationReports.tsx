@@ -16,6 +16,7 @@ import {
 } from 'antd';
 import { ReloadOutlined, FileTextOutlined, ArrowLeftOutlined, PlusOutlined, EyeOutlined, DeleteOutlined } from '@ant-design/icons';
 import request, { LONG_REQUEST_TIMEOUT } from '@/utils/request';
+import { formatBeijingToSecond } from '@/utils/formatTime';
 
 const STRIX_BASE = '/config-module/strix';
 
@@ -232,8 +233,8 @@ const PenetrationReports: React.FC = () => {
                   <Tag color={statusMap[detail.status]?.color}>{statusMap[detail.status]?.text ?? detail.status}</Tag>
                 </Descriptions.Item>
                 <Descriptions.Item label="作业执行 ID">{detail.job_execution_id ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="创建时间">{detail.created_at ? new Date(detail.created_at).toLocaleString() : '-'}</Descriptions.Item>
-                <Descriptions.Item label="结束时间">{detail.finished_at ? new Date(detail.finished_at).toLocaleString() : '-'}</Descriptions.Item>
+                <Descriptions.Item label="创建时间">{formatBeijingToSecond(detail.created_at)}</Descriptions.Item>
+                <Descriptions.Item label="结束时间">{formatBeijingToSecond(detail.finished_at)}</Descriptions.Item>
               </Descriptions>
               <div style={{ marginTop: 16 }}>
                 <Space wrap>
@@ -297,7 +298,7 @@ const PenetrationReports: React.FC = () => {
       },
     },
     { title: '作业执行 ID', dataIndex: 'job_execution_id', key: 'job_execution_id', width: 110 },
-    { title: '创建时间', dataIndex: 'created_at', key: 'created_at', width: 170, render: (v: string) => (v ? new Date(v).toLocaleString() : '-') },
+    { title: '创建时间', dataIndex: 'created_at', key: 'created_at', width: 170, render: (v: string) => formatBeijingToSecond(v) },
     {
       title: '操作',
       key: 'action',

@@ -10,6 +10,7 @@ import {
   SearchOutlined
 } from '@ant-design/icons';
 import request from '../../utils/request';
+import { formatBeijingToSecond } from '../../utils/formatTime';
 
 const { Option } = Select;
 const { Title } = Typography;
@@ -308,7 +309,7 @@ const UserManagement: React.FC = () => {
       title: '最后登录',
       dataIndex: 'last_login',
       key: 'last_login',
-      render: (text: string) => text ? new Date(text).toLocaleString() : '-',
+      render: (text: string) => formatBeijingToSecond(text),
     },
     {
       title: '创建时间',

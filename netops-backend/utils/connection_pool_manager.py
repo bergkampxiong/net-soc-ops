@@ -34,7 +34,7 @@ class ConnectionPoolManager:
                 'connection_timeout': '30',
                 'description': '默认连接池配置',
                 'is_active': 'true',
-                'created_at': datetime.now().isoformat(),
+                'created_at': datetime.utcnow().isoformat(),
                 'updated_at': str(int(time.time()))
             }
             self.redis_client.hmset('connection_pool_config', default_config)
@@ -57,7 +57,7 @@ class ConnectionPoolManager:
             'connection_timeout': '30',
             'description': f'默认{pool_type}连接池配置',
             'is_active': 'true',
-            'created_at': datetime.now().isoformat(),
+            'created_at': datetime.utcnow().isoformat(),
             'updated_at': str(int(time.time()))
         }
         
@@ -98,7 +98,7 @@ class ConnectionPoolManager:
                     'waiting_connections': '0',
                     'max_wait_time': '0',
                     'avg_wait_time': '0',
-                    'created_at': datetime.now().isoformat()
+                    'created_at': datetime.utcnow().isoformat()
                 }
                 self.redis_client.hmset(stats_key, stats)
             return stats
@@ -111,7 +111,7 @@ class ConnectionPoolManager:
                 'waiting_connections': '0',
                 'max_wait_time': '0',
                 'avg_wait_time': '0',
-                'created_at': datetime.now().isoformat()
+                'created_at': datetime.utcnow().isoformat()
             }
 
     def update_pool_stats(self, stats: Dict[str, Any], pool_type: str = 'redis') -> None:

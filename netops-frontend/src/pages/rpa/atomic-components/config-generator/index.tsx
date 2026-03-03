@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Typography, message, Form, Select, Button, Spin } from 'antd';
 import request from '../../../../utils/request';
+import { formatBeijingToSecond } from '../../../../utils/formatTime';
 import MonacoEditor from '@monaco-editor/react';
 import nunjucks from 'nunjucks';
 import styles from './index.module.less';
@@ -162,7 +163,7 @@ const ConfigGeneratorPage: React.FC = () => {
                 {selectedTemplate && (
                   <div style={{ marginTop: 16 }}>
                     <p><strong>设备类型：</strong> {selectedTemplate.device_type}</p>
-                    <p><strong>更新时间：</strong> {new Date(selectedTemplate.updated_at).toLocaleString()}</p>
+                    <p><strong>更新时间：</strong> {formatBeijingToSecond(selectedTemplate.updated_at)}</p>
                     <p><strong>创建者：</strong> {selectedTemplate.created_by}</p>
                     <p><strong>状态：</strong> {selectedTemplate.status === 'published' ? '已发布' : '草稿'}</p>
                   </div>

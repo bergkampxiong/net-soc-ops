@@ -31,6 +31,7 @@ import {
   DownloadOutlined,
 } from '@ant-design/icons';
 import request from '../../utils/request';
+import { formatBeijingToSecond } from '../../utils/formatTime';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
@@ -40,13 +41,6 @@ dayjs.extend(timezone);
 dayjs.tz.setDefault('Asia/Shanghai');
 
 const { Title, Paragraph, Text } = Typography;
-
-/** 将 ISO 时间格式化为北京时间 24 小时制，精确到秒 */
-function formatAlertTime(iso: string | undefined): string {
-  if (!iso) return '-';
-  const d = dayjs(iso).tz('Asia/Shanghai');
-  return d.isValid() ? d.format('YYYY-MM-DD HH:mm:ss') : '-';
-}
 
 /** 列表展示用：精简告警标题（去首尾星号、末尾括号及内容），兼容老数据 */
 function displayAlertTitle(title: string | undefined): string {
@@ -352,62 +346,6 @@ const MonitoringIntegration: React.FC = () => {
 
   const tabItems = [
     {
-      key: 'webhook',
-      label: <span><ApiOutlined />Webhook 管理</span>,
-      children: (
-        <Card
-          extra={
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalVisible(true)}>
-              创建 Webhook
-            </Button>
-          }
-        >
-          <Table<WebhookItem>
-            loading={webhookLoading}
-            rowKey="id"
-            dataSource={webhooks}
-            columns={[
-              { title: '名称', dataIndex: 'name', key: 'name', width: 160 },
-              {
-                title: 'Webhook URL',
-                dataIndex: 'webhook_url',
-                key: 'webhook_url',
-                ellipsis: true,
-                render: (url: string) => (
-                  <Space>
-                    <Text style={{ maxWidth: 360 }} ellipsis>{url || '-'}</Text>
-                    <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => copyUrl(url)}>复制</Button>
-                  </Space>
-                ),
-              },
-              {
-                title: '状态',
-                dataIndex: 'enabled',
-                key: 'enabled',
-                width: 80,
-                render: (v: boolean) => (v ? <Tag color="green">启用</Tag> : <Tag color="default">禁用</Tag>),
-              },
-              { title: '创建时间', dataIndex: 'created_at', key: 'created_at', width: 180 },
-              {
-                title: '操作',
-                key: 'action',
-                width: 200,
-                render: (_, record) => (
-                  <Space>
-                    <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(record)}>编辑</Button>
-                    <Popconfirm title="确定删除？该 URL 将不再接收告警。" onConfirm={() => handleDeleteWebhook(record.id)}>
-                      <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
-                    </Popconfirm>
-                  </Space>
-                ),
-              },
-            ]}
-            pagination={false}
-          />
-        </Card>
-      ),
-    },
-    {
       key: 'alerts',
       label: <span><BellOutlined />告警事件</span>,
       children: (
@@ -502,7 +440,7 @@ const MonitoringIntegration: React.FC = () => {
                 dataIndex: 'alert_time',
                 key: 'alert_time',
                 width: 170,
-                render: (v: string) => formatAlertTime(v),
+                render: (v: string) => formatBeijingToSecond(v),
               },
               {
                 title: '操作',
@@ -586,6 +524,62 @@ const MonitoringIntegration: React.FC = () => {
         </Card>
       ),
     },
+    {
+      key: 'webhook',
+      label: <span><ApiOutlined />Webhook 管理</span>,
+      children: (
+        <Card
+          extra={
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalVisible(true)}>
+              创建 Webhook
+            </Button>
+          }
+        >
+          <Table<WebhookItem>
+            loading={webhookLoading}
+            rowKey="id"
+            dataSource={webhooks}
+            columns={[
+              { title: '名称', dataIndex: 'name', key: 'name', width: 160 },
+              {
+                title: 'Webhook URL',
+                dataIndex: 'webhook_url',
+                key: 'webhook_url',
+                ellipsis: true,
+                render: (url: string) => (
+                  <Space>
+                    <Text style={{ maxWidth: 360 }} ellipsis>{url || '-'}</Text>
+                    <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => copyUrl(url)}>复制</Button>
+                  </Space>
+                ),
+              },
+              {
+                title: '状态',
+                dataIndex: 'enabled',
+                key: 'enabled',
+                width: 80,
+                render: (v: boolean) => (v ? <Tag color="green">启用</Tag> : <Tag color="default">禁用</Tag>),
+              },
+              { title: '创建时间', dataIndex: 'created_at', key: 'created_at', width: 180 },
+              {
+                title: '操作',
+                key: 'action',
+                width: 200,
+                render: (_, record) => (
+                  <Space>
+                    <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(record)}>编辑</Button>
+                    <Popconfirm title="确定删除？该 URL 将不再接收告警。" onConfirm={() => handleDeleteWebhook(record.id)}>
+                      <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+                    </Popconfirm>
+                  </Space>
+                ),
+              },
+            ]}
+            pagination={false}
+          />
+        </Card>
+      ),
+    },
   ];
 
   return (
@@ -594,7 +588,7 @@ const MonitoringIntegration: React.FC = () => {
         <h2>监控系统集成</h2>
       </div>
       <Tabs
-        defaultActiveKey="webhook"
+        defaultActiveKey="alerts"
         tabPosition="left"
         style={{ minHeight: 'calc(100vh - 200px)' }}
         items={tabItems}
@@ -674,7 +668,7 @@ const MonitoringIntegration: React.FC = () => {
             {detailAlert.city != null && detailAlert.city !== '' && (
               <Paragraph><Text strong>所在城市：</Text>{detailAlert.city}</Paragraph>
             )}
-            <Paragraph><Text strong>告警时间：</Text>{formatAlertTime(detailAlert.alert_time)}</Paragraph>
+            <Paragraph><Text strong>告警时间：</Text>{formatBeijingToSecond(detailAlert.alert_time)}</Paragraph>
             <Paragraph><Text strong>告警摘要：</Text>{detailAlert.message ?? '-'}</Paragraph>
             {detailAlert.fields && detailAlert.fields.length > 0 && (
               <>

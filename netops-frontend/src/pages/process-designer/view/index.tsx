@@ -5,6 +5,7 @@ import { ArrowLeftOutlined, EditOutlined, PlayCircleOutlined } from '@ant-design
 import { PDFlowDesigner } from '../../../components/process-designer';
 import { processDefinitionApi } from '../../../api/process-designer';
 import type { ProcessDefinition } from '../../../types/process-designer/pd-types';
+import { formatBeijingToSecond } from '../../../utils/formatTime';
 
 export const ProcessView: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -122,10 +123,10 @@ export const ProcessView: React.FC = () => {
               {processDefinition.status === 'disabled' && '已停用'}
             </Descriptions.Item>
             <Descriptions.Item label="创建时间">
-              {new Date(processDefinition.createdAt).toLocaleString()}
+              {formatBeijingToSecond(processDefinition.createdAt)}
             </Descriptions.Item>
             <Descriptions.Item label="更新时间">
-              {new Date(processDefinition.updatedAt).toLocaleString()}
+              {formatBeijingToSecond(processDefinition.updatedAt)}
             </Descriptions.Item>
           </Descriptions>
 

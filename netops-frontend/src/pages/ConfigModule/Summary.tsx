@@ -19,6 +19,7 @@ import {
   BarChartOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { formatBeijingToSecond } from '@/utils/formatTime';
 import {
   AreaChart,
   Area,
@@ -252,7 +253,7 @@ const ConfigModuleSummary: React.FC = () => {
             { title: '设备名', dataIndex: 'device_name', key: 'device_name', width: 120, ellipsis: true },
             { title: '主机', dataIndex: 'device_host', key: 'device_host', width: 120, ellipsis: true },
             { title: '来源', dataIndex: 'source', key: 'source', width: 80 },
-            { title: '备份时间', dataIndex: 'created_at', key: 'created_at', width: 180, render: (t: string) => t ? new Date(t).toLocaleString() : '-' },
+            { title: '备份时间', dataIndex: 'created_at', key: 'created_at', width: 180, render: (t: string) => formatBeijingToSecond(t) },
             {
               title: '操作',
               key: 'action',
