@@ -1,7 +1,21 @@
 #!/usr/bin/env bash
 # 用途：安装 Docker（如未安装）、配置桥接网段，并启动 PostgreSQL + Redis，持久化到 /app
-# 使用：bash scripts/setup-docker-databases.sh  或  sudo bash scripts/setup-docker-databases.sh（安装 Docker 时建议 sudo）
+# 使用：bash scripts/setup-docker-databases.sh [--run-user=netops]  或  RUN_AS_USER=netops bash ...
+#       指定运行用户后将将其加入 docker 组，与 install-netops.sh / install-strix.sh 一致
 set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# 运行用户：环境变量 RUN_AS_USER > 命令行 --run-user= > 项目 .run-user > 默认
+RUN_AS_USER="${RUN_AS_USER:-}"
+for arg in "$@"; do
+  case "$arg" in
+    --run-user=*) RUN_AS_USER="${arg#*=}" ; break ;;
+  esac
+done
+[[ -z "$RUN_AS_USER" ]] && [[ -f "$PROJECT_ROOT/.run-user" ]] && RUN_AS_USER=$(cat "$PROJECT_ROOT/.run-user" | head -1)
+[[ -z "$RUN_AS_USER" ]] && RUN_AS_USER=$([[ "$(id -u 2>/dev/null)" -eq 0 ]] && echo "netops" || echo "$USER")
 
 # 持久化根目录与所需空间（GiB）：PostgreSQL 约 100G + Redis 约 50G
 DATA_ROOT=/app
@@ -54,14 +68,14 @@ if ! command -v docker &>/dev/null; then
     if [[ "$ID" =~ ^(debian|ubuntu)$ ]]; then
       curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
       sudo sh /tmp/get-docker.sh
-      sudo usermod -aG docker "$USER" 2>/dev/null || true
+      for u in "$USER" "$RUN_AS_USER"; do [[ -n "$u" ]] && sudo usermod -aG docker "$u" 2>/dev/null || true; done
       INSTALLED_DOCKER=1
     elif [[ "$ID" =~ ^(rhel|centos|fedora|rocky|almalinux)$ ]]; then
       sudo yum install -y yum-utils
       sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
       sudo yum install -y docker-ce docker-ce-cli containerd.io
       sudo systemctl enable --now docker
-      sudo usermod -aG docker "$USER" 2>/dev/null || true
+      for u in "$USER" "$RUN_AS_USER"; do [[ -n "$u" ]] && sudo usermod -aG docker "$u" 2>/dev/null || true; done
       INSTALLED_DOCKER=1
     else
       echo "未识别的发行版 ($ID)，请手动安装 Docker 后重试。"
@@ -145,6 +159,7 @@ else
 fi
 
 echo ""
-echo "完成。后端可配置 DATABASE_URL 与 REDIS_URL 指向本机 $PG_PORT / $REDIS_PORT。"
+echo "完成。运行用户: $RUN_AS_USER（已加入 docker 组，与 install-netops/install-strix 一致）。"
+echo "后端可配置 DATABASE_URL 与 REDIS_URL 指向本机 $PG_PORT / $REDIS_PORT。"
 echo "示例: DATABASE_URL=postgresql://${PG_USER}:amberman%402025!@127.0.0.1:${PG_PORT}/${PG_DB}"
 echo "      REDIS_URL=redis://127.0.0.1:${REDIS_PORT}/0"

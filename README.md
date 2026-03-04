@@ -37,9 +37,10 @@ net-soc-ops/
 ├── netops-frontend/    # 前端（React）
 ├── docs/               # 安装、部署、配置等文档
 └── scripts/            # 安装与运维脚本
-    ├── install-netops.sh           # 前后端一键安装（Python3/npm、.env 配置、依赖与库表）
+    ├── install-netops.sh           # 前后端一键安装（Python3/npm、.env、依赖与库表；可指定运行用户）
+    ├── install-strix.sh           # Strix 渗透测试 CLI 与沙箱安装（可指定运行用户，与 install-netops 一致）
     ├── start-netops.sh             # 启动前后端服务（后端后台 + 前端前台；Ctrl+C 一并退出）
-    ├── setup-docker-databases.sh   # 本机 Docker 方式安装 PostgreSQL + Redis（可选）
+    ├── setup-docker-databases.sh   # 本机 Docker 方式安装 PostgreSQL + Redis（可选；可指定运行用户）
     ├── gen-dev-https-cert.sh      # 开发环境 HTTPS 自签名证书
     └── nginx-https-example.conf   # 生产 Nginx HTTPS 示例
 ```
@@ -54,21 +55,44 @@ net-soc-ops/
 - **Node.js** 16+（前端）
 - **PostgreSQL**、**Redis**（需在其它机器或环境单独安装，本仓库不包含数据库安装）
 
+### 运行用户（减少权限问题）
+
+安装脚本支持指定**运行用户**：该用户将拥有工程目录与数据目录权限，并被加入 **docker 组**（Docker/Strix 沙箱所需）。建议以该用户启动前后端，避免用 root 或其它用户导致的权限与 Strix「仅请求模式」等问题。
+
+- **指定方式**：`--run-user=用户名` 或环境变量 `RUN_AS_USER=用户名`
+- **默认**：root 执行时默认为 `netops`，非 root 时为当前用户
+- **一致性**：`install-netops.sh` 会写入项目根目录 `.run-user`，`install-strix.sh`、`setup-docker-databases.sh` 会读取该文件以保持同一运行用户
+
 ### 一键安装（推荐）
 
-在项目根目录执行，按提示输入数据库与 Redis 连接参数（主机、端口、用户、密码等），脚本会写入 `netops-backend/.env` 并完成依赖安装与库表初始化：
+在项目根目录执行，按提示输入数据库与 Redis 连接参数（主机、端口、用户、密码等），脚本会写入 `netops-backend/.env` 并完成依赖安装与库表初始化。**建议用 root 或 sudo 执行并指定运行用户**：
+
+```bash
+sudo bash scripts/install-netops.sh --run-user=netops
+# 或：RUN_AS_USER=netops sudo -E bash scripts/install-netops.sh
+```
+
+不指定时也可直接执行（运行用户将按上述默认规则选取）：
 
 ```bash
 bash scripts/install-netops.sh
 ```
 
-数据库在其它机器安装；仅当需要在本机自建库时，可选用：
+**Strix 渗透测试**（可选）：安装 Strix CLI 与 Docker 沙箱，运行用户与上面一致（自动读 `.run-user`）或显式指定：
 
 ```bash
-sudo bash scripts/setup-docker-databases.sh
+sudo bash scripts/install-strix.sh --run-user=netops
+```
+
+数据库在其它机器安装；仅当需要在本机自建库时，可选用（同样可指定运行用户以加入 docker 组）：
+
+```bash
+sudo bash scripts/setup-docker-databases.sh --run-user=netops
 ```
 
 **启动服务**（安装完成后）：
+
+请使用安装时指定的**运行用户**登录并启动（不要用 root 直接启动），以减少权限与 Strix 沙箱问题：
 
 ```bash
 bash scripts/start-netops.sh
@@ -101,4 +125,5 @@ bash scripts/start-netops.sh
 
 1. 数据库与 Redis 需单独部署。在后端目录 `netops-backend` 下新建或编辑 `.env` 文件，在其中填写 PostgreSQL、Redis 的地址、端口、用户、密码等；运行一键安装脚本时也会提示输入并自动生成该文件。
 2. 首次部署需执行 `python3 int_all_db.py` 初始化库表（一键安装脚本会自动执行）。
-3. 生产环境建议使用 Nginx 等反向代理提供 HTTPS 与 `/api` 转发，参见 `scripts/nginx-https-example.conf`。
+3. **运行用户**：安装时通过 `--run-user=` 或 `RUN_AS_USER` 指定运行用户后，请以该用户启动前后端（`bash scripts/start-netops.sh`），避免用 root 启动，可减少工程目录、Strix 数据目录及 Docker 沙箱的权限问题。
+4. 生产环境建议使用 Nginx 等反向代理提供 HTTPS 与 `/api` 转发，参见 `scripts/nginx-https-example.conf`。

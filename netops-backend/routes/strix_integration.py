@@ -391,6 +391,9 @@ def _check_docker_sandbox() -> tuple[bool, str]:
             timeout=5,
         )
         if r.returncode != 0:
+            err = (r.stderr or r.stdout or "").lower()
+            if "permission denied" in err or "permission" in err and "socket" in err:
+                return False, "当前运行后端的用户无权限访问 Docker，请将用户加入 docker 组后重启后端: sudo usermod -aG docker <运行后端的用户名>"
             return False, "Docker 未运行或不可用，Strix 将仅以请求模式运行（无法使用浏览器/代理与完整认证扫描）"
         r2 = subprocess.run(
             ["docker", "image", "inspect", "ghcr.io/usestrix/strix-sandbox:0.1.12"],

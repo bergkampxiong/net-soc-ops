@@ -5,6 +5,7 @@
 # 安装目录约定：项目建议放在 /app/net-soc-ops 下；也可在任意路径执行，脚本以当前仓库为项目根。
 # 使用：bash scripts/install-netops.sh [选项]
 #       选项示例：--db-host=172.19.128.242 --db-port=5432 --db-user=amber --db-name=netops
+#       --run-user=netops  指定运行前后端的用户（将拥有工程目录权限并加入 docker 组，减少运行时权限问题）
 #       也可在下方「脚本内默认配置」中直接修改默认值。
 set -e
 
@@ -24,8 +25,9 @@ SCRIPT_DEFAULT_DB_NAME="netops"
 SCRIPT_DEFAULT_REDIS_HOST="127.0.0.1"
 SCRIPT_DEFAULT_REDIS_PORT="6379"
 SCRIPT_DEFAULT_REDIS_DB="0"
+SCRIPT_DEFAULT_RUN_USER="netops"
 
-# 解析命令行参数（--db-host=IP 等），覆盖下面的默认值
+# 解析命令行参数（--db-host=IP、--run-user= 等），覆盖下面的默认值
 parse_install_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -36,6 +38,7 @@ parse_install_args() {
       --redis-host=*) DEFAULT_REDIS_HOST="${1#*=}" ;;
       --redis-port=*) DEFAULT_REDIS_PORT="${1#*=}" ;;
       --redis-db=*)  DEFAULT_REDIS_DB="${1#*=}" ;;
+      --run-user=*) DEFAULT_RUN_USER="${1#*=}" ;;
     esac
     shift
   done
@@ -51,8 +54,21 @@ DEFAULT_REDIS_HOST="${DEFAULT_REDIS_HOST:-${REDIS_HOST:-$SCRIPT_DEFAULT_REDIS_HO
 DEFAULT_REDIS_PORT="${DEFAULT_REDIS_PORT:-${REDIS_PORT:-$SCRIPT_DEFAULT_REDIS_PORT}}"
 DEFAULT_REDIS_DB="${DEFAULT_REDIS_DB:-${REDIS_DB:-$SCRIPT_DEFAULT_REDIS_DB}}"
 
+# 运行用户：拥有工程目录权限并加入 docker 组；环境变量 RUN_AS_USER > 命令行 --run-user= > 默认（root 时为 netops，否则为当前用户）
+if [[ -n "${RUN_AS_USER:-}" ]]; then
+  : # 已由环境变量指定
+elif [[ -n "${DEFAULT_RUN_USER:-}" ]]; then
+  RUN_AS_USER="$DEFAULT_RUN_USER"
+elif [[ "$(id -u 2>/dev/null)" -eq 0 ]]; then
+  RUN_AS_USER="${SCRIPT_DEFAULT_RUN_USER}"
+else
+  RUN_AS_USER="$USER"
+fi
+[[ -z "$RUN_AS_USER" ]] && RUN_AS_USER="netops"
+
 echo "========== NetOps 安装脚本 =========="
 echo "项目根目录: $PROJECT_ROOT"
+echo "运行用户: $RUN_AS_USER（将赋予工程所有权与 docker 组）"
 echo ""
 
 # ---------- 0. Docker 安装与配置（桥接 192.168.0.0/16、/25，镜像与数据放到 /app 下）----------
@@ -81,13 +97,13 @@ install_docker_and_configure() {
       if [[ "$ID" =~ ^(debian|ubuntu)$ ]]; then
         curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
         sudo sh /tmp/get-docker.sh
-        sudo usermod -aG docker "$USER" 2>/dev/null || true
+        for u in "$USER" "$RUN_AS_USER"; do [[ -n "$u" ]] && sudo usermod -aG docker "$u" 2>/dev/null || true; done
       elif [[ "$ID" =~ ^(rhel|centos|fedora|rocky|almalinux)$ ]]; then
         sudo yum install -y yum-utils
         sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
         sudo yum install -y docker-ce docker-ce-cli containerd.io
         sudo systemctl enable --now docker
-        sudo usermod -aG docker "$USER" 2>/dev/null || true
+        for u in "$USER" "$RUN_AS_USER"; do [[ -n "$u" ]] && sudo usermod -aG docker "$u" 2>/dev/null || true; done
       else
         echo "未识别的发行版 ($ID)，请手动安装 Docker 后重试。"
         exit 1
@@ -388,6 +404,25 @@ install_frontend() {
   echo "前端依赖安装完成。"
 }
 
+# ---------- 运行用户权限：将工程目录及后端 data 属主设为 RUN_AS_USER，并写入 .run-user 供 install-strix 等读取 ----------
+apply_run_user_permissions() {
+  if ! id "$RUN_AS_USER" &>/dev/null; then
+    echo "[运行用户] 用户 $RUN_AS_USER 不存在，跳过 chown；请先创建用户或使用 --run-user= 指定已存在用户。"
+    return 0
+  fi
+  echo "$RUN_AS_USER" > "$PROJECT_ROOT/.run-user"
+  if [[ "$(id -u 2>/dev/null)" -eq 0 ]]; then
+    echo "[运行用户] 将工程目录及数据目录属主设为 $RUN_AS_USER ..."
+    chown -R "$RUN_AS_USER:$RUN_AS_USER" "$PROJECT_ROOT" 2>/dev/null || true
+    mkdir -p "$BACKEND_DIR/data"
+    chown -R "$RUN_AS_USER:$RUN_AS_USER" "$BACKEND_DIR/data" 2>/dev/null || true
+    chown "$RUN_AS_USER" "$PROJECT_ROOT/.run-user" 2>/dev/null || true
+    echo "[运行用户] 已赋予 $RUN_AS_USER 对 $PROJECT_ROOT 及 $BACKEND_DIR/data 的所有权；该用户已加入 docker 组（需重新登录或重启服务后生效）。"
+  else
+    echo "[运行用户] 当前非 root，未执行 chown；若需将属主改为 $RUN_AS_USER，请使用 sudo 重新运行本脚本或手动: sudo chown -R $RUN_AS_USER:$RUN_AS_USER $PROJECT_ROOT"
+  fi
+}
+
 # ---------- 主流程 ----------
 install_docker_and_configure
 install_python3
@@ -397,12 +432,14 @@ install_node_npm
 write_env_file
 install_backend
 install_frontend
+apply_run_user_permissions
 
 echo ""
 echo "========== 安装完成 =========="
 echo "项目路径: $PROJECT_ROOT"
+echo "运行用户: $RUN_AS_USER（工程目录属主，已加入 docker 组；请以此用户启动前后端以减少权限问题）"
 echo "后端 .env: $ENV_FILE"
 echo "启动后端: cd $BACKEND_DIR && source venv/bin/activate && python3 main.py"
 echo "启动前端: cd $FRONTEND_DIR && npm run start"
 echo "生产构建: cd $FRONTEND_DIR && npm run build"
-echo "数据库在其它机器安装；本机需自建时可选: sudo bash $SCRIPT_DIR/setup-docker-databases.sh"
+echo "数据库在其它机器安装；本机需自建时可选: sudo bash $SCRIPT_DIR/setup-docker-databases.sh --run-user=$RUN_AS_USER"

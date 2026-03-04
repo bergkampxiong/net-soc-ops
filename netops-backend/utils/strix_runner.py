@@ -74,8 +74,12 @@ def check_strix_activation() -> Tuple[bool, bool, str, Optional[str]]:
     return (source_ok or True), True, "Strix 已就绪，CLI 可正常调用（未使用 .venv）", strix_cmd
 
 
+# Strix 沙箱依赖 Docker，子进程需能访问 Docker（DOCKER_HOST 或默认 socket）
+_DOCKER_ENV_KEYS = ("DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_CERT_PATH", "DOCKER_TLS_VERIFY")
+
+
 def get_strix_env_from_config(config_kv: Dict[str, str]) -> Dict[str, str]:
-    """从配置键值构建 Strix 所需环境变量。"""
+    """从配置键值构建 Strix 所需环境变量（含当前进程的 DOCKER_*，供沙箱使用）。"""
     env = os.environ.copy()
     key_map = {
         "STRIX_LLM": "STRIX_LLM",
@@ -186,8 +190,16 @@ def run_strix_sync(
         cmd.extend(["--instruction-file", instruction_file])
 
     env = env_override or os.environ.copy()
+    # 确保 Strix 子进程能访问 Docker（沙箱依赖），避免落入“仅请求模式”
+    for k in _DOCKER_ENV_KEYS:
+        if k in os.environ and os.environ[k]:
+            env[k] = os.environ[k]
     report_path = os.path.join(cwd, "strix_runs")  # Strix 默认在 cwd 下生成 strix_runs/<run_name>
-
+    try:
+        run_user = os.environ.get("USER", os.environ.get("LOGNAME", "")) or str(os.getuid()) if hasattr(os, "getuid") else ""
+        logger.info("Strix 子进程即将执行，运行用户: %s，cwd: %s", run_user or "(未知)", cwd)
+    except Exception:
+        pass
     try:
         result = subprocess.run(
             cmd,

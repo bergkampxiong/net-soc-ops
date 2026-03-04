@@ -3,7 +3,8 @@
 # 1. Strix 安装在 /app/net-soc-ops/netops-backend/strix 目录下（二进制在 bin/，不使用 .venv）
 # 2. Docker 镜像拉取后落在 Docker 数据目录；若已执行 install-netops.sh 则数据目录为 /app/docker
 # 3. 执行任务时使用安装的二进制，不运行 .venv 环境
-# 使用：bash scripts/install-strix.sh  或从项目根目录执行
+# 使用：bash scripts/install-strix.sh [--run-user=netops]  或  RUN_AS_USER=netops bash scripts/install-strix.sh
+#       运行用户将获得 Strix 与 netops-backend/data 目录权限并被加入 docker 组（与 install-netops.sh 一致）
 set -euo pipefail
 
 REPO="usestrix/strix"
@@ -17,8 +18,19 @@ if [[ -d "/app/net-soc-ops" ]]; then
 else
   STRIX_BASE="$PROJECT_ROOT/netops-backend/strix"
 fi
+BACKEND_DATA="$PROJECT_ROOT/netops-backend/data"
 INSTALL_BIN_DIR="$STRIX_BASE/bin"
 mkdir -p "$INSTALL_BIN_DIR"
+
+# 运行用户：与 install-netops.sh 一致；环境变量 RUN_AS_USER > 命令行 --run-user= > 项目根 .run-user 文件 > 默认
+STRIX_RUN_USER="${RUN_AS_USER:-}"
+for arg in "$@"; do
+  case "$arg" in
+    --run-user=*) STRIX_RUN_USER="${arg#*=}" ; break ;;
+  esac
+done
+[[ -z "$STRIX_RUN_USER" ]] && [[ -f "$PROJECT_ROOT/.run-user" ]] && STRIX_RUN_USER=$(cat "$PROJECT_ROOT/.run-user" | head -1)
+[[ -z "$STRIX_RUN_USER" ]] && STRIX_RUN_USER=$([[ "$(id -u 2>/dev/null)" -eq 0 ]] && echo "netops" || echo "$USER")
 
 MUTED='\033[0;2m'
 RED='\033[0;31m'
@@ -127,7 +139,19 @@ else
     else
       echo -e "${MUTED}若需将 Docker 镜像与数据放在 /app 下，请先执行 scripts/install-netops.sh 配置 Docker。${NC}"
     fi
+    # 将运行用户加入 docker 组，与 install-netops.sh 一致
+    if id "$STRIX_RUN_USER" &>/dev/null; then
+      sudo usermod -aG docker "$STRIX_RUN_USER" 2>/dev/null && echo -e "${GREEN}已将用户 $STRIX_RUN_USER 加入 docker 组${NC}" || true
+    fi
   fi
+fi
+
+# 将 Strix 与后端 data 目录属主设为运行用户（需 root）
+if [[ "$(id -u 2>/dev/null)" -eq 0 ]] && id "$STRIX_RUN_USER" &>/dev/null; then
+  echo -e "${MUTED}将 Strix 与数据目录属主设为 $STRIX_RUN_USER ...${NC}"
+  chown -R "$STRIX_RUN_USER:$STRIX_RUN_USER" "$STRIX_BASE" 2>/dev/null || true
+  mkdir -p "$BACKEND_DATA"
+  chown -R "$STRIX_RUN_USER:$STRIX_RUN_USER" "$BACKEND_DATA" 2>/dev/null || true
 fi
 
 STRIX_CMD="$INSTALL_BIN_DIR/strix"
@@ -137,6 +161,9 @@ if [[ -x "$STRIX_CMD" ]]; then
   echo -e "${GREEN}Strix 已就绪（不使用 .venv）: $STRIX_CMD${NC}"
   echo "NetOps 将优先使用该路径；也可设置环境变量: export STRIX_CLI_PATH=$STRIX_CMD"
   echo "自检接口: GET /api/config-module/strix/status"
+  echo ""
+  echo -e "${CYAN}【运行用户】${NC} 当前指定: $STRIX_RUN_USER（Strix 与 data 目录已赋予该用户；已加入 docker 组。请以此用户启动后端以减少权限问题。）"
+  echo "  • 数据目录: $BACKEND_DATA（Strix 工作目录在其下 strix_workspace/）"
 else
   echo -e "${RED}未找到可执行文件 $STRIX_CMD${NC}"
   exit 1

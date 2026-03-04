@@ -46,6 +46,9 @@ coverage/
 logs/
 *.log
 
+# 安装时指定的运行用户（各环境可不同，不提交）
+.run-user
+
 # Database
 *.sqlite3
 *.db
