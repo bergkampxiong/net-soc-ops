@@ -23,7 +23,12 @@ wheels/
 MANIFEST
 .env
 venv/
+.venv/
 ENV/
+
+# 后端本地虚拟环境与运行时数据（不纳入版本）
+netops-backend/.venv/
+netops-backend/data/
 
 # Node
 node_modules/

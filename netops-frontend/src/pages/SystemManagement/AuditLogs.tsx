@@ -30,16 +30,14 @@ import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import request from '../../utils/request';
-import { formatBeijingToSecond } from '../../utils/formatTime';
+import { formatBeijingToSecond, getDisplayTimezone } from '../../utils/formatTime';
 
 const { RangePicker } = DatePicker;
 const { Title } = Typography;
 const { Option } = Select;
 
-// 配置 dayjs 使用 UTC 和时区插件
 dayjs.extend(utc);
 dayjs.extend(timezone);
-dayjs.tz.setDefault('Asia/Shanghai'); // 设置默认时区为 UTC+8
 
 interface AuditLog {
   id: number;
@@ -80,8 +78,9 @@ const AuditLogs: React.FC = () => {
       };
 
       if (dateRange) {
-        params.startTime = dateRange[0].tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss');
-        params.endTime = dateRange[1].tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss');
+        const tz = getDisplayTimezone();
+        params.startTime = dateRange[0].tz(tz).format('YYYY-MM-DD HH:mm:ss');
+        params.endTime = dateRange[1].tz(tz).format('YYYY-MM-DD HH:mm:ss');
       }
 
       const response = await request.get('/api/audit/logs', { params });
@@ -128,8 +127,9 @@ const AuditLogs: React.FC = () => {
     };
 
     if (dateRange) {
-      params.startTime = dateRange[0].tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss');
-      params.endTime = dateRange[1].tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss');
+      const tz = getDisplayTimezone();
+      params.startTime = dateRange[0].tz(tz).format('YYYY-MM-DD HH:mm:ss');
+      params.endTime = dateRange[1].tz(tz).format('YYYY-MM-DD HH:mm:ss');
     }
 
     // 构建查询字符串

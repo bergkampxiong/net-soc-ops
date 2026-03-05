@@ -2,8 +2,8 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
 import time
-import requests
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, text
 from typing import List, Optional, Tuple, Any
@@ -13,6 +13,9 @@ from app.schemas.job import JobCreate, JobUpdate, JobExecutionCreate
 from app.process_designer.code_generator import CodeGenerator
 from celery import shared_task
 from fastapi import HTTPException
+from database.strix_models import StrixScanTask
+from routes.strix_integration import register_strix_process, unregister_strix_process, _load_strix_config_kv
+from utils.strix_runner import _parse_stdout_stats, get_strix_env_from_config
 
 class JobService:
     def __init__(self, db: Session):
@@ -230,17 +233,26 @@ class JobService:
                 self.db.commit()
                 return True
 
-        # 渗透测试节点：调用后端 Strix API，轮询直至完成
-        strix_base = os.environ.get("CONFIG_MODULE_API_URL", "http://127.0.0.1:8000/api").rstrip("/")
+        # 渗透测试节点：生成本地脚本并按 strix -n --target "{URL}" --scan-mode {} --instruction "{}" 格式执行
+        # summary 中 stdout/stderr 单字段最大保留字符数，避免截断过短导致解析或排查 BUG（见 API 优化 PRD）
+        STRIX_SUMMARY_MAX_CHARS = 1_000_000  # 1000K
+        backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        _strix_fixed = "/app/net-soc-ops/netops-backend/strix/bin/strix"
+        _strix_rel = os.path.join(backend_root, "strix", "bin", "strix")
+        strix_bin = _strix_fixed if os.path.isfile(_strix_fixed) else _strix_rel
+        workspace_root = os.path.join(backend_root, "data", "strix_workspace")
+        try:
+            os.makedirs(workspace_root, exist_ok=True)
+        except OSError:
+            pass
         strix_scan_ids: List[int] = []
-        for pn in penetration_nodes:
+        for idx, pn in enumerate(penetration_nodes):
             data = pn.get("data") or {}
             target_source = data.get("targetSource") or "inline"
             target_node_id = data.get("targetNodeId")
             targets = []
             target_type = data.get("targetType") or "web_url"
             static_only = False
-            # 渗透测试目标只能从扫描目标节点获取；若指定了 targetNodeId 则仅从该节点取
             if target_source == "targetNode" and target_node_id:
                 target_node = next((n for n in nodes if n.get("id") == target_node_id), None)
                 if target_node:
@@ -265,49 +277,245 @@ class JobService:
             if not targets:
                 script_logs += "\n[渗透测试] 跳过节点: 无目标（请从扫描目标节点选择目标）\n"
                 continue
-            # 仅支持单目标，每次执行一个
-            single_target = [targets[0]]
-            instruction = data.get("instruction") or None
-            test_username = data.get("testUsername")
-            test_password = data.get("testPassword")
-            # 测试账号密码通过 API 单独传，后端仅在调用 Strix 时拼入 instruction，不落库
+            url = targets[0]
+            scan_mode = data.get("scanMode") or "deep"
+            instruction = (data.get("instruction") or "").strip()
             if static_only:
-                static_instruction = "仅做静态代码审计，不要尝试运行应用。Perform static code analysis only; do not attempt to run the application."
-                instruction = f"{static_instruction}\n\n{instruction}" if instruction else static_instruction
+                instruction = "仅做静态代码审计，不要尝试运行应用。Perform static code analysis only; do not attempt to run the application.\n\n" + instruction
+            if not instruction:
+                instruction = ""
+            run_name = f"job_{execution_id}_{idx}"
+            run_dir = os.path.join(workspace_root, run_name)
             try:
-                payload = {
-                    "target_type": target_type,
-                    "targets": single_target,
-                    "instruction": instruction,
-                    "scan_mode": data.get("scanMode") or "deep",
-                    "job_execution_id": execution_id,
-                }
-                if test_username is not None:
-                    payload["test_username"] = test_username
-                if test_password is not None:
-                    payload["test_password"] = test_password
-                r = requests.post(
-                    f"{strix_base}/config-module/strix/scans",
-                    json=payload,
-                    timeout=30,
-                )
-                r.raise_for_status()
-                body = r.json()
-                scan_id = body.get("id")
-                if scan_id is not None:
-                    strix_scan_ids.append(scan_id)
-                script_logs += f"\n[渗透测试] 已创建扫描 id={scan_id}\n"
-                # 轮询直至非 pending/running（最多约 1 小时）
-                for _ in range(360):
-                    time.sleep(10)
-                    r2 = requests.get(f"{strix_base}/config-module/strix/scans/{scan_id}", timeout=10)
-                    r2.raise_for_status()
-                    st = (r2.json() or {}).get("status") or ""
-                    if st not in ("pending", "running"):
-                        script_logs += f"[渗透测试] 扫描 {scan_id} 状态: {st}\n"
-                        break
+                os.makedirs(run_dir, exist_ok=True)
+            except OSError as e:
+                script_logs += f"\n[渗透测试] 无法创建目录 {run_dir}: {e}\n"
+                continue
+            # 创建扫描任务记录，便于 API 列表/详情/进度/取消 与脚本回显关联
+            task = StrixScanTask(
+                target_type=target_type,
+                target_value=json.dumps([url]),
+                instruction=instruction or None,
+                scan_mode=scan_mode,
+                status="running",
+                run_name=run_name,
+                job_execution_id=execution_id,
+                report_path=run_dir,
+                created_by="job",
+            )
+            self.db.add(task)
+            self.db.commit()
+            self.db.refresh(task)
+            task_id = task.id
+            script_logs += f"\n[渗透测试] 扫描任务 id={task_id}，run_name={run_name}\n"
+            script_path = os.path.join(run_dir, "run_strix.sh")
+            heredoc_end = "ENDINST_" + str(execution_id) + "_" + str(idx)
+            try:
+                with open(script_path, "w", encoding="utf-8") as f:
+                    f.write("#!/bin/bash\n")
+                    # 使用 BASH_SOURCE[0] 取脚本所在目录，避免用 source 执行时 $0 为 -bash 导致 dirname 报错
+                    f.write('SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"\n')
+                    f.write('cd "$SCRIPT_DIR"\n')
+                    f.write("INSTRUCTION=$(cat << '" + heredoc_end + "'\n")
+                    f.write(instruction or "")
+                    f.write("\n" + heredoc_end + "\n)\n")
+                    f.write(f'exec "{strix_bin}" -n --target "{url.replace(chr(34), chr(92)+chr(34))}" --scan-mode "{scan_mode}" --instruction "$INSTRUCTION"\n')
+                os.chmod(script_path, 0o755)
+            except OSError as e:
+                script_logs += f"\n[渗透测试] 写入脚本失败: {e}\n"
+                task.status = "failed"
+                task.finished_at = datetime.utcnow()
+                task.summary = json.dumps({"error": str(e)})
+                self.db.commit()
+                continue
+            script_logs += f"[渗透测试] 已生成脚本: {script_path}\n"
+            script_logs += f"[渗透测试] 执行: {strix_bin} -n --target \"{url}\" --scan-mode {scan_mode} --instruction \"{{instruction 全文}}\"\n"
+            proc = None
+            stdout_chunks = []
+            stderr_chunks = []
+            stdout_lock = threading.Lock()
+            stderr_lock = threading.Lock()
+            latest_stats = {}
+            progress_file = os.path.join(run_dir, "progress.json")
+            read_chunk_size = 8192
+
+            def read_from_pty(master_fd):
+                """从 PTY master 读，使 Strix 认为有 TTY 从而输出与终端一致的 TUI。仅更新 progress.json（4 项），不实时写 txt。"""
+                nonlocal latest_stats
+                pty_chunks = []
+                try:
+                    while True:
+                        try:
+                            data = os.read(master_fd, read_chunk_size)
+                        except OSError:
+                            break
+                        if not data:
+                            break
+                        chunk = data.decode("utf-8", errors="replace")
+                        pty_chunks.append(chunk)
+                        buf = "".join(pty_chunks)
+                        stats = _parse_stdout_stats(buf)
+                        if stats:
+                            latest_stats.update(stats)
+                            try:
+                                with open(progress_file, "w", encoding="utf-8") as f:
+                                    json.dump(latest_stats, f, ensure_ascii=False)
+                            except OSError:
+                                pass
+                finally:
+                    with stdout_lock:
+                        stdout_chunks.extend(pty_chunks)
+                    try:
+                        os.close(master_fd)
+                    except OSError:
+                        pass
+
+            def read_stdout(pipe):
+                nonlocal latest_stats
+                try:
+                    while True:
+                        chunk = pipe.read(read_chunk_size)
+                        if not chunk:
+                            break
+                        with stdout_lock:
+                            stdout_chunks.append(chunk)
+                        buf = "".join(stdout_chunks)
+                        stats = _parse_stdout_stats(buf)
+                        if stats:
+                            latest_stats.update(stats)
+                            try:
+                                with open(progress_file, "w", encoding="utf-8") as f:
+                                    json.dump(latest_stats, f, ensure_ascii=False)
+                            except OSError:
+                                pass
+                finally:
+                    try:
+                        pipe.close()
+                    except OSError:
+                        pass
+
+            def read_stderr(pipe):
+                try:
+                    while True:
+                        chunk = pipe.read(read_chunk_size)
+                        if not chunk:
+                            break
+                        with stderr_lock:
+                            stderr_chunks.append(chunk)
+                finally:
+                    try:
+                        pipe.close()
+                    except OSError:
+                        pass
+
+            # 将 Strix/LLM 配置注入子进程环境，使脚本内的 strix 能使用配置的 API（不写入脚本文件，避免密钥落盘）
+            config_kv = _load_strix_config_kv(self.db)
+            strix_env = get_strix_env_from_config(config_kv)
+            use_pty = os.name != "nt"
+            t_pty, t_out, t_err = None, None, None
+            try:
+                if use_pty:
+                    try:
+                        import pty
+                        master_fd, slave_fd = pty.openpty()
+                        proc = subprocess.Popen(
+                            ["/bin/bash", script_path],
+                            cwd=run_dir,
+                            env=strix_env,
+                            stdout=slave_fd,
+                            stderr=subprocess.STDOUT,
+                            start_new_session=True,
+                        )
+                        os.close(slave_fd)
+                        register_strix_process(task_id, proc)
+                        t_pty = threading.Thread(target=read_from_pty, args=(master_fd,))
+                        t_pty.daemon = True
+                        t_pty.start()
+                        proc.wait(timeout=3600)
+                        t_pty.join(timeout=5)
+                    except ImportError:
+                        use_pty = False
+                if not use_pty:
+                    proc = subprocess.Popen(
+                        ["/bin/bash", script_path],
+                        cwd=run_dir,
+                        env=strix_env,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        start_new_session=os.name != "nt",
+                    )
+                    register_strix_process(task_id, proc)
+                    t_out = threading.Thread(target=read_stdout, args=(proc.stdout,))
+                    t_err = threading.Thread(target=read_stderr, args=(proc.stderr,))
+                    t_out.daemon = True
+                    t_err.daemon = True
+                    t_out.start()
+                    t_err.start()
+                    proc.wait(timeout=3600)
+                    t_out.join(timeout=5)
+                    t_err.join(timeout=5)
+                with stdout_lock:
+                    full_stdout = "".join(stdout_chunks)
+                with stderr_lock:
+                    full_stderr = "".join(stderr_chunks)
+                script_logs += (full_stdout or "") + (full_stderr or "")
+                task.status = "success" if proc.returncode == 0 else "failed"
+                task.summary = json.dumps({
+                    "stdout": (full_stdout or "")[:STRIX_SUMMARY_MAX_CHARS],
+                    "stderr": (full_stderr or "")[:STRIX_SUMMARY_MAX_CHARS],
+                })
+                if proc.returncode != 0:
+                    script_logs += f"\n[渗透测试] 脚本退出码: {proc.returncode}\n"
+                else:
+                    script_logs += "\n[渗透测试] 扫描脚本执行完成\n"
+                strix_scan_ids.append(task_id)
+            except subprocess.TimeoutExpired:
+                script_logs += "\n[渗透测试] 执行超时（1 小时）\n"
+                if proc:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait()
+                if t_pty is not None:
+                    t_pty.join(timeout=2)
+                if t_out is not None:
+                    t_out.join(timeout=2)
+                if t_err is not None:
+                    t_err.join(timeout=2)
+                with stdout_lock:
+                    full_stdout = "".join(stdout_chunks)
+                with stderr_lock:
+                    full_stderr = "".join(stderr_chunks)
+                task.status = "failed"
+                task.summary = json.dumps({
+                    "error": "执行超时",
+                    "stdout": (full_stdout or "")[:STRIX_SUMMARY_MAX_CHARS],
+                    "stderr": (full_stderr or "")[:STRIX_SUMMARY_MAX_CHARS],
+                })
             except Exception as e:
-                script_logs += f"\n[渗透测试] 节点执行异常: {e}\n"
+                script_logs += f"\n[渗透测试] 执行异常: {e}\n"
+                if proc and proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait()
+                if t_pty is not None:
+                    t_pty.join(timeout=2)
+                if t_out is not None:
+                    t_out.join(timeout=2)
+                if t_err is not None:
+                    t_err.join(timeout=2)
+                task.status = "failed"
+                task.summary = json.dumps({"error": str(e)})
+            finally:
+                unregister_strix_process(task_id)
+                task.finished_at = datetime.utcnow()
+                self.db.commit()
 
         execution = self.db.query(JobExecution).filter(JobExecution.id == execution_id).first()
         if execution:

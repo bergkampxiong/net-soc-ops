@@ -35,7 +35,9 @@ if [[ ! -f "$VENV_ACTIVATE" ]]; then
 fi
 cd "$BACKEND_DIR"
 source "$VENV_ACTIVATE"
-echo "启动后端: $BACKEND_DIR (端口 8000)"
+# 统一使用北京时区，避免重启后系统默认 UTC 导致时间显示偏差
+export TZ=Asia/Shanghai
+echo "启动后端: $BACKEND_DIR (端口 8000, TZ=$TZ)"
 python3 main.py &
 BACKEND_PID=$!
 deactivate

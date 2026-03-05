@@ -5,11 +5,10 @@ import MonacoEditor from '@monaco-editor/react';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
+import { getDisplayTimezone } from '../../../../../utils/formatTime';
 
-// 配置 dayjs 插件
 dayjs.extend(utc);
 dayjs.extend(timezone);
-dayjs.tz.setDefault('Asia/Shanghai');
 
 const { TextArea } = Input;
 
@@ -78,7 +77,7 @@ const ConfigGenerator: React.FC<ConfigGeneratorProps> = ({ templates, onSave }) 
 
     try {
       const values = await form.validateFields();
-      const configName = `${selectedTemplate.name}_${values.hostname || 'config'}_${dayjs().format('YYYYMMDDHHmmss')}`;
+      const configName = `${selectedTemplate.name}_${values.hostname || 'config'}_${dayjs().tz(getDisplayTimezone()).format('YYYYMMDDHHmmss')}`;
       
       onSave({
         name: configName,

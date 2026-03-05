@@ -1,10 +1,19 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+# 统一使用北京时区（日志、APScheduler 等依赖本地时间的逻辑），避免重启后系统 TZ 非 Asia/Shanghai 导致时间偏差
+import os
+import time
+import logging
+# 降低 watchfiles 日志级别，避免 "2 changes detected" 反复刷屏
+logging.getLogger("watchfiles.main").setLevel(logging.WARNING)
+_ = os.environ.setdefault("TZ", "Asia/Shanghai")
+if hasattr(time, "tzset"):
+    time.tzset()
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-import os
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 import warnings
@@ -91,6 +100,21 @@ def init_db():
 
 # 初始化数据库
 init_db()
+
+# 加载全局时钟时区（系统管理里配置的展示时区，重启后生效）
+def _load_global_display_timezone():
+    try:
+        from database.session import SessionLocal
+        from database.system_global_config_models import SystemGlobalConfig
+        from utils.datetime_utils import set_display_timezone
+        db = SessionLocal()
+        row = db.query(SystemGlobalConfig).filter(SystemGlobalConfig.config_key == "GLOBAL_TIMEZONE").first()
+        if row and row.config_value:
+            set_display_timezone(row.config_value.strip())
+        db.close()
+    except Exception:
+        pass
+_load_global_display_timezone()
 
 # 包含路由
 app.include_router(auth.router)
@@ -186,4 +210,25 @@ async def favicon():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True) 
+    # 排除运行时目录，避免 data/、__pycache__ 等变更触发反复 reload（watchfiles 刷屏）
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        reload_excludes=[
+            "data",
+            "data/*",
+            "data/**",
+            "*/data/*",
+            "*/data/**",
+            "__pycache__",
+            "*/__pycache__/*",
+            ".git",
+            ".git/*",
+            ".venv",
+            ".venv/*",
+            "*.pyc",
+            "*.pyo",
+        ],
+    ) 

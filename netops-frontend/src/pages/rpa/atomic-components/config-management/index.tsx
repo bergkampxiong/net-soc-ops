@@ -5,14 +5,6 @@ import type { ColumnsType } from 'antd/es/table';
 import styles from './index.module.less';
 import request from '../../../../utils/request';
 import { formatBeijingToSecond } from '../../../../utils/formatTime';
-import dayjs from 'dayjs';
-import utc from 'dayjs/plugin/utc';
-import timezone from 'dayjs/plugin/timezone';
-
-// 配置 dayjs 插件
-dayjs.extend(utc);
-dayjs.extend(timezone);
-dayjs.tz.setDefault('Asia/Shanghai');
 
 const { Title } = Typography;
 const { TextArea } = Input;

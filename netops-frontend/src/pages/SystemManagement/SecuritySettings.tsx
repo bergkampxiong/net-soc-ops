@@ -7,26 +7,31 @@ import {
   Switch,
   message,
   Typography,
-  Space,
-  Alert,
   Divider,
   Row,
   Col,
   Statistic,
-  Tabs
+  Select,
 } from 'antd';
 import {
   SaveOutlined,
   SafetyOutlined,
   ClockCircleOutlined,
   LockOutlined,
-  UserOutlined,
-  KeyOutlined
+  KeyOutlined,
 } from '@ant-design/icons';
 import request from '../../utils/request';
+import { setDisplayTimezone } from '../../utils/formatTime';
 
-const { Title, Paragraph, Text } = Typography;
-const { TabPane } = Tabs;
+const { Title, Paragraph } = Typography;
+
+const TIMEZONE_OPTIONS = [
+  { value: 'Asia/Shanghai', label: '北京时间 (Asia/Shanghai)' },
+  { value: 'UTC', label: 'UTC' },
+  { value: 'America/New_York', label: '美国东部 (America/New_York)' },
+  { value: 'Europe/London', label: '伦敦 (Europe/London)' },
+  { value: 'Asia/Tokyo', label: '东京 (Asia/Tokyo)' },
+];
 
 // 后端返回的数据结构
 interface BackendSecuritySettings {
@@ -56,16 +61,25 @@ const SecuritySettings: React.FC = () => {
     try {
       const response = await request.get('security/settings');
       setSettings(response.data);
-      form.setFieldsValue(response.data);
-    } catch (error) {
+      const formValues = { ...response.data };
+      try {
+        const globalRes = await request.get<Array<{ config_key: string; config_value: string }>>('/system/global-config');
+        const list = Array.isArray(globalRes.data) ? globalRes.data : [];
+        const tzItem = list.find((i) => i.config_key === 'GLOBAL_TIMEZONE');
+        if (tzItem?.config_value) formValues.GLOBAL_TIMEZONE = tzItem.config_value;
+        else formValues.GLOBAL_TIMEZONE = 'Asia/Shanghai';
+      } catch {
+        formValues.GLOBAL_TIMEZONE = 'Asia/Shanghai';
+      }
+      form.setFieldsValue(formValues);
+    } catch {
       message.error('获取安全设置失败');
     }
   };
 
-  const handleSubmit = async (values: BackendSecuritySettings) => {
+  const handleSubmit = async (values: BackendSecuritySettings & { GLOBAL_TIMEZONE?: string }) => {
     setLoading(true);
     try {
-      // 确保所有必需的字段都存在
       const settingsData = {
         password_expiry_days: values.password_expiry_days,
         max_failed_attempts: values.max_failed_attempts,
@@ -79,11 +93,15 @@ const SecuritySettings: React.FC = () => {
         password_require_numbers: values.password_require_numbers,
         password_require_special: values.password_require_special
       };
-      
       await request.put('security/settings', settingsData);
+      if (values.GLOBAL_TIMEZONE !== undefined) {
+        const tz = values.GLOBAL_TIMEZONE || 'Asia/Shanghai';
+        await request.put('/system/global-config', { GLOBAL_TIMEZONE: tz });
+        setDisplayTimezone(tz);
+      }
       message.success('安全设置保存成功');
       fetchSettings();
-    } catch (error) {
+    } catch {
       message.error('保存安全设置失败');
     } finally {
       setLoading(false);
@@ -248,6 +266,16 @@ const SecuritySettings: React.FC = () => {
                 <Paragraph type="secondary">
                   启用后，所有管理员用户必须设置双因素认证才能登录系统
                 </Paragraph>
+              </Card>
+
+              <Card title="系统与时钟" style={{ marginBottom: 24 }}>
+                <Form.Item
+                  name="GLOBAL_TIMEZONE"
+                  label="全局时区（时钟）"
+                  extra="全系统时间展示使用的时区，保存后立即生效；重启后从数据库加载。"
+                >
+                  <Select placeholder="选择展示时区" allowClear options={TIMEZONE_OPTIONS} />
+                </Form.Item>
               </Card>
             </Col>
           </Row>

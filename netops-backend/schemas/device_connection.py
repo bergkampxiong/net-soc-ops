@@ -42,7 +42,7 @@ class SSHConnectionUpdate(BaseModel):
     description: Optional[str] = Field(None, description="描述")
 
 class SSHConnectionResponse(BaseModel):
-    """SSH连接响应模型"""
+    """SSH连接响应模型（created_at/updated_at 为全局时钟格式化后的字符串）"""
     id: int
     name: str
     device_type: str
@@ -58,17 +58,14 @@ class SSHConnectionResponse(BaseModel):
     keepalive: int
     verbose: bool
     description: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: str = ""
+    updated_at: str = ""
     is_active: bool = True
     username: Optional[str] = None
     password: Optional[str] = None
 
     class Config:
         from_attributes = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
 
 class ConnectionPoolBase(BaseModel):
     """连接池基础模型"""

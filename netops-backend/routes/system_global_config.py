@@ -1,6 +1,8 @@
-# 系统全局配置 API：供 netops 全局功能使用（如统一渗透测试报告 LLM 中文化）
+# 系统全局配置 API：供 netops 全局功能使用（如统一渗透测试报告 LLM 中文化、全局时钟时区）
 import logging
 from typing import Optional, List
+
+from utils.datetime_utils import set_display_timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -19,8 +21,8 @@ router = APIRouter(
 # 前端脱敏占位符，PUT 带此值表示未修改、不覆盖
 _SENSITIVE_PLACEHOLDER = "********"
 
-# 全局配置键：LLM（证书配置已迁移至 frontend_cert_config 表）
-GLOBAL_CONFIG_KEYS = ("GLOBAL_LLM_MODEL", "GLOBAL_LLM_API_KEY", "GLOBAL_LLM_API_BASE")
+# 全局配置键：LLM、全局时钟（展示时区）
+GLOBAL_CONFIG_KEYS = ("GLOBAL_LLM_MODEL", "GLOBAL_LLM_API_KEY", "GLOBAL_LLM_API_BASE", "GLOBAL_TIMEZONE")
 
 
 class GlobalConfigItem(BaseModel):
@@ -33,6 +35,7 @@ class GlobalConfigUpdate(BaseModel):
     GLOBAL_LLM_MODEL: Optional[str] = None
     GLOBAL_LLM_API_KEY: Optional[str] = None
     GLOBAL_LLM_API_BASE: Optional[str] = None
+    GLOBAL_TIMEZONE: Optional[str] = None
 
 
 @router.get("/global-config", response_model=List[dict])
@@ -61,6 +64,9 @@ def update_global_config(body: GlobalConfigUpdate, db: Session = Depends(get_db)
         else:
             db.add(SystemGlobalConfig(config_key=k, config_value=v))
     db.commit()
+    # 全局时区更新后立即生效（所有 API 时间展示使用此时区；空值恢复默认北京时间）
+    if "GLOBAL_TIMEZONE" in key_values:
+        set_display_timezone(key_values.get("GLOBAL_TIMEZONE") or "")
     return {"ok": True}
 
 

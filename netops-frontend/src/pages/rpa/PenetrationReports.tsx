@@ -13,12 +13,22 @@ import {
   message,
   Descriptions,
   Popconfirm,
+  Statistic,
+  Row,
+  Col,
 } from 'antd';
 import { ReloadOutlined, FileTextOutlined, ArrowLeftOutlined, PlusOutlined, EyeOutlined, DeleteOutlined } from '@ant-design/icons';
 import request, { LONG_REQUEST_TIMEOUT } from '@/utils/request';
 import { formatBeijingToSecond } from '@/utils/formatTime';
 
 const STRIX_BASE = '/config-module/strix';
+
+interface ProgressData {
+  model: string | null;
+  vulnerabilities: number | null;
+  agents: number | null;
+  tools: number | null;
+}
 
 interface ScanItem {
   id: number;
@@ -29,12 +39,14 @@ interface ScanItem {
   status: string;
   run_name: string | null;
   job_execution_id: number | null;
+  created_by?: string | null;
   created_at: string;
   finished_at: string | null;
-  summary: { high?: number; medium?: number; low?: number } | null;
+  summary: { stdout?: string; stderr?: string; high?: number; medium?: number; low?: number } | null;
   report_path: string | null;
   unified_report_path?: string | null;
   unified_report_generated_at?: string | null;
+  strix_stats?: { model?: string; vulnerabilities?: number; agents?: number; tools?: number };
 }
 
 const statusMap: Record<string, { color: string; text: string }> = {
@@ -55,7 +67,7 @@ const PenetrationReports: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<ScanItem | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [filters, setFilters] = useState<{ job_execution_id?: string; status?: string }>(() =>
+  const [filters, setFilters] = useState<{ job_execution_id?: string; status?: string; created_by?: string }>(() =>
     jobExecutionIdFromUrl ? { job_execution_id: jobExecutionIdFromUrl } : {}
   );
   const [page, setPage] = useState(1);
@@ -64,6 +76,9 @@ const PenetrationReports: React.FC = () => {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [batchDeleting, setBatchDeleting] = useState(false);
+  const [progress, setProgress] = useState<ProgressData | null>(null);
+  const [progressLoading, setProgressLoading] = useState(false);
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
 
   useEffect(() => {
     if (jobExecutionIdFromUrl) {
@@ -77,6 +92,7 @@ const PenetrationReports: React.FC = () => {
       const params: Record<string, string | number> = { skip: (page - 1) * pageSize, limit: pageSize };
       if (filters.job_execution_id) params.job_execution_id = Number(filters.job_execution_id);
       if (filters.status) params.status = filters.status;
+      if (filters.created_by?.trim()) params.created_by = filters.created_by.trim();
       const res = await request.get<{ items: ScanItem[]; total: number }>(`${STRIX_BASE}/scans`, { params });
       const data = res.data ?? res;
       setList(data.items ?? []);
@@ -86,11 +102,12 @@ const PenetrationReports: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, filters.job_execution_id, filters.status]);
+  }, [page, filters.job_execution_id, filters.status, filters.created_by]);
 
   useEffect(() => {
     if (id) {
       setDetailLoading(true);
+      setProgress(null);
       request
         .get<ScanItem>(`${STRIX_BASE}/scans/${id}`)
         .then((res) => {
@@ -100,9 +117,36 @@ const PenetrationReports: React.FC = () => {
         .finally(() => setDetailLoading(false));
     } else {
       setDetail(null);
+      setProgress(null);
       fetchList();
     }
   }, [id, fetchList]);
+
+  // 进入详情且任务运行中时拉取一次进度（不轮询，减少资源占用）
+  const fetchProgress = useCallback(async () => {
+    if (!id) return;
+    setProgressLoading(true);
+    try {
+      const res = await request.get<ProgressData>(`${STRIX_BASE}/scans/${id}/progress`);
+      const data = res.data ?? res;
+      setProgress({
+        model: data.model ?? null,
+        vulnerabilities: data.vulnerabilities ?? null,
+        agents: data.agents ?? null,
+        tools: data.tools ?? null,
+      });
+    } catch {
+      setProgress(null);
+    } finally {
+      setProgressLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (id && detail && (detail.status === 'running' || detail.status === 'pending')) {
+      fetchProgress();
+    }
+  }, [id, detail?.id, detail?.status, fetchProgress]);
 
   // 用带认证的 request 拉取报告后以 blob 打开/下载，避免 window.open 无 token 被重定向到登录页
   const openReportInNewTab = async (url: string, taskId: number, label: string) => {
@@ -175,6 +219,20 @@ const PenetrationReports: React.FC = () => {
     );
   };
 
+  const handleCancelScan = async (taskId: number) => {
+    setCancellingId(taskId);
+    try {
+      await request.post(`${STRIX_BASE}/scans/${taskId}/cancel`);
+      message.success('已取消任务');
+      const res = await request.get<ScanItem>(`${STRIX_BASE}/scans/${taskId}`);
+      setDetail(res.data ?? res);
+    } catch {
+      message.error('取消失败');
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
   const handleDelete = async (taskId: number) => {
     setDeletingId(taskId);
     try {
@@ -216,11 +274,33 @@ const PenetrationReports: React.FC = () => {
   };
 
   if (id) {
+    const refreshDetail = async () => {
+      if (!id) return;
+      setDetailLoading(true);
+      try {
+        const res = await request.get<ScanItem>(`${STRIX_BASE}/scans/${id}`);
+        const data = res.data ?? res;
+        setDetail(data);
+        if (data.status === 'running' || data.status === 'pending') {
+          await fetchProgress();
+        }
+      } catch {
+        message.error('获取详情失败');
+      } finally {
+        setDetailLoading(false);
+      }
+    };
+
     return (
       <div style={{ padding: 24 }}>
-        <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/rpa/task-job-management/penetration-reports')}>
-          返回列表
-        </Button>
+        <Space>
+          <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/rpa/task-job-management/penetration-reports')}>
+            返回列表
+          </Button>
+          <Button type="text" icon={<ReloadOutlined />} onClick={refreshDetail} loading={detailLoading}>
+            刷新
+          </Button>
+        </Space>
         <Card title="扫描报告详情" loading={detailLoading} style={{ marginTop: 16 }}>
           {detail && (
             <>
@@ -232,10 +312,63 @@ const PenetrationReports: React.FC = () => {
                 <Descriptions.Item label="状态">
                   <Tag color={statusMap[detail.status]?.color}>{statusMap[detail.status]?.text ?? detail.status}</Tag>
                 </Descriptions.Item>
+                <Descriptions.Item label="来源">{detail.created_by === 'job' ? '作业执行' : detail.created_by ?? '-'}</Descriptions.Item>
                 <Descriptions.Item label="作业执行 ID">{detail.job_execution_id ?? '-'}</Descriptions.Item>
                 <Descriptions.Item label="创建时间">{formatBeijingToSecond(detail.created_at)}</Descriptions.Item>
                 <Descriptions.Item label="结束时间">{formatBeijingToSecond(detail.finished_at)}</Descriptions.Item>
               </Descriptions>
+              {(detail.status === 'running' || detail.status === 'pending') && (
+                <>
+                  <Card
+                    size="small"
+                    title="运行状态"
+                    style={{ marginTop: 16 }}
+                    extra={
+                      <Space>
+                        <Button size="small" icon={<ReloadOutlined />} loading={progressLoading} onClick={fetchProgress}>
+                          刷新
+                        </Button>
+                        <Popconfirm title="确定取消该扫描任务？" onConfirm={() => handleCancelScan(detail.id)} okText="确定" cancelText="取消">
+                          <Button size="small" danger loading={cancellingId === detail.id}>取消任务</Button>
+                        </Popconfirm>
+                      </Space>
+                    }
+                  >
+                    <Row gutter={24}>
+                      <Col span={6}>
+                        <Statistic title="模型" value={(progress?.model ?? detail.strix_stats?.model) || '-'} valueStyle={{ fontSize: 14 }} />
+                      </Col>
+                      <Col span={6}>
+                        <Statistic title="漏洞数" value={(progress?.vulnerabilities ?? detail.strix_stats?.vulnerabilities) ?? 0} />
+                      </Col>
+                      <Col span={6}>
+                        <Statistic title="Agents" value={(progress?.agents ?? detail.strix_stats?.agents) ?? 0} />
+                      </Col>
+                      <Col span={6}>
+                        <Statistic title="Tools" value={(progress?.tools ?? detail.strix_stats?.tools) ?? 0} />
+                      </Col>
+                    </Row>
+                  </Card>
+                </>
+              )}
+              {(detail.status === 'success' || detail.status === 'failed') && detail.strix_stats && (
+                <Card size="small" title="运行状态" style={{ marginTop: 16 }}>
+                  <Row gutter={24}>
+                    <Col span={6}>
+                      <Statistic title="模型" value={detail.strix_stats.model || '-'} valueStyle={{ fontSize: 14 }} />
+                    </Col>
+                    <Col span={6}>
+                      <Statistic title="漏洞数" value={detail.strix_stats.vulnerabilities ?? 0} />
+                    </Col>
+                    <Col span={6}>
+                      <Statistic title="Agents" value={detail.strix_stats.agents ?? 0} />
+                    </Col>
+                    <Col span={6}>
+                      <Statistic title="Tools" value={detail.strix_stats.tools ?? 0} />
+                    </Col>
+                  </Row>
+                </Card>
+              )}
               <div style={{ marginTop: 16 }}>
                 <Space wrap>
                   <Button type="primary" icon={<FileTextOutlined />} onClick={() => downloadReport(detail.id)}>
@@ -297,6 +430,13 @@ const PenetrationReports: React.FC = () => {
         return <Tag color={t.color}>{t.text}</Tag>;
       },
     },
+    {
+      title: '来源',
+      dataIndex: 'created_by',
+      key: 'created_by',
+      width: 90,
+      render: (v: string | null | undefined) => (v === 'job' ? '作业执行' : v ?? '-'),
+    },
     { title: '作业执行 ID', dataIndex: 'job_execution_id', key: 'job_execution_id', width: 110 },
     { title: '创建时间', dataIndex: 'created_at', key: 'created_at', width: 170, render: (v: string) => formatBeijingToSecond(v) },
     {
@@ -346,6 +486,9 @@ const PenetrationReports: React.FC = () => {
             </Form.Item>
             <Form.Item name="status" label="状态">
               <Select placeholder="全部" allowClear style={{ width: 100 }} options={Object.entries(statusMap).map(([k, v]) => ({ value: k, label: v.text }))} />
+            </Form.Item>
+            <Form.Item name="created_by" label="来源">
+              <Select placeholder="全部" allowClear style={{ width: 110 }} options={[{ value: 'job', label: '作业执行' }]} />
             </Form.Item>
           </Form>
           <Button icon={<ReloadOutlined />} onClick={fetchList}>刷新</Button>

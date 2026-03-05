@@ -7,6 +7,7 @@ from database.device_connection_models import DeviceConnection
 from database.category_models import Credential
 from schemas.device_connection import SSHConnectionCreate, SSHConnectionUpdate, SSHConnectionResponse
 from datetime import datetime
+from utils.datetime_utils import utc_to_beijing_str
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -54,8 +55,8 @@ async def get_device_connections(
                 "keepalive": conn.keepalive,
                 "verbose": conn.verbose,
                 "description": conn.description,
-                "created_at": conn.created_at or datetime.utcnow(),  # 确保有值
-                "updated_at": conn.updated_at or datetime.utcnow(),  # 确保有值
+                "created_at": utc_to_beijing_str(conn.created_at) or utc_to_beijing_str(datetime.utcnow()) or "",
+                "updated_at": utc_to_beijing_str(conn.updated_at) or utc_to_beijing_str(datetime.utcnow()) or "",
                 "is_active": conn.is_active,
                 "username": username,  # 使用凭证中的username
                 "password": password   # 使用凭证中的password
@@ -118,7 +119,7 @@ async def create_device_connection(
                 password = None
                 enable_secret = None
 
-            # 构造响应数据
+            # 构造响应数据（时间使用全局时钟格式化）
             response_data = {
                 "id": db_connection.id,
                 "name": db_connection.name,
@@ -135,8 +136,8 @@ async def create_device_connection(
                 "keepalive": db_connection.keepalive,
                 "verbose": db_connection.verbose,
                 "description": db_connection.description,
-                "created_at": db_connection.created_at or datetime.utcnow(),  # 确保有值
-                "updated_at": db_connection.updated_at or datetime.utcnow(),  # 确保有值
+                "created_at": utc_to_beijing_str(db_connection.created_at) or utc_to_beijing_str(datetime.utcnow()) or "",
+                "updated_at": utc_to_beijing_str(db_connection.updated_at) or utc_to_beijing_str(datetime.utcnow()) or "",
                 "is_active": db_connection.is_active,
                 "username": username,  # 使用凭证中的username
                 "password": password   # 使用凭证中的password
@@ -145,7 +146,7 @@ async def create_device_connection(
         except Exception as response_error:
             logger.error(f"构造响应数据失败: {str(response_error)}")
             # 即使响应构造失败，数据也已经保存到数据库中了
-            # 所以我们返回一个基本的成功响应
+            now_str = utc_to_beijing_str(datetime.utcnow()) or ""
             return {
                 "id": db_connection.id,
                 "name": db_connection.name,
@@ -163,8 +164,8 @@ async def create_device_connection(
                 "verbose": db_connection.verbose,
                 "description": db_connection.description,
                 "is_active": db_connection.is_active,
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
+                "created_at": now_str,
+                "updated_at": now_str,
                 "username": username,
                 "password": password
             }
@@ -202,7 +203,7 @@ async def get_device_connection(
             password = None
             enable_secret = None
 
-        # 构造响应数据
+        # 构造响应数据（时间使用全局时钟格式化）
         response_data = {
             "id": connection.id,
             "name": connection.name,
@@ -219,8 +220,8 @@ async def get_device_connection(
             "keepalive": connection.keepalive,
             "verbose": connection.verbose,
             "description": connection.description,
-            "created_at": connection.created_at or datetime.utcnow(),
-            "updated_at": connection.updated_at or datetime.utcnow(),
+            "created_at": utc_to_beijing_str(connection.created_at) or utc_to_beijing_str(datetime.utcnow()) or "",
+            "updated_at": utc_to_beijing_str(connection.updated_at) or utc_to_beijing_str(datetime.utcnow()) or "",
             "is_active": connection.is_active,
             "username": username,  # 使用凭证中的username
             "password": password   # 使用凭证中的password
@@ -291,8 +292,8 @@ async def update_device_connection(
             "keepalive": db_connection.keepalive,
             "verbose": db_connection.verbose,
             "description": db_connection.description,
-            "created_at": db_connection.created_at or datetime.utcnow(),
-            "updated_at": db_connection.updated_at or datetime.utcnow(),
+            "created_at": utc_to_beijing_str(db_connection.created_at) or utc_to_beijing_str(datetime.utcnow()) or "",
+            "updated_at": utc_to_beijing_str(db_connection.updated_at) or utc_to_beijing_str(datetime.utcnow()) or "",
             "is_active": db_connection.is_active,
             "username": username,  # 使用凭证中的username
             "password": password   # 使用凭证中的password

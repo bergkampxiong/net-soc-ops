@@ -42,6 +42,105 @@ const SCAN_MODES = [
   { value: 'deep', label: 'deep（深度）' },
 ];
 
+/** 测试类型选择后预填的 instruction 默认内容（与文档「指令模板与渗透测试节点配置规范」一致） */
+const DEFAULT_INSTRUCTION = {
+  dynamic: `执行全面的外部渗透测试，重点关注：
+
+认证和访问控制：
+- 使用提供的凭证进行认证测试
+  URL"XXXX"
+  USER"XXXX"
+  PASSWORD"XXXX"
+- 测试普通用户和管理员权限
+- 重点检查水平/垂直权限越界
+
+关键漏洞类型（按优先级）：
+1. IDOR - 检查所有对象引用的访问控制
+2. SQL注入 - 所有输入点和API参数
+3. SSRF - 特别是文件上传和URL处理功能
+4. XSS - 存储型和反射型，包括DOM XSS
+5. 认证绕过 - JWT操作、会话管理
+
+业务逻辑测试：
+- 工作流程操作和状态转换
+- 并发操作和竞态条件
+- 价格操作和权限提升
+
+测试要求：
+- 遵循完整的发现→验证→报告工作流程
+- 每个漏洞都必须有独立的验证智能体
+- 提供可复现的PoC和详细的影响分析
+- 生成专业的客户报告
+
+排除范围：
+- 不进行拒绝服务测试`,
+  whitebox: `代码分析（/workspace/repo）：
+- 静态分析认证和授权逻辑
+- 检查SQL查询和输入验证
+- 审查依赖项和配置文件
+
+动态测试（staging.app.com）：
+- 使用管理员凭证：admin:AdminPass123!
+- 验证代码中发现的问题
+- 测试运行时配置漏洞
+
+重点领域：
+- 认证系统（JWT实现、会话管理）
+- 数据库操作（SQL注入、数据泄露）
+- 文件处理（上传漏洞、路径遍历）
+- API端点（IDOR、业务逻辑）
+
+工作流程：
+1. 代码分析智能体识别潜在问题
+2. 验证智能体动态确认漏洞
+3. 报告智能体记录详细发现
+4. 修复智能体实施代码补丁
+5. 测试补丁有效性
+
+报告要求：
+- 包含代码位置和修复建议
+- 提供前后代码对比
+- 验证修复后的安全性`,
+  static: `执行深度静态代码安全评估：
+
+第一阶段：代码架构理解
+- 构建完整的调用图和数据流图
+- 识别信任边界和攻击面
+- 分析框架和中间件的安全配置
+- 审查依赖项版本和已知漏洞
+
+第二阶段：漏洞模式匹配
+- 注入攻击：SQL、NoSQL、LDAP、命令注入
+- 认证授权：JWT实现、OAuth流程、会话管理
+- 数据处理：序列化、反序列化、XML/JSON解析
+- 文件操作：上传、下载、路径处理、临时文件
+- 加密实现：密钥管理、随机数生成、哈希算法
+
+第三阶段：业务逻辑审查
+- 状态机分析和竞态条件
+- 权限提升和水平越权
+- 工作流程绕过和异常处理
+- 并发操作和原子性保证
+
+工具链集成：
+- semgrep自定义规则集
+- 静态数据流分析
+- 污点追踪和传播分析
+- 跨语言漏洞关联
+
+报告要求：
+- 按CVSS评分排序漏洞
+- 提供可复现的测试用例
+- 包含修复前后的代码对比
+- 建议安全重构方案
+
+质量保证：
+- 验证所有发现的准确性
+- 排除误报和低风险问题
+- 确保修复方案的可行性
+- 提供持续改进建议`,
+};
+
 function getTestTypeLabel(targetType?: string, staticOnly?: boolean): string {
   if (staticOnly) return '仅静态（代码审计）';
   if (targetType === 'web_url') return '动态（黑盒）';
@@ -68,6 +167,7 @@ export const PDPenetrationTestPanel: React.FC<PDPenetrationTestPanelProps> = ({
         scanMode: initialData?.scanMode ?? 'deep',
         testUsername: initialData?.testUsername,
         testPassword: initialData?.testPassword,
+        testTypePreset: undefined,
       });
     }
   }, [visible, initialData, form]);
@@ -171,7 +271,7 @@ export const PDPenetrationTestPanel: React.FC<PDPenetrationTestPanelProps> = ({
             const node = id ? scanTargetNodes.find((n) => n.id === id) : null;
             const staticOnly = node?.staticOnly === true;
             return (
-              <>
+              <div style={{ display: 'none' }}>
                 {!staticOnly && (
                   <Alert
                     type="info"
@@ -181,22 +281,38 @@ export const PDPenetrationTestPanel: React.FC<PDPenetrationTestPanelProps> = ({
                     style={{ marginBottom: 16 }}
                   />
                 )}
-                <Form.Item
-                  name="testUsername"
-                  label="测试账号"
-                  extra={staticOnly ? '仅静态扫描不需要系统账号密码。' : undefined}
-                >
+                <Form.Item name="testUsername" label="测试账号">
                   <Input placeholder="登录用户名" disabled={staticOnly} />
                 </Form.Item>
                 <Form.Item name="testPassword" label="测试密码">
                   <Input.Password placeholder="登录密码" disabled={staticOnly} autoComplete="off" />
                 </Form.Item>
-              </>
+              </div>
             );
           }}
         </Form.Item>
-        <Form.Item name="instruction" label="自定义指令（可选）">
-          <Input.TextArea rows={2} placeholder="如：仅测认证与越权" />
+        <Form.Item
+          name="testTypePreset"
+          label="测试类型"
+          extra="选择后下方 instruction 将预填默认内容，可编辑。"
+        >
+          <Select
+            placeholder="选择类型以预填 instruction"
+            allowClear
+            options={[
+              { value: 'dynamic', label: '动态测试' },
+              { value: 'whitebox', label: '白盒测试' },
+              { value: 'static', label: '静态测试' },
+            ]}
+            onChange={(value) => {
+              if (value && DEFAULT_INSTRUCTION[value as keyof typeof DEFAULT_INSTRUCTION]) {
+                form.setFieldValue('instruction', DEFAULT_INSTRUCTION[value as keyof typeof DEFAULT_INSTRUCTION]);
+              }
+            }}
+          />
+        </Form.Item>
+        <Form.Item name="instruction" label="instruction">
+          <Input.TextArea rows={8} placeholder="如：仅测认证与越权；或先选测试类型预填默认内容" />
         </Form.Item>
       </Form>
     </Drawer>

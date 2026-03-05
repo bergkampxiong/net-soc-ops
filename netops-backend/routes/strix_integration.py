@@ -2,7 +2,9 @@
 import json
 import os
 import shutil
+import subprocess
 import threading
+import time
 import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Any
@@ -26,11 +28,26 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-# 后台任务进程句柄，用于取消：task_id -> process
+# 后台任务进程句柄，用于取消：task_id -> process（API 创建的任务与作业脚本运行的任务均可注册）
 _strix_processes: dict = {}
 _lock = threading.Lock()
+# progress 接口短期缓存，减轻频繁读盘：task_id -> (expiry_ts, payload)
+_progress_cache: dict = {}
+_PROGRESS_CACHE_TTL_SEC = 2
 # 仅内存：task_id -> 带真实密码的 instruction，供 _run_scan_task 使用一次后即删，不落库
 _task_runtime_instruction: dict = {}
+
+
+def register_strix_process(task_id: int, proc) -> None:
+    """供作业服务等调用：将 Strix 进程注册到全局表，便于 POST /scans/{id}/cancel 杀进程。"""
+    with _lock:
+        _strix_processes[task_id] = proc
+
+
+def unregister_strix_process(task_id: int) -> None:
+    """脚本/任务结束后从全局表移除，避免 cancel 误杀。"""
+    with _lock:
+        _strix_processes.pop(task_id, None)
 
 
 # ---------- Schemas ----------
@@ -94,6 +111,8 @@ def _run_scan_task(task_id: int, workspace_dir: str):
             workspace_dir=workspace_dir,
             run_name=task.run_name,
             env_override=env,
+            process_holder=_strix_processes,
+            task_id=task.id,
         )
         task.status = "success" if result["success"] else "failed"
         task.report_path = result.get("report_path") or ""
@@ -150,68 +169,111 @@ def _build_instruction_with_credentials(
 
 @router.post("/scans")
 def create_scan(body: ScanCreate, db: Session = Depends(get_db)):
-    """创建扫描任务并异步执行。支持 test_username/test_password，仅运行时拼入 instruction 传给 Strix，不落库。"""
-    import uuid
-    run_name = f"netops_{uuid.uuid4().hex[:12]}"
-    # 存库用脱敏版；若调用方传了 test_username/test_password，运行时用带真实密码的 instruction
-    instruction_for_db = _build_instruction_with_credentials(
-        body.instruction, body.test_username, body.test_password, mask_password=True
+    """已停用：不再通过 API 创建扫描任务，请通过作业执行渗透任务创建。"""
+    raise HTTPException(
+        status_code=410,
+        detail="API 创建已停用，请通过作业执行渗透任务创建扫描。",
     )
-    task = StrixScanTask(
-        target_type=body.target_type or "web_url",
-        target_value=json.dumps(body.targets) if body.targets else body.target_value,
-        instruction=instruction_for_db,
-        scan_mode=body.scan_mode or "deep",
-        status="pending",
-        run_name=run_name,
-        job_execution_id=body.job_execution_id,
-        created_by="api",
-    )
-    db.add(task)
-    db.commit()
-    db.refresh(task)
-    if body.test_username or body.test_password:
-        runtime_instruction = _build_instruction_with_credentials(
-            body.instruction, body.test_username, body.test_password, mask_password=False
-        )
-        with _lock:
-            _task_runtime_instruction[task.id] = runtime_instruction
-
-    backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    workspace_dir = os.path.join(backend_root, "data", "strix_workspace")
-    t = threading.Thread(target=_run_scan_task, args=(task.id, workspace_dir))
-    t.daemon = True
-    t.start()
-
-    return {"id": task.id, "run_name": run_name, "status": "pending"}
 
 
 @router.get("/scans")
 def list_scans(
     job_execution_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
+    created_by: Optional[str] = Query(None, description="任务来源，如 job 表示作业执行"),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    """扫描任务列表，支持按 job_execution_id、status 筛选。"""
+    """扫描任务列表，支持按 job_execution_id、status、created_by 筛选。"""
     q = db.query(StrixScanTask)
     if job_execution_id is not None:
         q = q.filter(StrixScanTask.job_execution_id == job_execution_id)
     if status:
         q = q.filter(StrixScanTask.status == status)
+    if created_by and created_by.strip():
+        q = q.filter(StrixScanTask.created_by == created_by.strip())
     total = q.count()
     items = q.order_by(StrixScanTask.created_at.desc()).offset(skip).limit(limit).all()
-    return {"items": [t.to_dict() for t in items], "total": total}
+    result = []
+    for t in items:
+        d = t.to_dict()
+        if d.get("summary"):
+            d["summary"] = _trim_summary_for_display(d["summary"])
+        result.append(d)
+    return {"items": result, "total": total}
+
+
+# 接口返回的 summary 中 stdout/stderr 单字段最大字符数，避免列表/详情一次传输过大导致性能问题
+SUMMARY_DISPLAY_MAX_CHARS = 1024  # 1K，单次接口返回的 stdout/stderr 展示长度
+
+
+def _trim_summary_for_display(summary: Any) -> Any:
+    """对 summary 的 stdout/stderr 做尾部截断，避免接口返回超大 JSON。返回副本，不修改入参。"""
+    if not summary or not isinstance(summary, dict):
+        return summary
+    out = summary.get("stdout")
+    err = summary.get("stderr")
+    need_trim = (
+        (isinstance(out, str) and len(out) > SUMMARY_DISPLAY_MAX_CHARS)
+        or (isinstance(err, str) and len(err) > SUMMARY_DISPLAY_MAX_CHARS)
+    )
+    if not need_trim:
+        return summary
+    res = dict(summary)
+    if isinstance(out, str) and len(out) > SUMMARY_DISPLAY_MAX_CHARS:
+        res["stdout"] = out[-SUMMARY_DISPLAY_MAX_CHARS:]
+    if isinstance(err, str) and len(err) > SUMMARY_DISPLAY_MAX_CHARS:
+        res["stderr"] = err[-SUMMARY_DISPLAY_MAX_CHARS:]
+    return res
+
+
+def _strip_ansi(text: str) -> str:
+    """去掉 PTY 输出的 ANSI 转义序列，便于正则匹配与展示。"""
+    import re
+    if not text or not isinstance(text, str):
+        return text
+    return re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text)
+
+
+def _parse_strix_stdout_stats(stdout: str) -> dict:
+    """从 stdout 中解析 Model、Vulnerabilities、Agents、Tools；解析前先去除 ANSI 码。"""
+    import re
+    if not stdout or not isinstance(stdout, str):
+        return {}
+    out = _strip_ansi(stdout)
+    stats = {}
+    m = re.search(r"Model\s+(\S+)", out)
+    if m:
+        stats["model"] = _sanitize_model_display(_strip_ansi(m.group(1)).strip())
+    # TUI 中可能为 "Vulnerabilities 0"、"Agents 1  ·  Tools 34"；允许可选冒号，Tools 用 [\s·]* 兼容
+    m = re.search(r"Vulnerabilities\s*:?\s*(\d+)", out)
+    if m:
+        stats["vulnerabilities"] = int(m.group(1))
+    m = re.search(r"Agents\s*:?\s*(\d+)", out)
+    if m:
+        stats["agents"] = int(m.group(1))
+    m = re.search(r"Tools\s+[\s·]*(\d+)", out)
+    if m:
+        stats["tools"] = int(m.group(1))
+    return stats
 
 
 @router.get("/scans/{task_id}")
 def get_scan(task_id: int, db: Session = Depends(get_db)):
-    """任务详情。"""
+    """任务详情。包含从 summary.stdout 解析的 strix_stats（vulnerabilities、agents、tools），便于前端展示进度或最终统计。"""
     task = db.query(StrixScanTask).filter(StrixScanTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Scan task not found")
-    return task.to_dict()
+    d = task.to_dict()
+    summary = d.get("summary")
+    if summary and isinstance(summary, dict):
+        d["summary"] = _trim_summary_for_display(summary)
+        stdout = summary.get("stdout") or ""
+        strix_stats = _parse_strix_stdout_stats(stdout)
+        if strix_stats:
+            d["strix_stats"] = strix_stats
+    return d
 
 
 def _find_report_html(path: str):
@@ -337,14 +399,143 @@ def get_unified_report(
     )
 
 
+def _sanitize_model_display(model: Optional[str]) -> Optional[str]:
+    """展示用：去除模型名中的 strix 字样。"""
+    if not model or not isinstance(model, str):
+        return model
+    return model.replace("strix", "").replace("STRIX", "").strip() or model
+
+
+def _read_progress_payload(task_id: int, run_name: str, workspace_root: str) -> dict:
+    """从 progress.json 读取 payload；不抛错，读不到返回空值 dict。返回 model、vulnerabilities、agents、tools。"""
+    empty = {"model": None, "vulnerabilities": None, "agents": None, "tools": None}
+    if not run_name or not (workspace_root + os.sep):
+        return empty
+    progress_path = os.path.realpath(os.path.join(workspace_root, run_name, "progress.json"))
+    if progress_path != workspace_root and not progress_path.startswith(workspace_root + os.sep):
+        return empty
+    if not os.path.isfile(progress_path):
+        return empty
+    try:
+        with open(progress_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        model = data.get("model")
+        if isinstance(model, str):
+            model = _sanitize_model_display(_strip_ansi(model))
+        return {
+            "model": model,
+            "vulnerabilities": data.get("vulnerabilities"),
+            "agents": data.get("agents"),
+            "tools": data.get("tools"),
+        }
+    except (json.JSONDecodeError, OSError):
+        return empty
+
+
+@router.get("/scans/{task_id}/progress")
+def get_scan_progress(task_id: int, db: Session = Depends(get_db)):
+    """运行中读取当前 vulnerabilities、agents、tools（从 progress.json 解析）；仅对 running/pending 任务做短期缓存减轻读盘。"""
+    task = db.query(StrixScanTask).filter(StrixScanTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Scan task not found")
+    run_name = (task.run_name or "").strip()
+    if not run_name:
+        return {"model": None, "vulnerabilities": None, "agents": None, "tools": None}
+    backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    workspace_root = os.path.realpath(os.path.join(backend_root, "data", "strix_workspace"))
+    only_cache_when_running = task.status in ("running", "pending")
+    now = time.time()
+    with _lock:
+        if not only_cache_when_running:
+            _progress_cache.pop(task_id, None)
+        elif only_cache_when_running:
+            cached = _progress_cache.get(task_id)
+            if cached and cached[0] > now:
+                return cached[1]
+    payload = _read_progress_payload(task_id, run_name, workspace_root)
+    if only_cache_when_running:
+        with _lock:
+            _progress_cache[task_id] = (now + _PROGRESS_CACHE_TTL_SEC, payload)
+    return payload
+
+
+# 运行回显接口：返回 live_echo.txt 尾部内容，便于前端展示与终端类似的实时输出
+ECHO_DEFAULT_TAIL_CHARS = 100_000
+
+
+@router.get("/scans/{task_id}/echo")
+def get_scan_echo(
+    task_id: int,
+    tail: int = Query(ECHO_DEFAULT_TAIL_CHARS, ge=0, le=500_000, description="返回最后 N 个字符"),
+    db: Session = Depends(get_db),
+):
+    """运行中或结束后读取本次任务的实时回显（stdout+stderr 写入的 live_echo.txt）尾部，供前端展示。"""
+    task = db.query(StrixScanTask).filter(StrixScanTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Scan task not found")
+    run_name = (task.run_name or "").strip()
+    if not run_name:
+        raise HTTPException(status_code=404, detail="No run_name for this task")
+    backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    workspace_root = os.path.realpath(os.path.join(backend_root, "data", "strix_workspace"))
+    echo_path = os.path.realpath(os.path.join(workspace_root, run_name, "live_echo.txt"))
+    if echo_path != workspace_root and not echo_path.startswith(workspace_root + os.sep):
+        raise HTTPException(status_code=404, detail="Invalid path")
+    if not os.path.isfile(echo_path):
+        return PlainTextResponse(content="", media_type="text/plain; charset=utf-8")
+    try:
+        with open(echo_path, "rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            if size <= tail:
+                f.seek(0)
+                content = f.read().decode("utf-8", errors="replace")
+            else:
+                f.seek(-tail, 2)
+                content = f.read().decode("utf-8", errors="replace")
+        return PlainTextResponse(content=content, media_type="text/plain; charset=utf-8")
+    except OSError:
+        return PlainTextResponse(content="", media_type="text/plain; charset=utf-8")
+
+
+def _kill_process_and_children(proc) -> None:
+    """终止进程及其子进程（减少 Strix 未干活时的 token 消耗）。"""
+    try:
+        if proc is None:
+            return
+        if os.name != "nt":
+            try:
+                import signal
+                pgid = os.getpgid(proc.pid)
+                os.killpg(pgid, signal.SIGKILL)
+            except (OSError, ProcessLookupError):
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+        else:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+    except Exception as e:
+        logger.warning("终止 Strix 进程时异常: %s", e)
+
+
 @router.post("/scans/{task_id}/cancel")
 def cancel_scan(task_id: int, db: Session = Depends(get_db)):
-    """将任务标记为已取消（若在运行则仅标记，实际进程可能需超时退出）。"""
+    """将任务标记为已取消；若在运行则终止 Strix 主进程及子进程，减少 token 消耗。"""
     task = db.query(StrixScanTask).filter(StrixScanTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Scan task not found")
     if task.status not in ("pending", "running"):
         return {"id": task_id, "status": task.status, "message": "Already finished or cancelled"}
+    with _lock:
+        proc = _strix_processes.pop(task_id, None)
+    if proc is not None:
+        _kill_process_and_children(proc)
     task.status = "cancelled"
     from datetime import datetime
     task.finished_at = datetime.utcnow()

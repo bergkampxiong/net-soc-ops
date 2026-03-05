@@ -28,6 +28,7 @@ import {
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import request from '../utils/request';
+import { setDisplayTimezone } from '../utils/formatTime';
 
 const { Header, Sider, Content } = AntLayout;
 
@@ -55,6 +56,21 @@ const Layout: React.FC = () => {
     };
 
     fetchUserInfo();
+  }, []);
+
+  // 加载全局时钟时区（与系统管理-全局配置一致，所有时间展示使用此刻）
+  useEffect(() => {
+    const loadGlobalTimezone = async () => {
+      try {
+        const res = await request.get<Array<{ config_key: string; config_value: string }>>('/system/global-config');
+        const list = Array.isArray(res.data) ? res.data : [];
+        const tzItem = list.find((i) => i.config_key === 'GLOBAL_TIMEZONE');
+        setDisplayTimezone(tzItem?.config_value ?? 'Asia/Shanghai');
+      } catch {
+        setDisplayTimezone('Asia/Shanghai');
+      }
+    };
+    loadGlobalTimezone();
   }, []);
 
   // 初始化菜单展开状态

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Form, Input, Button, message, Typography } from 'antd';
+import { Card, Form, Input, Button, message, Typography, Select } from 'antd';
 import { ApiOutlined } from '@ant-design/icons';
 import request from '../../utils/request';
+import { setDisplayTimezone } from '../../utils/formatTime';
 
 const { Title, Text } = Typography;
 
@@ -41,6 +42,9 @@ const GlobalConfig: React.FC = () => {
     setSaving(true);
     try {
       await request.put('/system/global-config', values);
+      if (values.GLOBAL_TIMEZONE != null) {
+        setDisplayTimezone(values.GLOBAL_TIMEZONE || 'Asia/Shanghai');
+      }
       message.success('保存成功');
       fetchConfig();
     } catch {
@@ -49,6 +53,14 @@ const GlobalConfig: React.FC = () => {
       setSaving(false);
     }
   };
+
+  const timezoneOptions = [
+    { value: 'Asia/Shanghai', label: '北京时间 (Asia/Shanghai)' },
+    { value: 'UTC', label: 'UTC' },
+    { value: 'America/New_York', label: '美国东部 (America/New_York)' },
+    { value: 'Europe/London', label: '伦敦 (Europe/London)' },
+    { value: 'Asia/Tokyo', label: '东京 (Asia/Tokyo)' },
+  ];
 
   return (
     <div>
@@ -61,7 +73,7 @@ const GlobalConfig: React.FC = () => {
         </Text>
       </Card>
       <Card loading={loading}>
-        <Form form={form} layout="vertical" onFinish={onFinish}>
+        <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ GLOBAL_TIMEZONE: 'Asia/Shanghai' }}>
           <Form.Item name="GLOBAL_LLM_MODEL" label="模型名称" extra="如 gpt-4o-mini、gpt-4o、deepseek-chat、claude-3-5-sonnet 等，按厂商文档填写">
             <Input placeholder="gpt-4o-mini" />
           </Form.Item>
@@ -75,6 +87,9 @@ const GlobalConfig: React.FC = () => {
           </Form.Item>
           <Form.Item name="GLOBAL_LLM_API_BASE" label="API Base（可选）" extra="留空默认 https://api.openai.com/v1；自建或 Minimax/DeepSeek 等填厂商地址">
             <Input placeholder="https://api.openai.com/v1" />
+          </Form.Item>
+          <Form.Item name="GLOBAL_TIMEZONE" label="全局时区（时钟）" extra="全系统时间展示使用的时区，保存后立即生效；重启后从数据库加载。">
+            <Select placeholder="选择展示时区" allowClear options={timezoneOptions} />
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" loading={saving}>

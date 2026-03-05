@@ -2,8 +2,11 @@
 # 安装方式：执行 scripts/install-strix.sh，将 Strix 二进制安装到 netops-backend/strix/bin/，不使用 .venv。
 # 或设置 STRIX_CLI_PATH 指向任意可执行的 strix 二进制路径。
 import os
+import re
 import subprocess
+import threading
 import uuid
+import json
 import logging
 from typing import Optional, List, Dict, Any, Tuple
 
@@ -138,6 +141,44 @@ def test_llm_config(config_kv: Optional[Dict[str, str]]) -> Tuple[bool, str]:
     return False, f"API 返回错误 ({resp.status_code}): {err_msg}"
 
 
+def _ensure_str_for_json(v: Any) -> str:
+    """保证可安全写入 JSON 的字符串，避免 bytes 导致 Object of type bytes is not JSON serializable。"""
+    if v is None:
+        return ""
+    if isinstance(v, bytes):
+        return v.decode("utf-8", errors="replace")
+    return str(v)
+
+
+def _strip_ansi(text: str) -> str:
+    """去掉 PTY 输出的 ANSI 转义序列（颜色等），便于正则匹配与展示。"""
+    if not text or not isinstance(text, str):
+        return text
+    return re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text)
+
+
+def _parse_stdout_stats(text: str) -> Dict[str, Any]:
+    """从输出文本中解析 Model、Vulnerabilities、Agents、Tools；解析前先去除 ANSI 码。"""
+    if not text or not isinstance(text, str):
+        return {}
+    text = _strip_ansi(text)
+    stats: Dict[str, Any] = {}
+    m = re.search(r"Model\s+(\S+)", text)
+    if m:
+        stats["model"] = _strip_ansi(m.group(1)).strip()
+    # TUI 中可能为 "Vulnerabilities 0"、"Agents 1  ·  Tools 34"；Tools 与数字间有 ·，用 [\s·]* 兼容；允许可选冒号
+    m = re.search(r"Vulnerabilities\s*:?\s*(\d+)", text)
+    if m:
+        stats["vulnerabilities"] = int(m.group(1))
+    m = re.search(r"Agents\s*:?\s*(\d+)", text)
+    if m:
+        stats["agents"] = int(m.group(1))
+    m = re.search(r"Tools\s+[\s·]*(\d+)", text)
+    if m:
+        stats["tools"] = int(m.group(1))
+    return stats
+
+
 def run_strix_sync(
     target: str,
     targets: Optional[List[str]] = None,
@@ -148,9 +189,13 @@ def run_strix_sync(
     run_name: Optional[str] = None,
     env_override: Optional[Dict[str, str]] = None,
     timeout: int = 3600,
+    process_holder: Optional[Dict[Any, Any]] = None,
+    task_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
-    同步执行 Strix 扫描。返回 dict: success, returncode, stdout, stderr, run_name, report_path。
+    同步执行 Strix 扫描。使用 Popen 实时写 progress 文件，便于运行中读取 Agents/Tools。
+    若 process_holder 与 task_id 均提供，则 Popen 启动后写入 process_holder[task_id]=proc，供外部 cancel 杀进程。
+    返回 dict: success, returncode, stdout, stderr, run_name, report_path。
     """
     if not workspace_dir:
         workspace_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "..", "data", "strix_workspace")
@@ -177,7 +222,6 @@ def run_strix_sync(
 
     strix_cmd = _resolve_strix_cmd()
     cmd = [strix_cmd, "-n", "--non-interactive"]
-    # 目标：多目标用多个 -t
     if targets:
         for t in targets:
             cmd.extend(["--target", t])
@@ -190,26 +234,96 @@ def run_strix_sync(
         cmd.extend(["--instruction-file", instruction_file])
 
     env = env_override or os.environ.copy()
-    # 确保 Strix 子进程能访问 Docker（沙箱依赖），避免落入“仅请求模式”
     for k in _DOCKER_ENV_KEYS:
         if k in os.environ and os.environ[k]:
             env[k] = os.environ[k]
-    report_path = os.path.join(cwd, "strix_runs")  # Strix 默认在 cwd 下生成 strix_runs/<run_name>
+    progress_file = os.path.join(cwd, "progress.json")
     try:
         run_user = os.environ.get("USER", os.environ.get("LOGNAME", "")) or str(os.getuid()) if hasattr(os, "getuid") else ""
         logger.info("Strix 子进程即将执行，运行用户: %s，cwd: %s", run_user or "(未知)", cwd)
     except Exception:
         pass
+
+    stdout_lines: List[str] = []
+    stderr_lines: List[str] = []
+    stdout_lock = threading.Lock()
+    stderr_lock = threading.Lock()
+    latest_stats: Dict[str, int] = {}
+
+    def read_stdout(pipe):
+        nonlocal latest_stats
+        for line in iter(pipe.readline, ""):
+            with stdout_lock:
+                stdout_lines.append(line)
+            buf = "".join(stdout_lines)
+            stats = _parse_stdout_stats(buf)
+            if stats:
+                latest_stats.update(stats)
+                try:
+                    with open(progress_file, "w", encoding="utf-8") as f:
+                        json.dump(latest_stats, f, ensure_ascii=False)
+                except OSError:
+                    pass
+        pipe.close()
+
+    def read_stderr(pipe):
+        for line in iter(pipe.readline, ""):
+            with stderr_lock:
+                stderr_lines.append(line)
+        pipe.close()
+
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
             cwd=cwd,
             env=env,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout,
+            start_new_session=os.name != "nt",
         )
-        # Strix 实际输出在 strix_runs 下，子目录名常为基于目标的 run_name（如 172-18-40-99-8080_e44c），未必等于 name
+        if process_holder is not None and task_id is not None:
+            process_holder[task_id] = proc
+        t_out = threading.Thread(target=read_stdout, args=(proc.stdout,))
+        t_err = threading.Thread(target=read_stderr, args=(proc.stderr,))
+        t_out.daemon = True
+        t_err.daemon = True
+        t_out.start()
+        t_err.start()
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+            t_out.join(timeout=2)
+            t_err.join(timeout=2)
+            with stdout_lock:
+                full_stdout = "".join(stdout_lines)
+            with stderr_lock:
+                full_stderr = "".join(stderr_lines)
+            full_stdout = _ensure_str_for_json(full_stdout)
+            full_stderr = _ensure_str_for_json(full_stderr or "Strix run timeout")
+            return {
+                "success": False,
+                "returncode": -1,
+                "stdout": full_stdout,
+                "stderr": full_stderr,
+                "run_name": name,
+                "report_path": cwd,
+            }
+        t_out.join(timeout=5)
+        t_err.join(timeout=5)
+        with stdout_lock:
+            full_stdout = "".join(stdout_lines)
+        with stderr_lock:
+            full_stderr = "".join(stderr_lines)
+        full_stdout = _ensure_str_for_json(full_stdout)
+        full_stderr = _ensure_str_for_json(full_stderr)
+        returncode = proc.returncode
         strix_runs_dir = os.path.join(cwd, "strix_runs")
         possible_report = os.path.join(strix_runs_dir, name)
         if not os.path.isdir(possible_report) and os.path.isdir(strix_runs_dir):
@@ -229,25 +343,14 @@ def run_strix_sync(
                     break
             else:
                 possible_report = cwd
-        # Strix 约定：0=正常结束，2=发现漏洞后结束（main.py 中 non_interactive 且 vulnerability_reports 时 sys.exit(2)），均视为扫描成功
-        success = result.returncode in (0, 2)
+        success = returncode in (0, 2)
         return {
             "success": success,
-            "returncode": result.returncode,
-            "stdout": result.stdout or "",
-            "stderr": result.stderr or "",
+            "returncode": returncode or 0,
+            "stdout": full_stdout,
+            "stderr": full_stderr,
             "run_name": name,
             "report_path": possible_report if os.path.isdir(possible_report) else cwd,
-        }
-    except subprocess.TimeoutExpired as e:
-        logger.exception("Strix timeout")
-        return {
-            "success": False,
-            "returncode": -1,
-            "stdout": getattr(e, "output", "") or "",
-            "stderr": "Strix run timeout",
-            "run_name": name,
-            "report_path": cwd,
         }
     except FileNotFoundError:
         logger.exception("Strix CLI not found: %s", strix_cmd)
