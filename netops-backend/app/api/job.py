@@ -9,6 +9,7 @@ from app.schemas.job import (
     JobExecutionListItem, JobExecutionListResponse, JobExecutionStatsResponse,
 )
 from app.services.job import JobService
+from auth.authentication import get_current_user
 
 router = APIRouter()
 
@@ -22,6 +23,7 @@ def get_job_executions_cross(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
+    _current_user=Depends(get_current_user),
 ):
     """跨作业执行列表，供作业监控与报告使用"""
     total, rows = JobService(db).get_job_executions_cross_job(
@@ -56,6 +58,7 @@ def get_job_executions_stats(
     date_to: str = Query(..., description="统计结束日期 YYYY-MM-DD"),
     job_id: Optional[int] = Query(None, description="按作业ID筛选，不传为全部"),
     db: Session = Depends(get_db),
+    _current_user=Depends(get_current_user),
 ):
     """执行统计，供作业监控概览卡片使用"""
     stats = JobService(db).get_job_executions_stats(
@@ -74,7 +77,8 @@ def get_jobs(
     job_type: Optional[str] = None,
     status: Optional[str] = None,
     run_type: Optional[str] = Query(None, description="once | scheduled"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _current_user=Depends(get_current_user),
 ):
     """获取作业列表（默认仅返回由流程发布产生的作业）"""
     return JobService(db).get_jobs(
@@ -84,7 +88,7 @@ def get_jobs(
     )
 
 @router.get("/jobs/{job_id}", response_model=JobResponse)
-def get_job(job_id: int, db: Session = Depends(get_db)):
+def get_job(job_id: int, db: Session = Depends(get_db), _current_user=Depends(get_current_user)):
     """获取作业详情"""
     job = JobService(db).get_job(job_id)
     if not job:
@@ -92,12 +96,12 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
     return job
 
 @router.post("/jobs", response_model=JobResponse)
-def create_job(job: JobCreate, db: Session = Depends(get_db)):
+def create_job(job: JobCreate, db: Session = Depends(get_db), _current_user=Depends(get_current_user)):
     """创建作业"""
     return JobService(db).create_job(job)
 
 @router.put("/jobs/{job_id}", response_model=JobResponse)
-def update_job(job_id: int, job: JobUpdate, db: Session = Depends(get_db)):
+def update_job(job_id: int, job: JobUpdate, db: Session = Depends(get_db), _current_user=Depends(get_current_user)):
     """更新作业"""
     updated_job = JobService(db).update_job(job_id, job)
     if not updated_job:
@@ -105,7 +109,7 @@ def update_job(job_id: int, job: JobUpdate, db: Session = Depends(get_db)):
     return updated_job
 
 @router.delete("/jobs/{job_id}")
-def delete_job(job_id: int, db: Session = Depends(get_db)):
+def delete_job(job_id: int, db: Session = Depends(get_db), _current_user=Depends(get_current_user)):
     """删除作业"""
     success = JobService(db).delete_job(job_id)
     if not success:
@@ -113,7 +117,7 @@ def delete_job(job_id: int, db: Session = Depends(get_db)):
     return {"message": "作业已删除"}
 
 @router.post("/jobs/{job_id}/execute")
-def execute_job(job_id: int, db: Session = Depends(get_db)):
+def execute_job(job_id: int, db: Session = Depends(get_db), _current_user=Depends(get_current_user)):
     """立即执行作业（需作业关联流程定义）"""
     job = JobService(db).get_job(job_id)
     if not job:
@@ -129,7 +133,7 @@ def execute_job(job_id: int, db: Session = Depends(get_db)):
     return {"message": "作业已开始执行"}
 
 @router.post("/jobs/{job_id}/pause")
-def pause_job(job_id: int, db: Session = Depends(get_db)):
+def pause_job(job_id: int, db: Session = Depends(get_db), _current_user=Depends(get_current_user)):
     """暂停作业"""
     success = JobService(db).pause_job(job_id)
     if not success:
@@ -137,7 +141,7 @@ def pause_job(job_id: int, db: Session = Depends(get_db)):
     return {"message": "作业已暂停"}
 
 @router.post("/jobs/{job_id}/resume")
-def resume_job(job_id: int, db: Session = Depends(get_db)):
+def resume_job(job_id: int, db: Session = Depends(get_db), _current_user=Depends(get_current_user)):
     """恢复作业"""
     success = JobService(db).resume_job(job_id)
     if not success:
@@ -145,7 +149,7 @@ def resume_job(job_id: int, db: Session = Depends(get_db)):
     return {"message": "作业已恢复"}
 
 @router.post("/jobs/{job_id}/terminate")
-def terminate_job(job_id: int, db: Session = Depends(get_db)):
+def terminate_job(job_id: int, db: Session = Depends(get_db), _current_user=Depends(get_current_user)):
     """终止作业"""
     success = JobService(db).terminate_job(job_id)
     if not success:
@@ -157,7 +161,8 @@ def get_job_executions(
     job_id: int,
     skip: int = 0,
     limit: int = 10,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _current_user=Depends(get_current_user),
 ):
     """获取作业执行历史（无记录时返回空列表）"""
     job = JobService(db).get_job(job_id)

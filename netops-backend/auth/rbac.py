@@ -79,14 +79,15 @@ def has_permission(user, permission):
     返回:
         bool: 是否具有权限
     """
-    # 基于角色的权限映射
+    # 基于角色的权限映射（系统管理员具备自动化 RPA 全部配置查看与操作权限）
     role_permissions = {
         "admin": [
-            "create_user", "disable_user", "reset_password", "toggle_2fa", 
+            "create_user", "disable_user", "reset_password", "toggle_2fa",
             "view_audit_logs", "configure_ldap", "manage_system", "view_system",
-            "manage_users", "manage_roles", "manage_security"
+            "manage_users", "manage_roles", "manage_security",
+            "view_rpa", "manage_rpa",  # 自动化 RPA：查看/管理流程、作业、设备连接、凭证等全部配置
         ],
-        "operator": ["view_users", "change_own_password"],
+        "operator": ["view_users", "change_own_password", "view_rpa", "manage_rpa"],
         "auditor": ["view_users", "view_audit_logs"]
     }
     

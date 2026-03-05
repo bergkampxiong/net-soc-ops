@@ -17,6 +17,8 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2 配置
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+# 可选认证：无 token 时不报错，用于仅需“有则识别用户”的接口（如设备连接列表）
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 # JWT 配置
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
@@ -34,6 +36,11 @@ def get_password_hash(password):
 def get_user(db: Session, username: str):
     """根据用户名获取用户"""
     return db.query(User).filter(User.username == username).first()
+
+
+def get_user_by_id(db: Session, user_id: int):
+    """根据用户ID获取用户"""
+    return db.query(User).filter(User.id == user_id).first()
 
 def authenticate_user(db: Session, username: str, password: str):
     """验证用户"""
@@ -65,22 +72,50 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            print("令牌中没有用户名")
+        sub = payload.get("sub")
+        if sub is None:
+            print("令牌中没有 sub")
             raise credentials_exception
-        print(f"从令牌中获取用户名: {username}")
+        print(f"从令牌中获取 sub: {sub}")
     except JWTError as e:
         print(f"JWT错误: {str(e)}")
         raise credentials_exception
-    
-    user = get_user(db, username=username)
+
+    # sub 可能是 username（登录时）或 user.id（刷新 token 后），需兼容两种格式
+    user = None
+    if isinstance(sub, str) and sub.isdigit():
+        user = get_user_by_id(db, int(sub))
     if user is None:
-        print(f"找不到用户: {username}")
+        user = get_user(db, username=str(sub))
+    if user is None:
+        print(f"找不到用户: sub={sub}")
         raise credentials_exception
     
     print(f"找到用户: {user.username}, 角色: {user.role}")
     return user
+
+
+async def get_current_user_optional(
+    token: Optional[str] = Depends(oauth2_scheme_optional),
+    db: Session = Depends(get_db),
+) -> Optional[User]:
+    """可选认证：有有效 token 则返回用户，无 token 或无效则返回 None（不抛 401）"""
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        sub = payload.get("sub")
+        if sub is None:
+            return None
+        user = None
+        if isinstance(sub, str) and sub.isdigit():
+            user = get_user_by_id(db, int(sub))
+        if user is None:
+            user = get_user(db, username=str(sub))
+        return user
+    except JWTError:
+        return None
+
 
 async def get_current_active_user(current_user: User = Depends(get_current_user)):
     """获取当前活跃用户"""

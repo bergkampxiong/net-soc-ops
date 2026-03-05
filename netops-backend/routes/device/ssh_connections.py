@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 import logging
 from database.session import get_db
 from database.device_connection_models import DeviceConnection
@@ -8,6 +8,7 @@ from database.category_models import Credential
 from schemas.device_connection import SSHConnectionCreate, SSHConnectionUpdate, SSHConnectionResponse
 from datetime import datetime
 from utils.datetime_utils import utc_to_beijing_str
+from auth.authentication import get_current_user, get_current_user_optional
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -18,18 +19,33 @@ router = APIRouter(
     tags=["device-connections"]
 )
 
+
+def _credential_id_to_int(credential_id) -> Optional[int]:
+    """将 credential_id 转为 int 用于查询（Credential.id 为整型，DeviceConnection.credential_id 可能为字符串）"""
+    if credential_id is None:
+        return None
+    if isinstance(credential_id, int):
+        return credential_id
+    try:
+        return int(credential_id)
+    except (TypeError, ValueError):
+        return None
+
+
 @router.get("/", response_model=List[SSHConnectionResponse])
 async def get_device_connections(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _current_user=Depends(get_current_user_optional),
 ):
-    """获取所有SSH连接配置"""
+    """获取所有SSH连接配置（不强制认证，始终返回全量列表，供设备连接页与流程设计器设备节点共用）"""
     try:
         connections = db.query(DeviceConnection).all()
         # 构造响应数据
         response_data = []
         for conn in connections:
-            # 获取关联的凭证信息
-            credential = db.query(Credential).filter(Credential.id == conn.credential_id).first()
+            # 获取关联的凭证信息（credential_id 可能为字符串，需与 Credential.id 整型一致）
+            cred_id = _credential_id_to_int(conn.credential_id)
+            credential = db.query(Credential).filter(Credential.id == cred_id).first() if cred_id is not None else None
             if credential:
                 username = credential.username
                 password = credential.password
@@ -72,7 +88,8 @@ async def get_device_connections(
 @router.post("/", response_model=SSHConnectionResponse, status_code=status.HTTP_201_CREATED)
 async def create_device_connection(
     connection: SSHConnectionCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _current_user=Depends(get_current_user),
 ):
     """创建新的SSH连接配置"""
     try:
@@ -109,7 +126,8 @@ async def create_device_connection(
         
         try:
             # 获取关联的凭证信息
-            credential = db.query(Credential).filter(Credential.id == db_connection.credential_id).first()
+            cred_id = _credential_id_to_int(db_connection.credential_id)
+            credential = db.query(Credential).filter(Credential.id == cred_id).first() if cred_id is not None else None
             if credential:
                 username = credential.username
                 password = credential.password
@@ -181,7 +199,8 @@ async def create_device_connection(
 @router.get("/{connection_id}", response_model=SSHConnectionResponse)
 async def get_device_connection(
     connection_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _current_user=Depends(get_current_user),
 ):
     """获取单个SSH连接配置"""
     try:
@@ -193,7 +212,8 @@ async def get_device_connection(
             )
 
         # 获取关联的凭证信息
-        credential = db.query(Credential).filter(Credential.id == connection.credential_id).first()
+        cred_id = _credential_id_to_int(connection.credential_id)
+        credential = db.query(Credential).filter(Credential.id == cred_id).first() if cred_id is not None else None
         if credential:
             username = credential.username
             password = credential.password
@@ -240,7 +260,8 @@ async def get_device_connection(
 async def update_device_connection(
     connection_id: int,
     connection_update: SSHConnectionUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _current_user=Depends(get_current_user),
 ):
     """更新SSH连接配置"""
     try:
@@ -265,7 +286,8 @@ async def update_device_connection(
         db.refresh(db_connection)
 
         # 获取关联的凭证信息
-        credential = db.query(Credential).filter(Credential.id == db_connection.credential_id).first()
+        cred_id = _credential_id_to_int(db_connection.credential_id)
+        credential = db.query(Credential).filter(Credential.id == cred_id).first() if cred_id is not None else None
         if credential:
             username = credential.username
             password = credential.password
@@ -312,7 +334,8 @@ async def update_device_connection(
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_device_connection(
     connection_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _current_user=Depends(get_current_user),
 ):
     """删除SSH连接配置"""
     try:

@@ -13,6 +13,7 @@ from utils.datetime_utils import utc_to_beijing_str
 from ..process_designer.code_generator import CodeGenerator
 from ..schemas.job import JobCreate, JobUpdate
 from ..services.job import JobService
+from auth.authentication import get_current_user
 
 router = APIRouter(prefix="/api/process-definitions", tags=["流程管理"])
 
@@ -36,8 +37,11 @@ def _row_to_process_dict(row) -> dict:
 
 
 @router.get("", response_model=List[ProcessDefinition])
-async def get_process_definitions(db: Session = Depends(get_db)):
-    """获取流程定义列表"""
+async def get_process_definitions(
+    db: Session = Depends(get_db),
+    _current_user=Depends(get_current_user),
+):
+    """获取流程定义列表（已登录用户可见全部，系统管理员具备完整操作权限）"""
     result = db.execute(text("""
         SELECT * FROM process_definitions 
         WHERE deleted_at IS NULL
@@ -52,16 +56,21 @@ async def get_process_definitions(db: Session = Depends(get_db)):
     return process_definitions
 
 @router.post("", response_model=ProcessDefinition)
-async def create_process_definition(process: ProcessDefinitionCreate, db: Session = Depends(get_db)):
+async def create_process_definition(
+    process: ProcessDefinitionCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     """创建流程定义"""
     process_id = str(uuid4())
     now = datetime.utcnow().isoformat()
-    
+    username = getattr(current_user, "username", None) or "system"
+
     # 将 JSON 数据序列化为字符串
     nodes_json = json.dumps(process.nodes)
     edges_json = json.dumps(process.edges)
     variables_json = json.dumps(process.variables)
-    
+
     db.execute(text("""
         INSERT INTO process_definitions (
             id, name, description, version, status, nodes, edges, variables,
@@ -79,9 +88,9 @@ async def create_process_definition(process: ProcessDefinitionCreate, db: Sessio
         'nodes': nodes_json,
         'edges': edges_json,
         'variables': variables_json,
-        'created_by': 'admin',  # TODO: 从当前用户获取
+        'created_by': username,
         'created_at': now,
-        'updated_by': 'admin',  # TODO: 从当前用户获取
+        'updated_by': username,
         'updated_at': now
     })
     
@@ -100,7 +109,11 @@ async def create_process_definition(process: ProcessDefinitionCreate, db: Sessio
 
 # 带子路径的路由必须写在通用 /{process_id} 之前，否则 POST /xxx/generate-code 会被误匹配为 GET
 @router.post("/{process_id}/generate-code")
-async def generate_code(process_id: str, db: Session = Depends(get_db)):
+async def generate_code(
+    process_id: str,
+    db: Session = Depends(get_db),
+    _current_user=Depends(get_current_user),
+):
     """生成流程代码"""
     try:
         result = db.execute(text("""
@@ -124,7 +137,11 @@ async def generate_code(process_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{process_id}", response_model=ProcessDefinition)
-async def get_process_definition(process_id: str, db: Session = Depends(get_db)):
+async def get_process_definition(
+    process_id: str,
+    db: Session = Depends(get_db),
+    _current_user=Depends(get_current_user),
+):
     """获取流程定义详情"""
     result = db.execute(text("""
         SELECT * FROM process_definitions 
@@ -137,20 +154,26 @@ async def get_process_definition(process_id: str, db: Session = Depends(get_db))
     return ProcessDefinition(**_row_to_process_dict(row))
 
 @router.put("/{process_id}", response_model=ProcessDefinition)
-async def update_process_definition(process_id: str, process: ProcessDefinitionUpdate, db: Session = Depends(get_db)):
+async def update_process_definition(
+    process_id: str,
+    process: ProcessDefinitionUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     """更新流程定义"""
     # 获取现有流程定义
     result = db.execute(text("""
         SELECT * FROM process_definitions 
         WHERE id = :id AND deleted_at IS NULL
     """), {'id': process_id})
-    
+
     existing_process = result.mappings().first()
     if not existing_process:
         raise HTTPException(status_code=404, detail="流程定义不存在")
-    
+
     now = datetime.utcnow().isoformat()
     ep = _row_to_process_dict(existing_process)
+    username = getattr(current_user, "username", None) or "system"
     nodes_ver = ep["nodes"]
     edges_ver = ep["edges"]
     variables_ver = ep["variables"]
@@ -173,7 +196,7 @@ async def update_process_definition(process_id: str, process: ProcessDefinitionU
         'nodes': nodes_ver_str,
         'edges': edges_ver_str,
         'variables': variables_ver_str,
-        'created_by': ep.get('updated_by') or 'admin',
+        'created_by': ep.get('updated_by') or username,
         'created_at': now
     })
 
@@ -198,7 +221,7 @@ async def update_process_definition(process_id: str, process: ProcessDefinitionU
         'nodes': nodes_up,
         'edges': edges_up,
         'variables': variables_up,
-        'updated_by': 'admin',
+        'updated_by': username,
         'updated_at': now
     })
     
@@ -214,7 +237,11 @@ async def update_process_definition(process_id: str, process: ProcessDefinitionU
     return ProcessDefinition(**_row_to_process_dict(row))
 
 @router.delete("/{process_id}")
-async def delete_process_definition(process_id: str, db: Session = Depends(get_db)):
+async def delete_process_definition(
+    process_id: str,
+    db: Session = Depends(get_db),
+    _current_user=Depends(get_current_user),
+):
     """删除流程定义"""
     result = db.execute(text("""
         UPDATE process_definitions 
@@ -232,7 +259,11 @@ async def delete_process_definition(process_id: str, db: Session = Depends(get_d
     return {"message": "流程定义已删除"}
 
 @router.post("/{process_id}/publish")
-async def publish_process_definition(process_id: str, db: Session = Depends(get_db)):
+async def publish_process_definition(
+    process_id: str,
+    db: Session = Depends(get_db),
+    _current_user=Depends(get_current_user),
+):
     """发布流程定义；同时创建或更新作业（一次作业），供作业执行控制使用"""
     result = db.execute(text("""
         UPDATE process_definitions 
@@ -273,7 +304,11 @@ async def publish_process_definition(process_id: str, db: Session = Depends(get_
     return {"message": "流程定义已发布"}
 
 @router.post("/{process_id}/disable")
-async def disable_process_definition(process_id: str, db: Session = Depends(get_db)):
+async def disable_process_definition(
+    process_id: str,
+    db: Session = Depends(get_db),
+    _current_user=Depends(get_current_user),
+):
     """禁用流程定义"""
     result = db.execute(text("""
         UPDATE process_definitions 
@@ -292,7 +327,11 @@ async def disable_process_definition(process_id: str, db: Session = Depends(get_
     return {"message": "流程定义已禁用"}
 
 @router.get("/{process_id}/versions", response_model=List[ProcessDefinitionVersion])
-async def get_process_versions(process_id: str, db: Session = Depends(get_db)):
+async def get_process_versions(
+    process_id: str,
+    db: Session = Depends(get_db),
+    _current_user=Depends(get_current_user),
+):
     """获取流程版本历史"""
     # 获取流程版本历史
     result = db.execute(text("""
@@ -311,7 +350,12 @@ async def get_process_versions(process_id: str, db: Session = Depends(get_db)):
     return versions
 
 @router.post("/{process_id}/rollback/{version}")
-async def rollback_process_version(process_id: str, version: int, db: Session = Depends(get_db)):
+async def rollback_process_version(
+    process_id: str,
+    version: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     """回滚到指定版本"""
     # 获取指定版本的流程定义
     result = db.execute(text("""
@@ -341,10 +385,8 @@ async def rollback_process_version(process_id: str, version: int, db: Session = 
         'edges': version_data['edges'],
         'variables': version_data['variables'],
         'version': version,
-        'updated_by': 'admin',  # TODO: 从当前用户获取
+        'updated_by': getattr(current_user, "username", None) or "system",
         'updated_at': now
     })
-    
     db.commit()
-    
     return {"message": "回滚成功"}

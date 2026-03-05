@@ -76,7 +76,11 @@ const deviceTypes = [
  */
 export async function getSSHConfigs(): Promise<SSHConfig[]> {
   const response = await request.get('device/connections/');
-  return response.data;
+  // 兼容后端直接返回数组或包装为 { data: [] } 的情况
+  const raw = response.data;
+  if (Array.isArray(raw)) return raw;
+  if (raw && Array.isArray((raw as { data?: SSHConfig[] }).data)) return (raw as { data: SSHConfig[] }).data;
+  return [];
 }
 
 /**
