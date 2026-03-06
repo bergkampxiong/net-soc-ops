@@ -335,13 +335,44 @@ class JobService:
             stderr_chunks = []
             stdout_lock = threading.Lock()
             stderr_lock = threading.Lock()
+            # 共享回显缓冲：供定时写入（1/3/5 分钟）与结束时写 live_echo.txt + progress.json 使用
+            shared_echo_chunks = []
+            echo_lock = threading.Lock()
             latest_stats = {}
             progress_file = os.path.join(run_dir, "progress.json")
+            live_echo_path = os.path.join(run_dir, "live_echo.txt")
             read_chunk_size = 8192
 
+            def write_echo_and_progress(content_str: str) -> None:
+                """覆盖写 live_echo.txt，解析 4 项并写 progress.json（PRD：仅在此处与定时写更新 progress）。"""
+                if not content_str:
+                    return
+                try:
+                    with open(live_echo_path, "w", encoding="utf-8") as f:
+                        f.write(content_str)
+                except OSError:
+                    pass
+                stats = _parse_stdout_stats(content_str)
+                if stats:
+                    latest_stats.update(stats)
+                    try:
+                        with open(progress_file, "w", encoding="utf-8") as f:
+                            json.dump(latest_stats, f, ensure_ascii=False)
+                    except OSError:
+                        pass
+
+            def run_scheduled_writes(proc_ref):
+                """第 1、3、5 分钟各覆盖写一次 live_echo.txt 并更新 progress.json。"""
+                for wait_sec in (60, 120, 120):  # 1min, 再 2min 到 3min, 再 2min 到 5min
+                    time.sleep(wait_sec)
+                    if proc_ref is None or proc_ref.poll() is not None:
+                        return
+                    with echo_lock:
+                        content = "".join(shared_echo_chunks)
+                    write_echo_and_progress(content)
+
             def read_from_pty(master_fd):
-                """从 PTY master 读，使 Strix 认为有 TTY 从而输出与终端一致的 TUI。仅更新 progress.json（4 项），不实时写 txt。"""
-                nonlocal latest_stats
+                """从 PTY master 读，使 Strix 认为有 TTY；只收集到 shared_echo_chunks，不在此处写 progress。"""
                 pty_chunks = []
                 try:
                     while True:
@@ -353,15 +384,8 @@ class JobService:
                             break
                         chunk = data.decode("utf-8", errors="replace")
                         pty_chunks.append(chunk)
-                        buf = "".join(pty_chunks)
-                        stats = _parse_stdout_stats(buf)
-                        if stats:
-                            latest_stats.update(stats)
-                            try:
-                                with open(progress_file, "w", encoding="utf-8") as f:
-                                    json.dump(latest_stats, f, ensure_ascii=False)
-                            except OSError:
-                                pass
+                        with echo_lock:
+                            shared_echo_chunks.append(chunk)
                 finally:
                     with stdout_lock:
                         stdout_chunks.extend(pty_chunks)
@@ -371,7 +395,6 @@ class JobService:
                         pass
 
             def read_stdout(pipe):
-                nonlocal latest_stats
                 try:
                     while True:
                         chunk = pipe.read(read_chunk_size)
@@ -379,15 +402,8 @@ class JobService:
                             break
                         with stdout_lock:
                             stdout_chunks.append(chunk)
-                        buf = "".join(stdout_chunks)
-                        stats = _parse_stdout_stats(buf)
-                        if stats:
-                            latest_stats.update(stats)
-                            try:
-                                with open(progress_file, "w", encoding="utf-8") as f:
-                                    json.dump(latest_stats, f, ensure_ascii=False)
-                            except OSError:
-                                pass
+                        with echo_lock:
+                            shared_echo_chunks.append(chunk)
                 finally:
                     try:
                         pipe.close()
@@ -402,6 +418,8 @@ class JobService:
                             break
                         with stderr_lock:
                             stderr_chunks.append(chunk)
+                        with echo_lock:
+                            shared_echo_chunks.append(chunk)
                 finally:
                     try:
                         pipe.close()
@@ -431,6 +449,9 @@ class JobService:
                         t_pty = threading.Thread(target=read_from_pty, args=(master_fd,))
                         t_pty.daemon = True
                         t_pty.start()
+                        t_timer = threading.Thread(target=run_scheduled_writes, args=(proc,))
+                        t_timer.daemon = True
+                        t_timer.start()
                         proc.wait(timeout=3600)
                         t_pty.join(timeout=5)
                     except ImportError:
@@ -452,6 +473,9 @@ class JobService:
                     t_err.daemon = True
                     t_out.start()
                     t_err.start()
+                    t_timer = threading.Thread(target=run_scheduled_writes, args=(proc,))
+                    t_timer.daemon = True
+                    t_timer.start()
                     proc.wait(timeout=3600)
                     t_out.join(timeout=5)
                     t_err.join(timeout=5)
@@ -459,8 +483,15 @@ class JobService:
                     full_stdout = "".join(stdout_chunks)
                 with stderr_lock:
                     full_stderr = "".join(stderr_chunks)
-                script_logs += (full_stdout or "") + (full_stderr or "")
-                task.status = "success" if proc.returncode == 0 else "failed"
+                # 结束时再写一次 live_echo.txt + progress.json（PRD）
+                full_echo = (full_stdout or "") + "\n" + (full_stderr or "")
+                write_echo_and_progress(full_echo)
+                script_logs += full_echo
+                # Strix 可能非零退出仍为“完成”：以输出中是否含 "Penetration test completed" 判定成功
+                if "Penetration test completed" in full_echo:
+                    task.status = "success"
+                else:
+                    task.status = "success" if proc.returncode == 0 else "failed"
                 task.summary = json.dumps({
                     "stdout": (full_stdout or "")[:STRIX_SUMMARY_MAX_CHARS],
                     "stderr": (full_stderr or "")[:STRIX_SUMMARY_MAX_CHARS],
@@ -489,6 +520,7 @@ class JobService:
                     full_stdout = "".join(stdout_chunks)
                 with stderr_lock:
                     full_stderr = "".join(stderr_chunks)
+                write_echo_and_progress((full_stdout or "") + "\n" + (full_stderr or ""))
                 task.status = "failed"
                 task.summary = json.dumps({
                     "error": "执行超时",
@@ -510,6 +542,11 @@ class JobService:
                     t_out.join(timeout=2)
                 if t_err is not None:
                     t_err.join(timeout=2)
+                with stdout_lock:
+                    full_stdout = "".join(stdout_chunks)
+                with stderr_lock:
+                    full_stderr = "".join(stderr_chunks)
+                write_echo_and_progress((full_stdout or "") + "\n" + (full_stderr or ""))
                 task.status = "failed"
                 task.summary = json.dumps({"error": str(e)})
             finally:

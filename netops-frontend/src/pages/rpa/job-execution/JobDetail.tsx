@@ -176,13 +176,15 @@ const JobDetail: React.FC = () => {
       key: 'action',
       render: (_: any, record: JobExecution) => (
         <Space size="middle">
-          <Button
-            type="link"
-            onClick={() => handleViewLogs(record)}
-            disabled={!record.logs}
-          >
-            查看日志
-          </Button>
+          {!processHasPenetrationTest && (
+            <Button
+              type="link"
+              onClick={() => handleViewLogs(record)}
+              disabled={!record.logs}
+            >
+              查看日志
+            </Button>
+          )}
           {processHasPenetrationTest && (
             <Button
               type="link"

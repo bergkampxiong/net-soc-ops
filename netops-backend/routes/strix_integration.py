@@ -195,11 +195,11 @@ def list_scans(
         q = q.filter(StrixScanTask.created_by == created_by.strip())
     total = q.count()
     items = q.order_by(StrixScanTask.created_at.desc()).offset(skip).limit(limit).all()
+    # PRD：列表不返回 summary，仅保留任务元信息
     result = []
     for t in items:
         d = t.to_dict()
-        if d.get("summary"):
-            d["summary"] = _trim_summary_for_display(d["summary"])
+        d["summary"] = None
         result.append(d)
     return {"items": result, "total": total}
 
@@ -246,33 +246,48 @@ def _parse_strix_stdout_stats(stdout: str) -> dict:
     m = re.search(r"Model\s+(\S+)", out)
     if m:
         stats["model"] = _sanitize_model_display(_strip_ansi(m.group(1)).strip())
-    # TUI 中可能为 "Vulnerabilities 0"、"Agents 1  ·  Tools 34"；允许可选冒号，Tools 用 [\s·]* 兼容
-    m = re.search(r"Vulnerabilities\s*:?\s*(\d+)", out)
+    # Vulnerabilities：取最后一次数字；Agents/Tools：取关键词后第一个数字，多行时取最后一次出现
+    m = re.search(r"Vulnerabilities.*(\d+)", out)
     if m:
         stats["vulnerabilities"] = int(m.group(1))
-    m = re.search(r"Agents\s*:?\s*(\d+)", out)
-    if m:
-        stats["agents"] = int(m.group(1))
-    m = re.search(r"Tools\s+[\s·]*(\d+)", out)
-    if m:
-        stats["tools"] = int(m.group(1))
+    agents_m = re.findall(r"Agents\s+[\s·]*(\d+)", out)
+    if agents_m:
+        stats["agents"] = int(agents_m[-1])
+    tools_m = re.findall(r"Tools\s+[\s·]*(\d+)", out)
+    if tools_m:
+        stats["tools"] = int(tools_m[-1])
     return stats
 
 
 @router.get("/scans/{task_id}")
 def get_scan(task_id: int, db: Session = Depends(get_db)):
-    """任务详情。包含从 summary.stdout 解析的 strix_stats（vulnerabilities、agents、tools），便于前端展示进度或最终统计。"""
+    """任务详情。仅返回基础信息与 strix_stats（4 项），不返回 summary 原文（PRD）。"""
     task = db.query(StrixScanTask).filter(StrixScanTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Scan task not found")
     d = task.to_dict()
     summary = d.get("summary")
     if summary and isinstance(summary, dict):
-        d["summary"] = _trim_summary_for_display(summary)
         stdout = summary.get("stdout") or ""
         strix_stats = _parse_strix_stdout_stats(stdout)
         if strix_stats:
             d["strix_stats"] = strix_stats
+        # 展示用：若输出含 "Penetration test completed" 则视为成功（兼容旧记录及非零退出码）
+        if d.get("status") == "failed" and "Penetration test completed" in (stdout + (summary.get("stderr") or "")):
+            d["status"] = "success"
+    # 优先用 progress.json 的最终统计（任务结束时写入），避免 summary 截断或顺序导致数字不对
+    run_name = (task.run_name or "").strip()
+    if run_name:
+        backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        workspace_root = os.path.realpath(os.path.join(backend_root, "data", "strix_workspace"))
+        file_stats = _read_progress_payload(task_id, run_name, workspace_root)
+        if any(file_stats.get(k) is not None for k in ("model", "vulnerabilities", "agents", "tools")):
+            merged = dict(d.get("strix_stats") or {})
+            for k, v in file_stats.items():
+                if v is not None:
+                    merged[k] = v
+            d["strix_stats"] = merged
+    d["summary"] = None
     return d
 
 
@@ -321,13 +336,32 @@ def _find_report_any(path: str):
     return None, err or "No HTML or penetration_test_report.md found."
 
 
+def _resolve_report_base_path(task) -> str:
+    """解析报告根目录：优先 task.report_path，否则用 data/strix_workspace/{run_name}。"""
+    path = (task.report_path or "").strip()
+    if path and os.path.isdir(path):
+        return path
+    backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    workspace_root = os.path.realpath(os.path.join(backend_root, "data", "strix_workspace"))
+    run_name = (task.run_name or "").strip()
+    if run_name:
+        return os.path.join(workspace_root, run_name)
+    return path or ""
+
+
 @router.get("/scans/{task_id}/report")
 def get_scan_report(task_id: int, db: Session = Depends(get_db)):
     """返回报告目录下的 HTML 或 penetration_test_report.md；若无则返回文本说明。支持报告在子目录（strix_runs/xxx）。"""
     task = db.query(StrixScanTask).filter(StrixScanTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Scan task not found")
-    path = (task.report_path or "").strip()
+    path = _resolve_report_base_path(task)
+    if not path:
+        return PlainTextResponse(
+            content="Report path not set and run_name missing.",
+            status_code=404,
+            headers={"Content-Type": "text/plain; charset=utf-8"},
+        )
     found, result = _find_report_any(path)
     if found:
         media_type = result
@@ -349,7 +383,7 @@ def create_unified_report(task_id: int, db: Session = Depends(get_db)):
     task = db.query(StrixScanTask).filter(StrixScanTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Scan task not found")
-    path = (task.report_path or "").strip()
+    path = _resolve_report_base_path(task)
     if not path or not os.path.isdir(path):
         raise HTTPException(status_code=400, detail="Report path not ready or missing")
     global_kv = get_global_config_kv(db)
@@ -493,6 +527,7 @@ def get_scan_echo(
             else:
                 f.seek(-tail, 2)
                 content = f.read().decode("utf-8", errors="replace")
+        content = _strip_ansi(content)
         return PlainTextResponse(content=content, media_type="text/plain; charset=utf-8")
     except OSError:
         return PlainTextResponse(content="", media_type="text/plain; charset=utf-8")

@@ -42,6 +42,7 @@ interface ScanItem {
   created_by?: string | null;
   created_at: string;
   finished_at: string | null;
+  /** 列表/详情接口按 PRD 不返回原文，均为 null；仅用 strix_stats 展示 4 项 */
   summary: { stdout?: string; stderr?: string; high?: number; medium?: number; low?: number } | null;
   report_path: string | null;
   unified_report_path?: string | null;

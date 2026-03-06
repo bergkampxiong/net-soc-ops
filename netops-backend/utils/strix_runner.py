@@ -166,16 +166,16 @@ def _parse_stdout_stats(text: str) -> Dict[str, Any]:
     m = re.search(r"Model\s+(\S+)", text)
     if m:
         stats["model"] = _strip_ansi(m.group(1)).strip()
-    # TUI 中可能为 "Vulnerabilities 0"、"Agents 1  ·  Tools 34"；Tools 与数字间有 ·，用 [\s·]* 兼容；允许可选冒号
-    m = re.search(r"Vulnerabilities\s*:?\s*(\d+)", text)
+    # Vulnerabilities：取最后一次数字（如 Total: 6）；Agents/Tools：取关键词后第一个数字，多行时取最后一次出现
+    m = re.search(r"Vulnerabilities.*(\d+)", text)
     if m:
         stats["vulnerabilities"] = int(m.group(1))
-    m = re.search(r"Agents\s*:?\s*(\d+)", text)
-    if m:
-        stats["agents"] = int(m.group(1))
-    m = re.search(r"Tools\s+[\s·]*(\d+)", text)
-    if m:
-        stats["tools"] = int(m.group(1))
+    agents_m = re.findall(r"Agents\s+[\s·]*(\d+)", text)
+    if agents_m:
+        stats["agents"] = int(agents_m[-1])
+    tools_m = re.findall(r"Tools\s+[\s·]*(\d+)", text)
+    if tools_m:
+        stats["tools"] = int(tools_m[-1])
     return stats
 
 
