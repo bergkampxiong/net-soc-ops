@@ -5,11 +5,13 @@ import shutil
 import subprocess
 import threading
 import time
+import zipfile
+import io
 import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -333,6 +335,13 @@ def _find_report_any(path: str):
         sub_md = os.path.join(sub_path, md_name)
         if os.path.isfile(sub_md):
             return sub_md, "text/markdown"
+        # 作业执行时报告在 strix_runs/目标名_xxx/ 下，再进一层查找
+        for sub2 in os.listdir(sub_path):
+            sub2_path = os.path.join(sub_path, sub2)
+            if os.path.isdir(sub2_path):
+                sub2_md = os.path.join(sub2_path, md_name)
+                if os.path.isfile(sub2_md):
+                    return sub2_md, "text/markdown"
     return None, err or "No HTML or penetration_test_report.md found."
 
 
@@ -349,9 +358,17 @@ def _resolve_report_base_path(task) -> str:
     return path or ""
 
 
+def _report_dir_under_workspace(report_dir: str) -> bool:
+    """校验报告目录在 data/strix_workspace 下，避免打包任意路径。"""
+    backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    workspace_root = os.path.realpath(os.path.join(backend_root, "data", "strix_workspace"))
+    report_real = os.path.realpath(report_dir)
+    return report_real.startswith(workspace_root + os.sep) or report_real == workspace_root
+
+
 @router.get("/scans/{task_id}/report")
 def get_scan_report(task_id: int, db: Session = Depends(get_db)):
-    """返回报告目录下的 HTML 或 penetration_test_report.md；若无则返回文本说明。支持报告在子目录（strix_runs/xxx）。"""
+    """打包报告目录下所有文件为 zip 并返回下载。"""
     task = db.query(StrixScanTask).filter(StrixScanTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Scan task not found")
@@ -363,17 +380,25 @@ def get_scan_report(task_id: int, db: Session = Depends(get_db)):
             headers={"Content-Type": "text/plain; charset=utf-8"},
         )
     found, result = _find_report_any(path)
-    if found:
-        media_type = result
-        if "charset=" not in (media_type or ""):
-            media_type = (media_type or "application/octet-stream") + "; charset=utf-8"
-        return FileResponse(
-            found,
-            media_type=media_type,
-            filename=os.path.basename(found),
-        )
-    err = result if isinstance(result, str) else "Report not ready."
-    return PlainTextResponse(content=err, status_code=404, headers={"Content-Type": "text/plain; charset=utf-8"})
+    if not found:
+        err = result if isinstance(result, str) else "Report not ready."
+        return PlainTextResponse(content=err, status_code=404, headers={"Content-Type": "text/plain; charset=utf-8"})
+    report_dir = os.path.dirname(found)
+    if not _report_dir_under_workspace(report_dir):
+        raise HTTPException(status_code=400, detail="Report path not under workspace")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for root, _, files in os.walk(report_dir):
+            for f in files:
+                abs_path = os.path.join(root, f)
+                arcname = os.path.join(os.path.relpath(root, report_dir), f) if root != report_dir else f
+                zf.write(abs_path, arcname)
+    buf.seek(0)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=strix_report_{task_id}.zip"},
+    )
 
 
 # ---------- 统一渗透测试报告 ----------

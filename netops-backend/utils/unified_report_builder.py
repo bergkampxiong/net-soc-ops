@@ -23,8 +23,14 @@ def _resolve_report_dir(report_path: str) -> Optional[str]:
         return report_path
     for sub in os.listdir(report_path):
         sub_path = os.path.join(report_path, sub)
-        if os.path.isdir(sub_path) and os.path.isfile(os.path.join(sub_path, "penetration_test_report.md")):
+        if not os.path.isdir(sub_path):
+            continue
+        if os.path.isfile(os.path.join(sub_path, "penetration_test_report.md")):
             return sub_path
+        for sub2 in os.listdir(sub_path):
+            sub2_path = os.path.join(sub_path, sub2)
+            if os.path.isdir(sub2_path) and os.path.isfile(os.path.join(sub2_path, "penetration_test_report.md")):
+                return sub2_path
     return None
 
 

@@ -177,8 +177,13 @@ const PenetrationReports: React.FC = () => {
     }
   };
 
+  /** 下载 Strix 报告目录打包的 zip */
   const downloadReport = (taskId: number) => {
-    openReportInNewTab(`${STRIX_BASE}/scans/${taskId}/report`, taskId, '原始报告');
+    downloadReportAsFile(
+      `${STRIX_BASE}/scans/${taskId}/report`,
+      `strix_report_${taskId}.zip`,
+      '报告'
+    );
   };
 
   const generateUnifiedReport = async (taskId: number) => {
@@ -373,7 +378,7 @@ const PenetrationReports: React.FC = () => {
               <div style={{ marginTop: 16 }}>
                 <Space wrap>
                   <Button type="primary" icon={<FileTextOutlined />} onClick={() => downloadReport(detail.id)}>
-                    下载原始报告
+                    下载报告
                   </Button>
                   {detail.unified_report_path ? (
                     <>
@@ -450,7 +455,7 @@ const PenetrationReports: React.FC = () => {
             详情
           </Button>
           <Button type="link" size="small" onClick={() => downloadReport(record.id)}>
-            原始报告
+            下载报告
           </Button>
           {record.unified_report_path ? (
             <>

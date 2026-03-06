@@ -487,11 +487,13 @@ class JobService:
                 full_echo = (full_stdout or "") + "\n" + (full_stderr or "")
                 write_echo_and_progress(full_echo)
                 script_logs += full_echo
-                # Strix 可能非零退出仍为“完成”：以输出中是否含 "Penetration test completed" 判定成功
+                # Strix 可能非零退出仍为“完成”：0=正常结束，2=发现漏洞后结束；或输出含 "Penetration test completed" 即视为成功
                 if "Penetration test completed" in full_echo:
                     task.status = "success"
+                elif proc.returncode in (0, 2):
+                    task.status = "success"
                 else:
-                    task.status = "success" if proc.returncode == 0 else "failed"
+                    task.status = "failed"
                 task.summary = json.dumps({
                     "stdout": (full_stdout or "")[:STRIX_SUMMARY_MAX_CHARS],
                     "stderr": (full_stderr or "")[:STRIX_SUMMARY_MAX_CHARS],

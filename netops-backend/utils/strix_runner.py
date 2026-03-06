@@ -166,10 +166,10 @@ def _parse_stdout_stats(text: str) -> Dict[str, Any]:
     m = re.search(r"Model\s+(\S+)", text)
     if m:
         stats["model"] = _strip_ansi(m.group(1)).strip()
-    # Vulnerabilities：取最后一次数字（如 Total: 6）；Agents/Tools：取关键词后第一个数字，多行时取最后一次出现
-    m = re.search(r"Vulnerabilities.*(\d+)", text)
-    if m:
-        stats["vulnerabilities"] = int(m.group(1))
+    # Vulnerabilities：取最后一次出现（避免初始 0 覆盖最终 6）；Agents/Tools：取最后一次出现
+    vuln_m = re.findall(r"Vulnerabilities.*?(\d+)", text)
+    if vuln_m:
+        stats["vulnerabilities"] = int(vuln_m[-1])
     agents_m = re.findall(r"Agents\s+[\s·]*(\d+)", text)
     if agents_m:
         stats["agents"] = int(agents_m[-1])
