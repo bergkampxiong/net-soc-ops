@@ -13,7 +13,6 @@ from database.cmdb_models import Asset as AssetModel
 from utils.datetime_utils import utc_to_beijing_str
 from database.config_module_models import (
     ConfigModuleBackup,
-    ConfigChangeTemplate,
     ConfigCompliancePolicy,
     ConfigComplianceResult,
     ConfigEosInfo,
@@ -24,8 +23,6 @@ from schemas.config_module import (
     BackupListResponse,
     DiffResponse,
     SummaryStatsResponse,
-    ChangeTemplateCreate,
-    ChangeTemplateUpdate,
     CompliancePolicyCreate,
     CompliancePolicyUpdate,
     ComplianceRunRequest,
@@ -421,91 +418,6 @@ def recent_backups(
         .all()
     )
     return [_backup_to_response(r, include_content=False) for r in rows]
-
-
-# ---------- 配置变更模板 ----------
-@router.get("/change-templates")
-def list_change_templates(
-    device_type: Optional[str] = Query(None),
-    tag: Optional[str] = Query(None, description="标签关键词"),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db),
-):
-    q = db.query(ConfigChangeTemplate)
-    if device_type:
-        q = q.filter(ConfigChangeTemplate.device_type == device_type)
-    if tag:
-        q = q.filter(ConfigChangeTemplate.tags.ilike(f"%{tag}%"))
-    total = q.count()
-    rows = q.order_by(ConfigChangeTemplate.updated_at.desc()).offset(skip).limit(limit).all()
-    return {"items": [r.to_dict(include_content=True) for r in rows], "total": total}
-
-
-@router.get("/change-templates/{template_id}")
-def get_change_template(
-    template_id: int,
-    db: Session = Depends(get_db),
-):
-    t = db.query(ConfigChangeTemplate).filter(ConfigChangeTemplate.id == template_id).first()
-    if not t:
-        raise HTTPException(status_code=404, detail="Change template not found")
-    return t.to_dict(include_content=True)
-
-
-@router.post("/change-templates", status_code=201)
-def create_change_template(
-    body: ChangeTemplateCreate,
-    db: Session = Depends(get_db),
-):
-    t = ConfigChangeTemplate(
-        name=body.name,
-        device_type=body.device_type,
-        content=body.content,
-        tags=body.tags,
-        description=body.description,
-    )
-    db.add(t)
-    db.commit()
-    db.refresh(t)
-    return t.to_dict(include_content=True)
-
-
-@router.put("/change-templates/{template_id}")
-def update_change_template(
-    template_id: int,
-    body: ChangeTemplateUpdate,
-    db: Session = Depends(get_db),
-):
-    t = db.query(ConfigChangeTemplate).filter(ConfigChangeTemplate.id == template_id).first()
-    if not t:
-        raise HTTPException(status_code=404, detail="Change template not found")
-    if body.name is not None:
-        t.name = body.name
-    if body.device_type is not None:
-        t.device_type = body.device_type
-    if body.content is not None:
-        t.content = body.content
-    if body.tags is not None:
-        t.tags = body.tags
-    if body.description is not None:
-        t.description = body.description
-    db.commit()
-    db.refresh(t)
-    return t.to_dict(include_content=True)
-
-
-@router.delete("/change-templates/{template_id}", status_code=204)
-def delete_change_template(
-    template_id: int,
-    db: Session = Depends(get_db),
-):
-    t = db.query(ConfigChangeTemplate).filter(ConfigChangeTemplate.id == template_id).first()
-    if not t:
-        raise HTTPException(status_code=404, detail="Change template not found")
-    db.delete(t)
-    db.commit()
-    return None
 
 
 # ---------- 合规策略 ----------

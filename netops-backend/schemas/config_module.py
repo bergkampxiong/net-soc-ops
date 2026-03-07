@@ -51,23 +51,6 @@ class SummaryStatsResponse(BaseModel):
     compliance_pass_rate: Optional[float] = None
 
 
-# ---------- 配置变更模板 ----------
-class ChangeTemplateCreate(BaseModel):
-    name: str
-    device_type: Optional[str] = None
-    content: str
-    tags: Optional[str] = None
-    description: Optional[str] = None
-
-
-class ChangeTemplateUpdate(BaseModel):
-    name: Optional[str] = None
-    device_type: Optional[str] = None
-    content: Optional[str] = None
-    tags: Optional[str] = None
-    description: Optional[str] = None
-
-
 # ---------- 合规 ----------
 class CompliancePolicyCreate(BaseModel):
     name: str

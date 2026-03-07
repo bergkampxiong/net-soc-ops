@@ -13,9 +13,9 @@ import {
   message,
   Descriptions,
   Popconfirm,
-  Statistic,
   Row,
   Col,
+  Statistic,
 } from 'antd';
 import { ReloadOutlined, FileTextOutlined, ArrowLeftOutlined, PlusOutlined, EyeOutlined, DeleteOutlined } from '@ant-design/icons';
 import request, { LONG_REQUEST_TIMEOUT } from '@/utils/request';
@@ -299,15 +299,15 @@ const PenetrationReports: React.FC = () => {
 
     return (
       <div style={{ padding: 24 }}>
-        <Space>
-          <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/rpa/task-job-management/penetration-reports')}>
+        <Space style={{ marginBottom: 16 }}>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/rpa/task-job-management/penetration-reports')}>
             返回列表
           </Button>
-          <Button type="text" icon={<ReloadOutlined />} onClick={refreshDetail} loading={detailLoading}>
+          <Button icon={<ReloadOutlined />} onClick={refreshDetail} loading={detailLoading}>
             刷新
           </Button>
         </Space>
-        <Card title="扫描报告详情" loading={detailLoading} style={{ marginTop: 16 }}>
+        <Card title="扫描报告详情" loading={detailLoading}>
           {detail && (
             <>
               <Descriptions bordered column={1} size="small">
@@ -324,89 +324,45 @@ const PenetrationReports: React.FC = () => {
                 <Descriptions.Item label="结束时间">{formatBeijingToSecond(detail.finished_at)}</Descriptions.Item>
               </Descriptions>
               {(detail.status === 'running' || detail.status === 'pending') && (
-                <>
-                  <Card
-                    size="small"
-                    title="运行状态"
-                    style={{ marginTop: 16 }}
-                    extra={
-                      <Space>
-                        <Button size="small" icon={<ReloadOutlined />} loading={progressLoading} onClick={fetchProgress}>
-                          刷新
-                        </Button>
-                        <Popconfirm title="确定取消该扫描任务？" onConfirm={() => handleCancelScan(detail.id)} okText="确定" cancelText="取消">
-                          <Button size="small" danger loading={cancellingId === detail.id}>取消任务</Button>
-                        </Popconfirm>
-                      </Space>
-                    }
-                  >
-                    <Row gutter={24}>
-                      <Col span={6}>
-                        <Statistic title="模型" value={(progress?.model ?? detail.strix_stats?.model) || '-'} valueStyle={{ fontSize: 14 }} />
-                      </Col>
-                      <Col span={6}>
-                        <Statistic title="漏洞数" value={(progress?.vulnerabilities ?? detail.strix_stats?.vulnerabilities) ?? 0} />
-                      </Col>
-                      <Col span={6}>
-                        <Statistic title="Agents" value={(progress?.agents ?? detail.strix_stats?.agents) ?? 0} />
-                      </Col>
-                      <Col span={6}>
-                        <Statistic title="Tools" value={(progress?.tools ?? detail.strix_stats?.tools) ?? 0} />
-                      </Col>
-                    </Row>
-                  </Card>
-                </>
+                <Card size="small" title="运行状态" style={{ marginTop: 16 }} extra={
+                  <Space>
+                    <Button size="small" icon={<ReloadOutlined />} loading={progressLoading} onClick={fetchProgress}>刷新</Button>
+                    <Popconfirm title="确定取消该扫描任务？" onConfirm={() => handleCancelScan(detail.id)} okText="确定" cancelText="取消">
+                      <Button size="small" danger loading={cancellingId === detail.id}>取消任务</Button>
+                    </Popconfirm>
+                  </Space>
+                }>
+                  <Row gutter={24}>
+                    <Col span={6}><Statistic title="模型" value={(progress?.model ?? detail.strix_stats?.model) || '-'} valueStyle={{ fontSize: 14 }} /></Col>
+                    <Col span={6}><Statistic title="漏洞数" value={(progress?.vulnerabilities ?? detail.strix_stats?.vulnerabilities) ?? 0} /></Col>
+                    <Col span={6}><Statistic title="Agents" value={(progress?.agents ?? detail.strix_stats?.agents) ?? 0} /></Col>
+                    <Col span={6}><Statistic title="Tools" value={(progress?.tools ?? detail.strix_stats?.tools) ?? 0} /></Col>
+                  </Row>
+                </Card>
               )}
               {(detail.status === 'success' || detail.status === 'failed') && detail.strix_stats && (
                 <Card size="small" title="运行状态" style={{ marginTop: 16 }}>
                   <Row gutter={24}>
-                    <Col span={6}>
-                      <Statistic title="模型" value={detail.strix_stats.model || '-'} valueStyle={{ fontSize: 14 }} />
-                    </Col>
-                    <Col span={6}>
-                      <Statistic title="漏洞数" value={detail.strix_stats.vulnerabilities ?? 0} />
-                    </Col>
-                    <Col span={6}>
-                      <Statistic title="Agents" value={detail.strix_stats.agents ?? 0} />
-                    </Col>
-                    <Col span={6}>
-                      <Statistic title="Tools" value={detail.strix_stats.tools ?? 0} />
-                    </Col>
+                    <Col span={6}><Statistic title="模型" value={detail.strix_stats.model || '-'} valueStyle={{ fontSize: 14 }} /></Col>
+                    <Col span={6}><Statistic title="漏洞数" value={detail.strix_stats.vulnerabilities ?? 0} /></Col>
+                    <Col span={6}><Statistic title="Agents" value={detail.strix_stats.agents ?? 0} /></Col>
+                    <Col span={6}><Statistic title="Tools" value={detail.strix_stats.tools ?? 0} /></Col>
                   </Row>
                 </Card>
               )}
               <div style={{ marginTop: 16 }}>
                 <Space wrap>
-                  <Button type="primary" icon={<FileTextOutlined />} onClick={() => downloadReport(detail.id)}>
-                    下载报告
-                  </Button>
+                  <Button type="primary" icon={<FileTextOutlined />} onClick={() => downloadReport(detail.id)}>下载报告</Button>
                   {detail.unified_report_path ? (
                     <>
-                      <Button icon={<FileTextOutlined />} onClick={() => downloadUnifiedReport(detail.id)}>
-                        下载统一报告
-                      </Button>
-                      <Button icon={<EyeOutlined />} onClick={() => previewUnifiedReport(detail.id)}>
-                        预览统一报告
-                      </Button>
+                      <Button icon={<FileTextOutlined />} onClick={() => downloadUnifiedReport(detail.id)}>下载统一报告</Button>
+                      <Button icon={<EyeOutlined />} onClick={() => previewUnifiedReport(detail.id)}>预览统一报告</Button>
                     </>
                   ) : (
-                    <Button
-                      icon={<PlusOutlined />}
-                      loading={generatingId === detail.id}
-                      onClick={() => generateUnifiedReport(detail.id)}
-                    >
-                      生成统一报告
-                    </Button>
+                    <Button icon={<PlusOutlined />} loading={generatingId === detail.id} onClick={() => generateUnifiedReport(detail.id)}>生成统一报告</Button>
                   )}
-                  <Popconfirm
-                    title="确定删除该渗透测试报告记录？"
-                    onConfirm={() => handleDelete(detail.id)}
-                    okText="确定"
-                    cancelText="取消"
-                  >
-                    <Button danger icon={<DeleteOutlined />} loading={deletingId === detail.id}>
-                      删除
-                    </Button>
+                  <Popconfirm title="确定删除该渗透测试报告记录？" onConfirm={() => handleDelete(detail.id)} okText="确定" cancelText="取消">
+                    <Button danger icon={<DeleteOutlined />} loading={deletingId === detail.id}>删除</Button>
                   </Popconfirm>
                 </Space>
                 {!detail.unified_report_path && (
@@ -448,9 +404,9 @@ const PenetrationReports: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: 260,
+      width: 280,
       render: (_: unknown, record: ScanItem) => (
-        <Space wrap>
+        <Space wrap size="small">
           <Button type="link" size="small" onClick={() => navigate(`/rpa/task-job-management/penetration-reports/${record.id}`)}>
             详情
           </Button>
@@ -482,54 +438,36 @@ const PenetrationReports: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <Typography.Title level={4}>渗透测试报告</Typography.Title>
-      <Card>
-        <Space style={{ marginBottom: 16 }} wrap>
-          <Form layout="inline" onValuesChange={(_, v) => setFilters(v)}>
-            <Form.Item name="job_execution_id" label="作业执行 ID">
-              <Input type="number" placeholder="筛选" style={{ width: 120 }} />
-            </Form.Item>
-            <Form.Item name="status" label="状态">
-              <Select placeholder="全部" allowClear style={{ width: 100 }} options={Object.entries(statusMap).map(([k, v]) => ({ value: k, label: v.text }))} />
-            </Form.Item>
-            <Form.Item name="created_by" label="来源">
-              <Select placeholder="全部" allowClear style={{ width: 110 }} options={[{ value: 'job', label: '作业执行' }]} />
-            </Form.Item>
-          </Form>
+    <Card>
+      <Form layout="inline" onValuesChange={(_, v) => setFilters(v)} style={{ marginBottom: 16 }}>
+        <Form.Item name="job_execution_id" label="作业执行 ID">
+          <Input type="number" placeholder="筛选" style={{ width: 120 }} />
+        </Form.Item>
+        <Form.Item name="status" label="状态">
+          <Select placeholder="全部" allowClear style={{ width: 100 }} options={Object.entries(statusMap).map(([k, v]) => ({ value: k, label: v.text }))} />
+        </Form.Item>
+        <Form.Item name="created_by" label="来源">
+          <Select placeholder="全部" allowClear style={{ width: 110 }} options={[{ value: 'job', label: '作业执行' }]} />
+        </Form.Item>
+      </Form>
+      <div style={{ marginBottom: 16 }}>
+        <Space>
           <Button icon={<ReloadOutlined />} onClick={fetchList}>刷新</Button>
-          <Popconfirm
-            title={`确定删除已勾选的 ${selectedRowKeys.length} 条报告？`}
-            onConfirm={handleBatchDelete}
-            okText="确定"
-            cancelText="取消"
-            disabled={selectedRowKeys.length === 0}
-          >
-            <Button danger icon={<DeleteOutlined />} loading={batchDeleting} disabled={selectedRowKeys.length === 0}>
-              删除
-            </Button>
+          <Popconfirm title={`确定删除已勾选的 ${selectedRowKeys.length} 条报告？`} onConfirm={handleBatchDelete} okText="确定" cancelText="取消" disabled={selectedRowKeys.length === 0}>
+            <Button danger icon={<DeleteOutlined />} loading={batchDeleting} disabled={selectedRowKeys.length === 0}>批量删除</Button>
           </Popconfirm>
         </Space>
-        <Table
-          rowKey="id"
-          loading={loading}
-          rowSelection={{
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys(keys),
-          }}
-          columns={columns}
-          dataSource={list}
-          pagination={{
-            total,
-            current: page,
-            pageSize,
-            showSizeChanger: false,
-            onChange: setPage,
-          }}
-          size="small"
-        />
-      </Card>
-    </div>
+      </div>
+      <Table
+        rowKey="id"
+        loading={loading}
+        rowSelection={{ selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys) }}
+        columns={columns}
+        dataSource={list}
+        pagination={{ total, current: page, pageSize, showSizeChanger: false, onChange: setPage }}
+        size="small"
+      />
+    </Card>
   );
 };
 

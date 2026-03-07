@@ -603,25 +603,43 @@ def cancel_scan(task_id: int, db: Session = Depends(get_db)):
     return {"id": task_id, "status": "cancelled"}
 
 
+def _get_strix_workspace_root() -> str:
+    """返回 strix 工作目录根路径（与 job 服务、strix_runner 一致）。"""
+    backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    return os.path.realpath(os.path.join(backend_root, "data", "strix_workspace"))
+
+
 def _ensure_path_under_strix_workspace(path: str) -> bool:
     """校验 path 在 data/strix_workspace 下，避免误删系统目录。"""
     if not path or not os.path.isabs(path):
         return False
-    backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    workspace_root = os.path.realpath(os.path.join(backend_root, "data", "strix_workspace"))
+    workspace_root = _get_strix_workspace_root()
     path_real = os.path.realpath(path)
     return path_real.startswith(workspace_root + os.sep) or path_real == workspace_root
 
 
 @router.delete("/scans/{task_id}")
 def delete_scan(task_id: int, db: Session = Depends(get_db)):
-    """删除渗透测试报告记录，并删除磁盘上的报告目录。"""
+    """删除渗透测试报告记录，并删除磁盘上 strix 运行创建的 job 目录（run_name 对应整棵目录）及报告路径。"""
     task = db.query(StrixScanTask).filter(StrixScanTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Scan task not found")
     report_path = (task.report_path or "").strip()
+    run_name = (task.run_name or "").strip()
     db.delete(task)
     db.commit()
+
+    workspace_root = _get_strix_workspace_root()
+    # 优先删除 strix 运行创建的整棵 job 目录（含 strix_runs 等），避免遗留 job 文件夹
+    if run_name:
+        run_dir = os.path.join(workspace_root, run_name)
+        if _ensure_path_under_strix_workspace(run_dir) and os.path.isdir(run_dir):
+            try:
+                shutil.rmtree(run_dir)
+                logger.info("已删除 strix job 目录: %s", run_dir)
+            except OSError as e:
+                logger.warning("删除 strix job 目录失败 %s: %s", run_dir, e)
+    # 若未通过 run_name 删除，或 report_path 与 run_dir 不同（如仅子目录），再尝试删 report_path
     if report_path and _ensure_path_under_strix_workspace(report_path) and os.path.isdir(report_path):
         try:
             shutil.rmtree(report_path)
