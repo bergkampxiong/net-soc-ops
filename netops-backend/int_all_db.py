@@ -42,7 +42,10 @@ from database.config_module_models import (
     ConfigModuleBackup,
     ConfigChangeTemplate,
     ConfigCompliancePolicy,
+    ConfigComplianceReport,
+    ConfigComplianceReportPolicy,
     ConfigComplianceResult,
+    ConfigComplianceSchedule,
     ConfigEosInfo,
 )
 from database.strix_models import StrixScanTask, StrixConfig
@@ -586,6 +589,46 @@ def ensure_config_backup_job_execution_id(engine):
         print(f"ensure_config_backup_job_execution_id 失败: {e}")
 
 
+def ensure_config_compliance_result_report_id(engine):
+    """为 config_compliance_results 表添加 report_id 列（兼容已有库）。"""
+    try:
+        inspector = inspect(engine)
+        if "config_compliance_results" not in inspector.get_table_names():
+            return
+        columns = [col["name"] for col in inspector.get_columns("config_compliance_results")]
+        if "report_id" in columns:
+            return
+        with engine.connect() as conn:
+            conn.execute(text(
+                "ALTER TABLE config_compliance_results ADD COLUMN report_id INTEGER "
+                "REFERENCES config_compliance_reports(id) ON DELETE SET NULL"
+            ))
+            conn.commit()
+        print("已添加 report_id 列到 config_compliance_results 表")
+    except Exception as e:
+        print(f"ensure_config_compliance_result_report_id 失败: {e}")
+
+
+def ensure_config_compliance_policy_enabled_group(engine):
+    """为 config_compliance_policies 表添加 enabled、group 列（兼容已有库）。"""
+    try:
+        inspector = inspect(engine)
+        if "config_compliance_policies" not in inspector.get_table_names():
+            return
+        columns = [col["name"] for col in inspector.get_columns("config_compliance_policies")]
+        with engine.connect() as conn:
+            if "enabled" not in columns:
+                conn.execute(text("ALTER TABLE config_compliance_policies ADD COLUMN enabled BOOLEAN DEFAULT TRUE NOT NULL"))
+                conn.commit()
+                print("已添加 enabled 列到 config_compliance_policies 表")
+            if "group" not in columns:
+                conn.execute(text("ALTER TABLE config_compliance_policies ADD COLUMN \"group\" VARCHAR(128)"))
+                conn.commit()
+                print("已添加 group 列到 config_compliance_policies 表")
+    except Exception as e:
+        print(f"ensure_config_compliance_policy_enabled_group 失败: {e}")
+
+
 def init_config_module_tables(engine):
     """初始化配置管理模块表（备份、变更模板、合规、服务终止），不修改其它表或逻辑。"""
     try:
@@ -593,9 +636,14 @@ def init_config_module_tables(engine):
         ensure_config_backup_job_execution_id(engine)
         ConfigChangeTemplate.__table__.create(engine, checkfirst=True)
         ConfigCompliancePolicy.__table__.create(engine, checkfirst=True)
+        ensure_config_compliance_policy_enabled_group(engine)
+        ConfigComplianceReport.__table__.create(engine, checkfirst=True)
+        ConfigComplianceReportPolicy.__table__.create(engine, checkfirst=True)
         ConfigComplianceResult.__table__.create(engine, checkfirst=True)
+        ensure_config_compliance_result_report_id(engine)
+        ConfigComplianceSchedule.__table__.create(engine, checkfirst=True)
         ConfigEosInfo.__table__.create(engine, checkfirst=True)
-        print("配置管理模块表（backups/change_templates/compliance_policies/compliance_results/eos_info）创建完成")
+        print("配置管理模块表（backups/change_templates/compliance/reports/eos_info）创建完成")
     except Exception as e:
         print(f"配置管理模块表初始化失败: {str(e)}")
         raise

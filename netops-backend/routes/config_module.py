@@ -1,5 +1,6 @@
 # 配置管理模块 API：设备配置备份、配置摘要、变更模板、合规、服务终止（不修改其它功能）
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_
 from typing import Optional, List, Tuple
@@ -7,17 +8,26 @@ from datetime import datetime, timedelta
 import difflib
 import re
 import logging
+import json
+import io
+import os
+import csv
+import xml.etree.ElementTree as ET
 
 from database.session import get_db
-from database.cmdb_models import Asset as AssetModel
+from database.cmdb_models import Asset as AssetModel, DeviceType as CMDBDeviceType
 from utils.datetime_utils import utc_to_beijing_str
 from database.config_module_models import (
     ConfigModuleBackup,
     ConfigCompliancePolicy,
+    ConfigComplianceReport,
+    ConfigComplianceReportPolicy,
     ConfigComplianceResult,
+    ConfigComplianceSchedule,
     ConfigEosInfo,
 )
 from schemas.config_module import (
+    CompliancePolicyBulkEnabledByGroup,
     BackupCreate,
     BackupResponse,
     BackupListResponse,
@@ -26,6 +36,12 @@ from schemas.config_module import (
     CompliancePolicyCreate,
     CompliancePolicyUpdate,
     ComplianceRunRequest,
+    ComplianceReportCreate,
+    ComplianceReportUpdate,
+    ComplianceReportEnabledUpdate,
+    ComplianceScheduleCreate,
+    ComplianceScheduleUpdate,
+    ComplianceResultBatchDelete,
     EosInfoCreate,
     EosInfoUpdate,
 )
@@ -98,7 +114,7 @@ def list_backups(
 
 
 def _enrich_devices_with_cmdb(result: list) -> None:
-    """根据 device_host 查 CMDB，为 result 中每项补充 cmdb_name、cmdb_model、cmdb_vendor。"""
+    """根据 device_host 查 CMDB，为 result 中每项补充 cmdb_name、cmdb_model、cmdb_vendor、cmdb_device_type。"""
     hosts = list({x["device_host"].strip() for x in result if x.get("device_host") and (x["device_host"] or "").strip()})
     if not hosts:
         return
@@ -112,6 +128,7 @@ def _enrich_devices_with_cmdb(result: list) -> None:
                 .options(
                     joinedload(AssetModel.network_device),
                     joinedload(AssetModel.vendor),
+                    joinedload(AssetModel.device_type),
                 )
                 .all()
             )
@@ -123,10 +140,12 @@ def _enrich_devices_with_cmdb(result: list) -> None:
                 if ip not in cmdb_map:
                     nd = a.network_device
                     vendor_name = a.vendor.name if a.vendor else None
+                    device_type_name = a.device_type.name if a.device_type else None
                     cmdb_map[ip] = {
                         "cmdb_name": a.name,
                         "cmdb_model": nd.device_model if nd else None,
                         "cmdb_vendor": vendor_name,
+                        "cmdb_device_type": device_type_name,
                     }
             for x in result:
                 host = (x.get("device_host") or "").strip()
@@ -136,6 +155,26 @@ def _enrich_devices_with_cmdb(result: list) -> None:
             cmdb_db.close()
     except Exception as e:
         logger.warning("CMDB 查询失败，设备列表不补充 CMDB 信息: %s", e)
+
+
+def _get_backup_devices_filtered_by_device_type(db: Session, device_type: str) -> List[Tuple[str, str]]:
+    """返回设备类型与 device_type 一致且存在最新配置备份的设备列表，每项 (device_host or '', device_id)。"""
+    if not (device_type or (device_type := (device_type or "").strip())):
+        return []
+    rows = (
+        db.query(ConfigModuleBackup)
+        .order_by(ConfigModuleBackup.created_at.desc())
+        .all()
+    )
+    groups: dict = {}
+    for r in rows:
+        key = _device_key(r.device_host, r.device_id)
+        if key not in groups:
+            groups[key] = r
+    result = [{"device_key": k, "device_id": v.device_id, "device_host": v.device_host} for k, v in groups.items()]
+    _enrich_devices_with_cmdb(result)
+    matched = [x for x in result if (x.get("cmdb_device_type") or "").strip().lower() == device_type.strip().lower()]
+    return [(x.get("device_host") or "", x.get("device_id") or "") for x in matched]
 
 
 @router.get("/backups/devices")
@@ -423,11 +462,29 @@ def recent_backups(
 # ---------- 合规策略 ----------
 @router.get("/compliance/policies")
 def list_compliance_policies(
+    group: Optional[str] = Query(None),
+    enabled: Optional[bool] = Query(None),
+    report_id: Optional[int] = Query(None, description="规则集(报告)ID，仅返回该规则集下的策略"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
+    """策略列表；支持按 group、enabled、report_id（规则集）筛选。"""
     q = db.query(ConfigCompliancePolicy)
+    if group is not None and (group := (group or "").strip()):
+        q = q.filter(ConfigCompliancePolicy.group == group)
+    if enabled is not None:
+        q = q.filter(ConfigCompliancePolicy.enabled == enabled)
+    if report_id is not None:
+        total = db.query(ConfigComplianceReportPolicy).filter(ConfigComplianceReportPolicy.report_id == report_id).count()
+        links = db.query(ConfigComplianceReportPolicy).filter(ConfigComplianceReportPolicy.report_id == report_id).order_by(ConfigComplianceReportPolicy.sort_order).offset(skip).limit(limit).all()
+        policy_ids = [x.policy_id for x in links]
+        if not policy_ids:
+            return {"items": [], "total": total}
+        rows = db.query(ConfigCompliancePolicy).filter(ConfigCompliancePolicy.id.in_(policy_ids)).all()
+        id_to_row = {r.id: r for r in rows}
+        rows = [id_to_row[pid] for pid in policy_ids if pid in id_to_row]
+        return {"items": [r.to_dict() for r in rows], "total": total}
     total = q.count()
     rows = q.order_by(ConfigCompliancePolicy.id).offset(skip).limit(limit).all()
     return {"items": [r.to_dict() for r in rows], "total": total}
@@ -455,6 +512,8 @@ def create_compliance_policy(
         rule_content=body.rule_content,
         device_type=body.device_type,
         description=body.description,
+        group=body.group,
+        enabled=body.enabled if body.enabled is not None else True,
     )
     db.add(p)
     db.commit()
@@ -481,9 +540,61 @@ def update_compliance_policy(
         p.device_type = body.device_type
     if body.description is not None:
         p.description = body.description
+    if body.group is not None:
+        p.group = body.group
+    if body.enabled is not None:
+        p.enabled = body.enabled
     db.commit()
     db.refresh(p)
     return p.to_dict()
+
+
+@router.patch("/compliance/policies/{policy_id}/enabled")
+def update_compliance_policy_enabled(
+    policy_id: int,
+    body: ComplianceReportEnabledUpdate,
+    db: Session = Depends(get_db),
+):
+    """策略启用/停用。"""
+    p = db.query(ConfigCompliancePolicy).filter(ConfigCompliancePolicy.id == policy_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    p.enabled = body.enabled
+    db.commit()
+    db.refresh(p)
+    return p.to_dict()
+
+
+@router.patch("/compliance/policies/bulk-enabled-by-group")
+def bulk_update_compliance_policies_enabled_by_group(
+    body: CompliancePolicyBulkEnabledByGroup,
+    db: Session = Depends(get_db),
+):
+    """按分组统一设置启用状态（一个文件导入为一组，前端按组显示、一组一个开关）。"""
+    q = db.query(ConfigCompliancePolicy)
+    if body.group is None or (isinstance(body.group, str) and not body.group.strip()):
+        q = q.filter(or_(ConfigCompliancePolicy.group.is_(None), ConfigCompliancePolicy.group == ""))
+    else:
+        q = q.filter(ConfigCompliancePolicy.group == body.group.strip())
+    updated = q.update({ConfigCompliancePolicy.enabled: body.enabled}, synchronize_session=False)
+    db.commit()
+    return {"updated": updated}
+
+
+@router.delete("/compliance/policies/by-group", status_code=200)
+def delete_compliance_policies_by_group(
+    group: Optional[str] = Query(None, description="分组名，不传或空表示删除未分组的策略"),
+    db: Session = Depends(get_db),
+):
+    """按分组删除全部策略（删除整组/整份导入）。"""
+    q = db.query(ConfigCompliancePolicy)
+    if group is None or (isinstance(group, str) and not group.strip()):
+        q = q.filter(or_(ConfigCompliancePolicy.group.is_(None), ConfigCompliancePolicy.group == ""))
+    else:
+        q = q.filter(ConfigCompliancePolicy.group == group.strip())
+    deleted = q.delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": deleted}
 
 
 @router.delete("/compliance/policies/{policy_id}", status_code=204)
@@ -497,6 +608,363 @@ def delete_compliance_policy(
     db.delete(p)
     db.commit()
     return None
+
+
+def _find_el(parent, *tag_candidates):
+    """在 parent 下按标签名查找子元素（兼容无命名空间或带命名空间）。"""
+    for tag in tag_candidates:
+        el = parent.find(tag)
+        if el is not None:
+            return el
+    if parent.tag and "}" in parent.tag:
+        ns = parent.tag.split("}", 1)[0] + "}"
+        for tag in tag_candidates:
+            el = parent.find(ns + tag)
+            if el is not None:
+                return el
+    return None
+
+
+def _findall_el(parent, tag):
+    """在 parent 下按标签名查找所有子元素。"""
+    out = parent.findall(tag)
+    if out:
+        return out
+    if parent.tag and "}" in parent.tag:
+        ns = parent.tag.split("}", 1)[0] + "}"
+        return parent.findall(ns + tag)
+    return []
+
+
+def _text(el):
+    return (el.text or "").strip() if el is not None else ""
+
+
+def _parse_policies_from_xml(content: str) -> Tuple[str, list]:
+    """从 XML 解析策略列表，返回 (规则集名称, 策略列表)。支持本系统导出与 NCM 规则集格式。"""
+    root = ET.fromstring(content)
+    rule_set_name = (root.get("name") or root.get("Name") or _text(_find_el(root, "Name")) or _text(_find_el(root, "Group")) or "").strip()
+    assn = _find_el(root, "AssignedPolicies", "AssignedPolicy")
+    if assn is None:
+        return rule_set_name, []
+    out = []
+    for pol in _findall_el(assn, "Policy"):
+        rcontent = pol.get("rule_content") or pol.get("RuleContent") or pol.get("SimplePatternText") or ""
+        if rcontent:
+            out.append({
+                "name": pol.get("name") or pol.get("Name") or "策略",
+                "rule_type": pol.get("rule_type") or pol.get("RuleType") or "must_contain",
+                "rule_content": rcontent,
+                "device_type": pol.get("device_type") or pol.get("DeviceType"),
+                "group": rule_set_name or pol.get("group") or pol.get("Group"),
+            })
+            continue
+        policy_group = _text(_find_el(pol, "PolicyName")) or rule_set_name or "策略"
+        rules_el = _find_el(pol, "AssignedPolicyRules")
+        if rules_el is None:
+            continue
+        for rule in _findall_el(rules_el, "PolicyRule"):
+            simple_text = _text(_find_el(rule, "SimplePatternText"))
+            if not simple_text:
+                continue
+            rule_name = _text(_find_el(rule, "RuleName")) or simple_text[:50]
+            pattern_type = (_text(_find_el(rule, "PatternType")) or "").lower()
+            rule_type = "regex" if "regex" in pattern_type else "must_contain"
+            out.append({
+                "name": rule_name,
+                "rule_type": rule_type,
+                "rule_content": simple_text,
+                "device_type": None,
+                "group": policy_group or rule_set_name,
+            })
+    return rule_set_name, out
+
+
+@router.post("/compliance/policies/import")
+def import_compliance_policies(
+    db: Session = Depends(get_db),
+    file: UploadFile = File(...),
+):
+    """策略管理导入：仅创建策略（不创建报告）。支持 JSON 与 XML（含 NCM 格式）；可用文档名作为策略分组便于筛选。"""
+    try:
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="请上传文件")
+        content = file.file.read()
+        if isinstance(content, bytes):
+            content = content.decode("utf-8")
+        content_stripped = content.strip()
+        policies_data: list = []
+        doc_group = ""
+        if content_stripped.startswith("<"):
+            doc_group, policies_data = _parse_policies_from_xml(content)
+        else:
+            data = json.loads(content)
+            policies_data = data.get("policies") if isinstance(data, dict) else data
+            if not isinstance(policies_data, list):
+                raise HTTPException(status_code=400, detail="JSON 需包含 policies 数组")
+        if not (doc_group or "").strip():
+            doc_group = (os.path.splitext(file.filename or "")[0] or "").strip()
+        created = 0
+        for item in policies_data:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name")
+            rule_content = item.get("rule_content")
+            if not name or not rule_content:
+                continue
+            p = ConfigCompliancePolicy(
+                name=name,
+                rule_type=item.get("rule_type", "must_contain"),
+                rule_content=rule_content,
+                device_type=item.get("device_type"),
+                description=item.get("description"),
+                group=item.get("group") or doc_group or None,
+                enabled=item.get("enabled", True),
+            )
+            db.add(p)
+            created += 1
+        db.commit()
+        return {"message": "导入完成", "created": created}
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"JSON 解析失败: {e}")
+    except ET.ParseError as e:
+        raise HTTPException(status_code=400, detail=f"XML 解析失败: {e}")
+
+
+@router.get("/compliance/policies/export")
+def export_compliance_policies(
+    ids: Optional[str] = Query(None, description="策略 id 逗号分隔，不传则导出全部"),
+    db: Session = Depends(get_db),
+):
+    """导出策略为 JSON。"""
+    q = db.query(ConfigCompliancePolicy)
+    if ids and (id_list := [int(x.strip()) for x in ids.split(",") if x.strip()]):
+        q = q.filter(ConfigCompliancePolicy.id.in_(id_list))
+    rows = q.order_by(ConfigCompliancePolicy.id).all()
+    data = {"policies": [r.to_dict() for r in rows]}
+    return data
+
+
+# ---------- 合规报告（报告为模板，不绑定设备；执行时指定目标）----------
+def _report_to_item(db: Session, r: ConfigComplianceReport) -> dict:
+    """报告项含 policy_ids、policy_count。"""
+    d = r.to_dict()
+    links = db.query(ConfigComplianceReportPolicy).filter(ConfigComplianceReportPolicy.report_id == r.id).order_by(ConfigComplianceReportPolicy.sort_order, ConfigComplianceReportPolicy.id).all()
+    d["policy_ids"] = [x.policy_id for x in links]
+    d["policy_count"] = len(links)
+    return d
+
+
+@router.get("/compliance/reports")
+def list_compliance_reports(
+    group: Optional[str] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """报告列表；支持按 group 筛选。"""
+    q = db.query(ConfigComplianceReport)
+    if group is not None and (group := (group or "").strip()):
+        q = q.filter(ConfigComplianceReport.group == group)
+    total = q.count()
+    rows = q.order_by(ConfigComplianceReport.updated_at.desc()).offset(skip).limit(limit).all()
+    return {"items": [_report_to_item(db, r) for r in rows], "total": total}
+
+
+@router.get("/compliance/reports/{report_id}")
+def get_compliance_report(
+    report_id: int,
+    db: Session = Depends(get_db),
+):
+    """报告详情，含关联策略列表。"""
+    r = db.query(ConfigComplianceReport).filter(ConfigComplianceReport.id == report_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return _report_to_item(db, r)
+
+
+def _set_report_policies(db: Session, report_id: int, policy_ids: Optional[List[int]]) -> None:
+    """覆盖报告的关联策略（policy_ids 为 None 则不修改）。"""
+    if policy_ids is None:
+        return
+    db.query(ConfigComplianceReportPolicy).filter(ConfigComplianceReportPolicy.report_id == report_id).delete()
+    for i, pid in enumerate(policy_ids or []):
+        db.add(ConfigComplianceReportPolicy(report_id=report_id, policy_id=pid, sort_order=i))
+    db.flush()
+
+
+@router.post("/compliance/reports", status_code=201)
+def create_compliance_report(
+    body: ComplianceReportCreate,
+    db: Session = Depends(get_db),
+):
+    """创建报告。"""
+    r = ConfigComplianceReport(
+        name=body.name,
+        group=body.group,
+        comments=body.comments,
+        device_type=body.device_type,
+        enabled=body.enabled if body.enabled is not None else True,
+    )
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    _set_report_policies(db, r.id, body.policy_ids)
+    db.commit()
+    return _report_to_item(db, r)
+
+
+@router.put("/compliance/reports/{report_id}")
+def update_compliance_report(
+    report_id: int,
+    body: ComplianceReportUpdate,
+    db: Session = Depends(get_db),
+):
+    """更新报告。"""
+    r = db.query(ConfigComplianceReport).filter(ConfigComplianceReport.id == report_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Report not found")
+    if body.name is not None:
+        r.name = body.name
+    if body.group is not None:
+        r.group = body.group
+    if body.comments is not None:
+        r.comments = body.comments
+    if body.device_type is not None:
+        r.device_type = body.device_type
+    if body.enabled is not None:
+        r.enabled = body.enabled
+    _set_report_policies(db, r.id, body.policy_ids)
+    db.commit()
+    db.refresh(r)
+    return _report_to_item(db, r)
+
+
+@router.patch("/compliance/reports/{report_id}/enabled")
+def update_compliance_report_enabled(
+    report_id: int,
+    body: ComplianceReportEnabledUpdate,
+    db: Session = Depends(get_db),
+):
+    """启用/禁用报告。"""
+    r = db.query(ConfigComplianceReport).filter(ConfigComplianceReport.id == report_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Report not found")
+    r.enabled = body.enabled
+    db.commit()
+    db.refresh(r)
+    return _report_to_item(db, r)
+
+
+@router.delete("/compliance/reports/{report_id}", status_code=204)
+def delete_compliance_report(
+    report_id: int,
+    db: Session = Depends(get_db),
+):
+    """删除报告及报告-策略关联，不删除策略本身。"""
+    r = db.query(ConfigComplianceReport).filter(ConfigComplianceReport.id == report_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Report not found")
+    db.query(ConfigComplianceReportPolicy).filter(ConfigComplianceReportPolicy.report_id == report_id).delete()
+    db.delete(r)
+    db.commit()
+    return None
+
+
+@router.get("/compliance/reports/{report_id}/export")
+def export_compliance_report_xml(
+    report_id: int,
+    db: Session = Depends(get_db),
+):
+    """导出报告为 XML（含关联策略）。"""
+    r = db.query(ConfigComplianceReport).filter(ConfigComplianceReport.id == report_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Report not found")
+    links = db.query(ConfigComplianceReportPolicy).filter(ConfigComplianceReportPolicy.report_id == report_id).order_by(ConfigComplianceReportPolicy.sort_order).all()
+    policy_ids = [x.policy_id for x in links]
+    policies = db.query(ConfigCompliancePolicy).filter(ConfigCompliancePolicy.id.in_(policy_ids)).all() if policy_ids else []
+    root = ET.Element("PolicyReport")
+    root.set("name", r.name or "")
+    root.set("group", r.group or "")
+    root.set("device_type", r.device_type or "")
+    root.set("enabled", "true" if r.enabled else "false")
+    comm = ET.SubElement(root, "Comments")
+    comm.text = (r.comments or "").strip()
+    assn = ET.SubElement(root, "AssignedPolicies")
+    for p in policies:
+        pol = ET.SubElement(assn, "Policy")
+        pol.set("name", p.name or "")
+        pol.set("rule_type", p.rule_type or "")
+        pol.set("rule_content", (p.rule_content or "")[:500])
+        pol.set("device_type", p.device_type or "")
+    xml_str = ET.tostring(root, encoding="unicode", default_namespace="")
+    return {"xml": xml_str, "filename": f"report_{report_id}_{r.name or 'export'}.xml"}
+
+
+def _parse_report_policies_from_root(root) -> List[Tuple[str, str, str, Optional[str]]]:
+    """从已解析的 report 根节点解析出策略列表：(name, rule_type, rule_content, device_type)。支持属性式 Policy 与 NCM 风格 AssignedPolicyRules/PolicyRule。"""
+    assn = _find_el(root, "AssignedPolicies", "AssignedPolicy")
+    if assn is None:
+        return []
+    out: List[Tuple[str, str, str, Optional[str]]] = []
+    for pol in _findall_el(assn, "Policy"):
+        rcontent = pol.get("rule_content") or pol.get("RuleContent") or pol.get("SimplePatternText") or ""
+        if rcontent:
+            out.append((
+                pol.get("name") or pol.get("Name") or "策略",
+                pol.get("rule_type") or pol.get("RuleType") or "must_contain",
+                rcontent,
+                pol.get("device_type") or pol.get("DeviceType"),
+            ))
+            continue
+        rules_el = _find_el(pol, "AssignedPolicyRules")
+        if rules_el is None:
+            continue
+        for rule in _findall_el(rules_el, "PolicyRule"):
+            simple_text = _text(_find_el(rule, "SimplePatternText"))
+            if not simple_text:
+                continue
+            rule_name = _text(_find_el(rule, "RuleName")) or simple_text[:50]
+            pattern_type = (_text(_find_el(rule, "PatternType")) or "").lower()
+            rule_type = "regex" if "regex" in pattern_type else "must_contain"
+            out.append((rule_name, rule_type, simple_text, None))
+    return out
+
+
+@router.post("/compliance/reports/import")
+def import_compliance_report_xml(
+    db: Session = Depends(get_db),
+    file: UploadFile = File(...),
+):
+    """从 XML 导入报告（规则集）及策略（创建新策略并关联）。支持本系统导出格式与 NCM 风格（PolicyReport + AssignedPolicyRules/PolicyRule）。"""
+    try:
+        content = file.file.read()
+        if isinstance(content, bytes):
+            content = content.decode("utf-8")
+        root = ET.fromstring(content)
+        name = root.get("name") or root.get("Name") or _text(_find_el(root, "Name")) or "导入报告"
+        group = root.get("group") or root.get("Group") or _text(_find_el(root, "Group")) or ""
+        device_type = root.get("device_type") or root.get("DeviceType") or _text(_find_el(root, "DeviceType")) or ""
+        enabled_val = root.get("enabled") or _text(_find_el(root, "ReportStatus")) or "true"
+        enabled = enabled_val.lower() == "true" or enabled_val.lower() == "enabled"
+        comments_el = _find_el(root, "Comments")
+        comments = _text(comments_el) or ""
+        r = ConfigComplianceReport(name=name, group=group or None, comments=comments or None, device_type=device_type or None, enabled=enabled)
+        db.add(r)
+        db.flush()
+        policy_ids = []
+        for pname, rtype, rcontent, pdevice in _parse_report_policies_from_root(root):
+            p = ConfigCompliancePolicy(name=pname, rule_type=rtype, rule_content=rcontent, device_type=pdevice, enabled=True)
+            db.add(p)
+            db.flush()
+            policy_ids.append(p.id)
+        for i, pid in enumerate(policy_ids):
+            db.add(ConfigComplianceReportPolicy(report_id=r.id, policy_id=pid, sort_order=i))
+        db.commit()
+        db.refresh(r)
+        return _report_to_item(db, r)
+    except ET.ParseError as e:
+        raise HTTPException(status_code=400, detail=f"XML 解析失败: {e}")
 
 
 def _run_policy_on_content(policy: ConfigCompliancePolicy, content: str) -> Tuple[bool, str]:
@@ -519,44 +987,157 @@ def _run_policy_on_content(policy: ConfigCompliancePolicy, content: str) -> Tupl
     return False, "未知规则类型"
 
 
+def _resolve_backups_for_run(
+    db: Session,
+    backup_id: Optional[int],
+    device_id: Optional[str],
+    device_ids: Optional[List[str]],
+    report_id: Optional[int],
+    target_by_device_type: Optional[bool],
+    request_policy_ids: Optional[List[int]],
+) -> Tuple[List[ConfigModuleBackup], Optional[ConfigComplianceReport], List[ConfigCompliancePolicy], Optional[int]]:
+    """
+    解析执行目标与策略。返回 (backups, report_or_none, policies, report_id_for_result)。
+    若按报告执行且 target_by_device_type=True，则根据报告 device_type 解析设备列表并取最新备份。
+    """
+    report: Optional[ConfigComplianceReport] = None
+    report_id_for_result: Optional[int] = None
+    policies: List[ConfigCompliancePolicy] = []
+    backups: List[ConfigModuleBackup] = []
+
+    if report_id:
+        report = db.query(ConfigComplianceReport).filter(ConfigComplianceReport.id == report_id).first()
+        if not report:
+            raise HTTPException(status_code=404, detail="Report not found")
+        report_id_for_result = report.id
+        link_rows = (
+            db.query(ConfigComplianceReportPolicy)
+            .filter(ConfigComplianceReportPolicy.report_id == report_id)
+            .order_by(ConfigComplianceReportPolicy.sort_order, ConfigComplianceReportPolicy.id)
+            .all()
+        )
+        policy_ids_from_report = [x.policy_id for x in link_rows]
+        if policy_ids_from_report:
+            policies = db.query(ConfigCompliancePolicy).filter(
+                ConfigCompliancePolicy.id.in_(policy_ids_from_report),
+                ConfigCompliancePolicy.enabled == True,
+            ).all()
+            pid_order = {pid: i for i, pid in enumerate(policy_ids_from_report)}
+            policies.sort(key=lambda p: pid_order.get(p.id, 999))
+
+    if report_id and report and not report.enabled:
+        raise HTTPException(status_code=400, detail="报告未启用，无法执行")
+
+    if target_by_device_type and report and report.device_type:
+        device_keys = _get_backup_devices_filtered_by_device_type(db, report.device_type)
+        for dh, did in device_keys:
+            if dh and (dh := (dh or "").strip()):
+                b = (
+                    db.query(ConfigModuleBackup)
+                    .filter(ConfigModuleBackup.device_host == dh)
+                    .order_by(ConfigModuleBackup.created_at.desc())
+                    .first()
+                )
+            else:
+                b = (
+                    db.query(ConfigModuleBackup)
+                    .filter(ConfigModuleBackup.device_id == did)
+                    .order_by(ConfigModuleBackup.created_at.desc())
+                    .first()
+                )
+            if b:
+                backups.append(b)
+        if report_id and not policies:
+            raise HTTPException(status_code=400, detail="报告下无策略")
+        return backups, report, policies, report_id_for_result
+
+    if device_ids:
+        for did in device_ids:
+            if not (did := (did or "").strip()):
+                continue
+            b = (
+                db.query(ConfigModuleBackup)
+                .filter(ConfigModuleBackup.device_id == did)
+                .order_by(ConfigModuleBackup.created_at.desc())
+                .first()
+            )
+            if b:
+                backups.append(b)
+        if not backups:
+            raise HTTPException(status_code=404, detail="未找到指定设备的备份")
+        if report_id and not policies:
+            raise HTTPException(status_code=400, detail="报告下无策略")
+        if not policies and request_policy_ids:
+            policies = db.query(ConfigCompliancePolicy).filter(ConfigCompliancePolicy.id.in_(request_policy_ids)).all()
+        if not policies:
+            policies = db.query(ConfigCompliancePolicy).all()
+        return backups, report, policies, report_id_for_result
+
+    if backup_id:
+        backup = db.query(ConfigModuleBackup).filter(ConfigModuleBackup.id == backup_id).first()
+        if not backup:
+            raise HTTPException(status_code=404, detail="Backup not found")
+        backups = [backup]
+    elif device_id:
+        backup = (
+            db.query(ConfigModuleBackup)
+            .filter(ConfigModuleBackup.device_id == device_id)
+            .order_by(ConfigModuleBackup.created_at.desc())
+            .first()
+        )
+        if not backup:
+            raise HTTPException(status_code=404, detail="Backup not found")
+        backups = [backup]
+    else:
+        if report_id:
+            raise HTTPException(status_code=400, detail="按报告执行须指定目标：target_by_device_type 或 backup_id/device_id/device_ids")
+        raise HTTPException(status_code=400, detail="请指定 backup_id、device_id 或 device_ids")
+
+    if not policies and request_policy_ids:
+        policies = db.query(ConfigCompliancePolicy).filter(ConfigCompliancePolicy.id.in_(request_policy_ids)).all()
+    if not policies:
+        policies = db.query(ConfigCompliancePolicy).all()
+    return backups, report, policies, report_id_for_result
+
+
 @router.post("/compliance/run")
 def run_compliance(
     body: ComplianceRunRequest,
     db: Session = Depends(get_db),
 ):
-    """对指定 backup_id 或 device_id（取最新备份）执行策略，写入结果。"""
-    backup = None
-    if body.backup_id:
-        backup = db.query(ConfigModuleBackup).filter(ConfigModuleBackup.id == body.backup_id).first()
-    elif body.device_id:
-        backup = (
-            db.query(ConfigModuleBackup)
-            .filter(ConfigModuleBackup.device_id == body.device_id)
-            .order_by(ConfigModuleBackup.created_at.desc())
-            .first()
-        )
-    if not backup:
-        raise HTTPException(status_code=404, detail="Backup not found")
-    policies = db.query(ConfigCompliancePolicy)
-    if body.policy_ids:
-        policies = policies.filter(ConfigCompliancePolicy.id.in_(body.policy_ids))
-    policies = policies.all()
+    """对指定 backup_id/device_id/device_ids 或按报告+目标执行策略，写入结果。不传 report_id 时行为与原有一致。"""
+    backups, _report, policies, report_id_for_result = _resolve_backups_for_run(
+        db,
+        body.backup_id,
+        body.device_id,
+        body.device_ids,
+        body.report_id,
+        body.target_by_device_type,
+        body.policy_ids,
+    )
     if not policies:
-        return {"message": "无策略可执行", "results": []}
+        return {"message": "无策略可执行", "results": [], "device_count": 0}
     results = []
-    for p in policies:
-        passed, detail = _run_policy_on_content(p, backup.content or "")
-        r = ConfigComplianceResult(
-            policy_id=p.id,
-            backup_id=backup.id,
-            device_id=backup.device_id,
-            passed=passed,
-            detail=detail,
-        )
-        db.add(r)
-        results.append({"policy_id": p.id, "policy_name": p.name, "passed": passed, "detail": detail})
+    for backup in backups:
+        for p in policies:
+            passed, detail = _run_policy_on_content(p, backup.content or "")
+            r = ConfigComplianceResult(
+                policy_id=p.id,
+                backup_id=backup.id,
+                device_id=backup.device_id,
+                report_id=report_id_for_result,
+                passed=passed,
+                detail=detail,
+            )
+            db.add(r)
+            results.append({"policy_id": p.id, "policy_name": p.name, "passed": passed, "detail": detail})
     db.commit()
-    return {"message": "执行完成", "results": results}
+    return {
+        "message": "执行完成",
+        "results": results,
+        "device_count": len(backups),
+        "report_id": report_id_for_result,
+    }
 
 
 @router.get("/compliance/results")
@@ -564,10 +1145,14 @@ def list_compliance_results(
     device_id: Optional[str] = Query(None),
     policy_id: Optional[int] = Query(None),
     passed: Optional[bool] = Query(None),
+    report_id: Optional[int] = Query(None),
+    executed_at_from: Optional[str] = Query(None, description="执行时间起 YYYY-MM-DD"),
+    executed_at_to: Optional[str] = Query(None, description="执行时间止 YYYY-MM-DD"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
+    """结果列表；可选按 report_id、时间范围等筛选。"""
     q = db.query(ConfigComplianceResult)
     if device_id:
         q = q.filter(ConfigComplianceResult.device_id == device_id)
@@ -575,9 +1160,192 @@ def list_compliance_results(
         q = q.filter(ConfigComplianceResult.policy_id == policy_id)
     if passed is not None:
         q = q.filter(ConfigComplianceResult.passed == passed)
+    if report_id is not None:
+        q = q.filter(ConfigComplianceResult.report_id == report_id)
+    if executed_at_from:
+        q = q.filter(ConfigComplianceResult.executed_at >= executed_at_from)
+    if executed_at_to:
+        q = q.filter(ConfigComplianceResult.executed_at <= executed_at_to + " 23:59:59")
     total = q.count()
     rows = q.order_by(ConfigComplianceResult.executed_at.desc()).offset(skip).limit(limit).all()
     return {"items": [r.to_dict() for r in rows], "total": total}
+
+
+@router.delete("/compliance/results/{result_id}", status_code=204)
+def delete_compliance_result(
+    result_id: int,
+    db: Session = Depends(get_db),
+):
+    """删除单条结果。"""
+    r = db.query(ConfigComplianceResult).filter(ConfigComplianceResult.id == result_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Result not found")
+    db.delete(r)
+    db.commit()
+    return None
+
+
+@router.post("/compliance/results/batch-delete")
+def batch_delete_compliance_results(
+    body: ComplianceResultBatchDelete,
+    db: Session = Depends(get_db),
+):
+    """批量删除结果。"""
+    if not body.ids:
+        return {"deleted": 0}
+    deleted = db.query(ConfigComplianceResult).filter(ConfigComplianceResult.id.in_(body.ids)).delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": deleted}
+
+
+@router.get("/compliance/results/export")
+def export_compliance_results(
+    device_id: Optional[str] = Query(None),
+    policy_id: Optional[int] = Query(None),
+    passed: Optional[bool] = Query(None),
+    report_id: Optional[int] = Query(None),
+    limit: int = Query(5000, ge=1, le=50000),
+    db: Session = Depends(get_db),
+):
+    """按筛选条件导出结果为 CSV。"""
+    q = db.query(ConfigComplianceResult)
+    if device_id:
+        q = q.filter(ConfigComplianceResult.device_id == device_id)
+    if policy_id is not None:
+        q = q.filter(ConfigComplianceResult.policy_id == policy_id)
+    if passed is not None:
+        q = q.filter(ConfigComplianceResult.passed == passed)
+    if report_id is not None:
+        q = q.filter(ConfigComplianceResult.report_id == report_id)
+    rows = q.order_by(ConfigComplianceResult.executed_at.desc()).limit(limit).all()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["id", "policy_id", "backup_id", "device_id", "report_id", "passed", "detail", "executed_at"])
+    for r in rows:
+        writer.writerow([r.id, r.policy_id, r.backup_id, r.device_id, r.report_id, r.passed, r.detail or "", utc_to_beijing_str(r.executed_at)])
+    output.seek(0)
+    return StreamingResponse(iter([output.getvalue()]), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=compliance_results.csv"})
+
+
+# ---------- 合规执行计划 ----------
+@router.get("/compliance/schedules")
+def list_compliance_schedules(
+    report_id: Optional[int] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    q = db.query(ConfigComplianceSchedule)
+    if report_id is not None:
+        q = q.filter(ConfigComplianceSchedule.report_id == report_id)
+    total = q.count()
+    rows = q.order_by(ConfigComplianceSchedule.updated_at.desc()).offset(skip).limit(limit).all()
+    return {"items": [r.to_dict() for r in rows], "total": total}
+
+
+@router.get("/compliance/schedules/{schedule_id}")
+def get_compliance_schedule(
+    schedule_id: int,
+    db: Session = Depends(get_db),
+):
+    s = db.query(ConfigComplianceSchedule).filter(ConfigComplianceSchedule.id == schedule_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    return s.to_dict()
+
+
+@router.post("/compliance/schedules", status_code=201)
+def create_compliance_schedule(
+    body: ComplianceScheduleCreate,
+    db: Session = Depends(get_db),
+):
+    report = db.query(ConfigComplianceReport).filter(ConfigComplianceReport.id == body.report_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    target_ids_json = json.dumps(body.target_device_ids) if body.target_device_ids else None
+    s = ConfigComplianceSchedule(
+        name=body.name,
+        report_id=body.report_id,
+        target_type=body.target_type,
+        target_device_ids=target_ids_json,
+        cron_expr=body.cron_expr,
+        interval_seconds=body.interval_seconds,
+        enabled=body.enabled if body.enabled is not None else True,
+    )
+    db.add(s)
+    db.commit()
+    db.refresh(s)
+    return s.to_dict()
+
+
+@router.put("/compliance/schedules/{schedule_id}")
+def update_compliance_schedule(
+    schedule_id: int,
+    body: ComplianceScheduleUpdate,
+    db: Session = Depends(get_db),
+):
+    s = db.query(ConfigComplianceSchedule).filter(ConfigComplianceSchedule.id == schedule_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    if body.name is not None:
+        s.name = body.name
+    if body.target_type is not None:
+        s.target_type = body.target_type
+    if body.target_device_ids is not None:
+        s.target_device_ids = json.dumps(body.target_device_ids)
+    if body.cron_expr is not None:
+        s.cron_expr = body.cron_expr
+    if body.interval_seconds is not None:
+        s.interval_seconds = body.interval_seconds
+    if body.enabled is not None:
+        s.enabled = body.enabled
+    db.commit()
+    db.refresh(s)
+    return s.to_dict()
+
+
+@router.delete("/compliance/schedules/{schedule_id}", status_code=204)
+def delete_compliance_schedule(
+    schedule_id: int,
+    db: Session = Depends(get_db),
+):
+    s = db.query(ConfigComplianceSchedule).filter(ConfigComplianceSchedule.id == schedule_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    db.delete(s)
+    db.commit()
+    return None
+
+
+@router.post("/compliance/schedules/{schedule_id}/run")
+def run_compliance_schedule_now(
+    schedule_id: int,
+    db: Session = Depends(get_db),
+):
+    """立即执行一次该计划（按报告+目标执行，更新 last_run_at）。"""
+    s = db.query(ConfigComplianceSchedule).filter(ConfigComplianceSchedule.id == schedule_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    report = db.query(ConfigComplianceReport).filter(ConfigComplianceReport.id == s.report_id).first()
+    if not report or not report.enabled:
+        raise HTTPException(status_code=400, detail="报告不存在或未启用")
+    device_ids = json.loads(s.target_device_ids) if s.target_device_ids else None
+    target_by_device_type = s.target_type == "by_device_type"
+    backups, _, policies, report_id_for_result = _resolve_backups_for_run(
+        db, None, None, device_ids, s.report_id, target_by_device_type, None
+    )
+    if not policies:
+        return {"message": "报告下无策略", "device_count": 0}
+    for backup in backups:
+        for p in policies:
+            passed, detail = _run_policy_on_content(p, backup.content or "")
+            db.add(ConfigComplianceResult(
+                policy_id=p.id, backup_id=backup.id, device_id=backup.device_id,
+                report_id=report_id_for_result, passed=passed, detail=detail,
+            ))
+    s.last_run_at = datetime.utcnow()
+    db.commit()
+    return {"message": "执行完成", "device_count": len(backups)}
 
 
 # ---------- 服务终止 ----------

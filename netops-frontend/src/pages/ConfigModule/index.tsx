@@ -6,7 +6,7 @@ import ConfigModuleCompliance from './Compliance';
 import ConfigModuleEos from './Eos';
 
 /**
- * 配置管理模块：配置摘要、配置管理、合规、服务终止
+ * 配置管理模块：配置摘要、配置管理、合规检查、服务终止
  */
 const ConfigModule: React.FC = () => {
   return (

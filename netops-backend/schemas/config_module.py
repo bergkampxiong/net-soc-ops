@@ -58,6 +58,8 @@ class CompliancePolicyCreate(BaseModel):
     rule_content: str
     device_type: Optional[str] = None
     description: Optional[str] = None
+    group: Optional[str] = None
+    enabled: Optional[bool] = True
 
 
 class CompliancePolicyUpdate(BaseModel):
@@ -66,12 +68,71 @@ class CompliancePolicyUpdate(BaseModel):
     rule_content: Optional[str] = None
     device_type: Optional[str] = None
     description: Optional[str] = None
+    group: Optional[str] = None
+    enabled: Optional[bool] = None
 
 
 class ComplianceRunRequest(BaseModel):
     backup_id: Optional[int] = None  # 指定备份
     device_id: Optional[str] = None   # 或按设备取最新备份
+    device_ids: Optional[list] = None  # 多台设备，逐台取最新备份
     policy_ids: Optional[list] = None  # 指定策略 id 列表，空则全部
+    report_id: Optional[int] = None  # 按报告执行时传入，使用报告下全部策略
+    target_by_device_type: Optional[bool] = None  # True 时对「设备类型与报告一致且存在最新备份」的设备执行（须同时传 report_id）
+
+
+# ---------- 合规报告 ----------
+class ComplianceReportCreate(BaseModel):
+    name: str
+    group: Optional[str] = None
+    comments: Optional[str] = None
+    device_type: Optional[str] = None
+    enabled: Optional[bool] = True
+    policy_ids: Optional[list] = None
+
+
+class ComplianceReportUpdate(BaseModel):
+    name: Optional[str] = None
+    group: Optional[str] = None
+    comments: Optional[str] = None
+    device_type: Optional[str] = None
+    enabled: Optional[bool] = None
+    policy_ids: Optional[list] = None
+
+
+class ComplianceReportEnabledUpdate(BaseModel):
+    enabled: bool
+
+
+class CompliancePolicyBulkEnabledByGroup(BaseModel):
+    """按分组批量设置策略启用状态（一个文件一组，统一开关）。"""
+    group: Optional[str] = None  # 空或 None 表示「未分组」
+    enabled: bool
+
+
+# ---------- 合规执行计划 ----------
+class ComplianceScheduleCreate(BaseModel):
+    name: str
+    report_id: int
+    target_type: str  # by_device_type / device_ids
+    target_device_ids: Optional[list] = None  # target_type=device_ids 时
+    cron_expr: Optional[str] = None
+    interval_seconds: Optional[int] = None
+    enabled: Optional[bool] = True
+
+
+class ComplianceScheduleUpdate(BaseModel):
+    name: Optional[str] = None
+    target_type: Optional[str] = None
+    target_device_ids: Optional[list] = None
+    cron_expr: Optional[str] = None
+    interval_seconds: Optional[int] = None
+    enabled: Optional[bool] = None
+
+
+# ---------- 结果批量删除 ----------
+class ComplianceResultBatchDelete(BaseModel):
+    ids: list  # 结果 id 列表
 
 
 # ---------- 服务终止 ----------

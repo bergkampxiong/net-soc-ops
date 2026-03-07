@@ -294,7 +294,7 @@ const Layout: React.FC = () => {
       children: [
         { key: 'config-module/summary', label: '配置摘要', icon: <BarChartOutlined /> },
         { key: 'config-module/management', label: '配置管理', icon: <DatabaseOutlined /> },
-        { key: 'config-module/compliance', label: '合规', icon: <SafetyCertificateOutlined /> },
+        { key: 'config-module/compliance', label: '合规检查', icon: <SafetyCertificateOutlined /> },
         { key: 'config-module/eos', label: '服务终止', icon: <SettingOutlined /> },
       ],
     },
