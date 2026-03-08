@@ -1,195 +1,284 @@
-import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Statistic, Table, Typography, Badge, Progress, Divider, Avatar, List, Tag, Tooltip, Space } from 'antd';
-import { 
-  DashboardOutlined, 
-  DatabaseOutlined, 
-  RobotOutlined, 
-  BulbOutlined,
+import React, { useState, useEffect, useMemo } from 'react';
+import { Row, Col, Card, Statistic, Table, Typography, Badge, List, Tag, Space, Spin, Empty } from 'antd';
+import {
+  DashboardOutlined,
+  DatabaseOutlined,
+  RobotOutlined,
   AlertOutlined,
   ArrowUpOutlined,
-  ArrowDownOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   SyncOutlined,
   WarningOutlined,
   LineChartOutlined,
   CloudOutlined,
-  DesktopOutlined,
-  WifiOutlined,
-  InfoCircleOutlined
+  InfoCircleOutlined,
+  SaveOutlined,
 } from '@ant-design/icons';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
-import PageHeader from '../components/PageHeader';
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  Legend,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts';
+import request from '../utils/request';
+import type { JobExecutionListItem, JobExecutionStatsResponse } from './rpa/job-execution/types';
 
 const { Title, Text } = Typography;
 
-// 模拟数据 - 告警
-const alertData = [
-  {
-    key: '1',
-    level: '严重',
-    device: 'Core-Router-01',
-    message: 'CPU使用率超过90%',
-    time: '2025-03-09 20:15:30',
-  },
-  {
-    key: '2',
-    level: '警告',
-    device: 'Switch-Floor3-01',
-    message: '内存使用率超过80%',
-    time: '2025-03-09 19:45:12',
-  },
-  {
-    key: '3',
-    level: '信息',
-    device: 'Firewall-Main',
-    message: '配置已更改',
-    time: '2025-03-09 18:30:45',
-  },
-];
+// ---------- 类型定义 ----------
+interface ConfigStats {
+  device_count: number;
+  backup_24h_success: number;
+  backup_24h_fail: number;
+  backup_7d_success: number;
+  backup_7d_fail: number;
+  change_count_7d: number;
+  compliance_pass_rate?: number;
+}
 
-// 模拟数据 - 网络流量
-const networkData = [
-  { name: '00:00', 入站流量: 120, 出站流量: 110 },
-  { name: '02:00', 入站流量: 100, 出站流量: 90 },
-  { name: '04:00', 入站流量: 80, 出站流量: 85 },
-  { name: '06:00', 入站流量: 150, 出站流量: 120 },
-  { name: '08:00', 入站流量: 280, 出站流量: 250 },
-  { name: '10:00', 入站流量: 320, 出站流量: 310 },
-  { name: '12:00', 入站流量: 350, 出站流量: 330 },
-  { name: '14:00', 入站流量: 310, 出站流量: 290 },
-  { name: '16:00', 入站流量: 290, 出站流量: 270 },
-  { name: '18:00', 入站流量: 270, 出站流量: 250 },
-  { name: '20:00', 入站流量: 220, 出站流量: 210 },
-  { name: '22:00', 入站流量: 150, 出站流量: 140 },
-];
+interface BackupsByDayItem {
+  date: string;
+  count: number;
+}
 
-// 模拟数据 - 设备类型分布
-const deviceTypeData = [
-  { name: '路由器', value: 35 },
-  { name: '交换机', value: 120 },
-  { name: '防火墙', value: 18 },
-  { name: '服务器', value: 83 },
-];
+interface BackupsBySourceItem {
+  name: string;
+  value: number;
+}
 
-// 模拟数据 - 最近任务
-const recentTasksData = [
-  { 
-    id: 1, 
-    name: '网络设备配置备份', 
-    status: 'success', 
-    time: '2025-03-09 20:00:00',
-    icon: <CloudOutlined style={{ fontSize: '24px', color: '#1890ff' }} />
-  },
-  { 
-    id: 2, 
-    name: '带宽使用率监控', 
-    status: 'success', 
-    time: '2025-03-09 19:00:00',
-    icon: <LineChartOutlined style={{ fontSize: '24px', color: '#52c41a' }} />
-  },
-  { 
-    id: 3, 
-    name: '防火墙规则更新', 
-    status: 'processing', 
-    time: '2025-03-09 18:30:00',
-    icon: <SyncOutlined style={{ fontSize: '24px', color: '#faad14' }} />
-  },
-  { 
-    id: 4, 
-    name: '网络设备固件升级', 
-    status: 'waiting', 
-    time: '2025-03-09 21:00:00',
-    icon: <ClockCircleOutlined style={{ fontSize: '24px', color: '#722ed1' }} />
-  },
-];
+interface RecentBackup {
+  id: number;
+  device_id: string;
+  device_name?: string;
+  device_host?: string;
+  source?: string;
+  created_at?: string;
+}
 
-// 告警表格列定义
-const columns = [
-  {
-    title: '级别',
-    dataIndex: 'level',
-    key: 'level',
-    render: (text: string) => {
-      let color = '';
-      let icon = null;
-      
-      if (text === '严重') {
-        color = 'red';
-        icon = <AlertOutlined />;
-      } else if (text === '警告') {
-        color = 'orange';
-        icon = <WarningOutlined />;
-      } else {
-        color = 'blue';
-        icon = <InfoCircleOutlined />;
-      }
-      
-      return (
-        <Tag color={color} icon={icon}>
-          {text}
-        </Tag>
-      );
-    },
-  },
-  {
-    title: '设备',
-    dataIndex: 'device',
-    key: 'device',
-    render: (text: string) => (
-      <Text strong>{text}</Text>
-    ),
-  },
-  {
-    title: '消息',
-    dataIndex: 'message',
-    key: 'message',
-  },
-  {
-    title: '时间',
-    dataIndex: 'time',
-    key: 'time',
-    render: (text: string) => (
-      <Text type="secondary">{text}</Text>
-    ),
-  },
-];
+interface AssetStatistics {
+  total_assets: number;
+  by_device_type: Record<string, number>;
+  by_vendor?: Record<string, number>;
+  by_department?: Record<string, number>;
+  by_location?: Record<string, number>;
+  by_status?: Record<string, number>;
+}
+
+interface AlertItem {
+  id: number;
+  severity?: string;
+  alert_title?: string;
+  message?: string;
+  node_name?: string;
+  alert_time?: string;
+  created_at?: string;
+}
 
 // 设备类型饼图颜色
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
+const CHART_COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
-// 任务状态图标映射
-const statusIcons = {
-  success: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
-  processing: <SyncOutlined spin style={{ color: '#1890ff' }} />,
-  waiting: <ClockCircleOutlined style={{ color: '#faad14' }} />,
-};
+// 最近 7 天日期范围，供作业统计使用
+function getLast7Days(): { date_from: string; date_to: string } {
+  const now = new Date();
+  const to = now.toISOString().slice(0, 10);
+  const from = new Date(now);
+  from.setDate(from.getDate() - 6);
+  return { date_from: from.toISOString().slice(0, 10), date_to: to };
+}
+
+// 告警严重性 -> 中文与颜色
+function severityDisplay(severity: string | undefined): { text: string; color: string; icon: React.ReactNode } {
+  const s = (severity || '').toLowerCase();
+  if (s === 'critical' || s === '严重') {
+    return { text: '严重', color: 'red', icon: <AlertOutlined /> };
+  }
+  if (s === 'warning' || s === '警告') {
+    return { text: '警告', color: 'orange', icon: <WarningOutlined /> };
+  }
+  return { text: '信息', color: 'blue', icon: <InfoCircleOutlined /> };
+}
+
+// 作业执行状态 -> 展示
+function jobStatusDisplay(status: string): { text: string; status: 'success' | 'processing' | 'warning' } {
+  if (status === 'completed') return { text: '已完成', status: 'success' };
+  if (status === 'running') return { text: '执行中', status: 'processing' };
+  if (status === 'failed') return { text: '失败', status: 'warning' };
+  return { text: status, status: 'warning' };
+}
 
 const Dashboard: React.FC = () => {
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [loading, setLoading] = useState(true);
+  const [configStats, setConfigStats] = useState<ConfigStats | null>(null);
+  const [backupsByDay, setBackupsByDay] = useState<BackupsByDayItem[]>([]);
+  const [backupsBySource, setBackupsBySource] = useState<BackupsBySourceItem[]>([]);
+  const [recentBackups, setRecentBackups] = useState<RecentBackup[]>([]);
+  const [assetStats, setAssetStats] = useState<AssetStatistics | null>(null);
+  const [jobStats, setJobStats] = useState<JobExecutionStatsResponse | null>(null);
+  const [jobExecutions, setJobExecutions] = useState<JobExecutionListItem[]>([]);
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [alertsLoadError, setAlertsLoadError] = useState(false);
+  const [cmdbLoadError, setCmdbLoadError] = useState(false);
+  const [jobLoadError, setJobLoadError] = useState(false);
 
-  // 更新当前时间
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-    
-    return () => {
-      clearInterval(timer);
+    const { date_from, date_to } = getLast7Days();
+    const fetchAll = async () => {
+      setLoading(true);
+      setAlertsLoadError(false);
+      setCmdbLoadError(false);
+      setJobLoadError(false);
+
+      try {
+        const [
+          configStatsRes,
+          backupsByDayRes,
+          backupsBySourceRes,
+          recentBackupsRes,
+          assetStatsRes,
+          jobStatsRes,
+          jobListRes,
+          alertsRes,
+        ] = await Promise.allSettled([
+          request.get('/config-module/summary/stats'),
+          request.get('/config-module/summary/backups-by-day?days=7'),
+          request.get('/config-module/summary/backups-by-source?days=7'),
+          request.get('/config-module/summary/recent-backups?limit=10'),
+          request.get('/cmdb/assets/statistics'),
+          request.get('/job-executions/stats', { params: { date_from, date_to } }),
+          request.get('/job-executions', { params: { skip: 0, limit: 10 } }),
+          request.get('/monitoring-integration/alerts', { params: { limit: 20 } }),
+        ]);
+
+        const unwrap = (r: PromiseSettledResult<any>) =>
+          r.status === 'fulfilled' ? r.value?.data?.data ?? r.value?.data ?? r.value : null;
+
+        const s = unwrap(configStatsRes);
+        if (s && typeof s === 'object' && 'device_count' in s) setConfigStats(s as ConfigStats);
+        else setConfigStats(null);
+
+        const dayList = unwrap(backupsByDayRes);
+        setBackupsByDay(Array.isArray(dayList) ? dayList : []);
+
+        const srcList = unwrap(backupsBySourceRes);
+        setBackupsBySource(Array.isArray(srcList) ? srcList : []);
+
+        const recentList = unwrap(recentBackupsRes);
+        setRecentBackups(Array.isArray(recentList) ? recentList : []);
+
+        const asset = unwrap(assetStatsRes);
+        if (asset && typeof asset === 'object') setAssetStats(asset as AssetStatistics);
+        else {
+          setAssetStats(null);
+          if (assetStatsRes.status === 'rejected') setCmdbLoadError(true);
+        }
+
+        const jobS = unwrap(jobStatsRes);
+        if (jobS && typeof jobS === 'object' && 'total' in jobS) setJobStats(jobS as JobExecutionStatsResponse);
+        else {
+          setJobStats(null);
+          if (jobStatsRes.status === 'rejected') setJobLoadError(true);
+        }
+
+        const jobList = unwrap(jobListRes);
+        const items = jobList?.items ?? (Array.isArray(jobList) ? jobList : []);
+        setJobExecutions(Array.isArray(items) ? items : []);
+
+        const alertsData = unwrap(alertsRes);
+        const alertItems = alertsData?.items ?? (Array.isArray(alertsData) ? alertsData : []);
+        setAlerts(Array.isArray(alertItems) ? alertItems : []);
+        if (alertsRes.status === 'rejected') setAlertsLoadError(true);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
     };
+    fetchAll();
   }, []);
+
+  const deviceTotal = assetStats?.total_assets ?? configStats?.device_count ?? 0;
+  const alertTotal = alerts.length;
+  const backupsByDayChartData = useMemo(
+    () =>
+      backupsByDay.map((d) => ({ name: d.date, 备份数: d.count })),
+    [backupsByDay]
+  );
+  const deviceTypePieData = useMemo(() => {
+    const by = assetStats?.by_device_type;
+    if (!by || typeof by !== 'object') return [];
+    return Object.entries(by).map(([name, value]) => ({ name, value })).filter((d) => d.value > 0);
+  }, [assetStats]);
+  const alertsBySeverityPieData = useMemo(() => {
+    const map: Record<string, number> = {};
+    alerts.forEach((a) => {
+      const key = severityDisplay(a.severity).text;
+      map[key] = (map[key] || 0) + 1;
+    });
+    return Object.entries(map).map(([name, value]) => ({ name, value }));
+  }, [alerts]);
+
+  const alertColumns = [
+    {
+      title: '级别',
+      dataIndex: 'severity',
+      key: 'severity',
+      render: (text: string) => {
+        const { text: label, color, icon } = severityDisplay(text);
+        return (
+          <Tag color={color} icon={icon}>
+            {label}
+          </Tag>
+        );
+      },
+    },
+    {
+      title: '节点',
+      dataIndex: 'node_name',
+      key: 'node_name',
+      render: (t: string) => (t ? <Text strong>{t}</Text> : '-'),
+    },
+    {
+      title: '消息',
+      key: 'message',
+      render: (_: unknown, r: AlertItem) => r.alert_title || r.message || '-',
+    },
+    {
+      title: '时间',
+      dataIndex: 'alert_time',
+      key: 'alert_time',
+      render: (t: string, r: AlertItem) => (
+        <Text type="secondary">{t || r.created_at || '-'}</Text>
+      ),
+    },
+  ];
+
+  if (loading) {
+    return (
+      <div className="page-container" style={{ padding: 24, textAlign: 'center', minHeight: 320 }}>
+        <Spin size="large" tip="加载中..." />
+      </div>
+    );
+  }
 
   return (
     <div className="page-container">
       <Title level={2}>仪表盘</Title>
-      
+
       <Row gutter={[16, 16]} className="section-container">
         <Col span={24}>
           <Card className="card-container welcome-card">
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <DashboardOutlined style={{ fontSize: '36px', color: '#1890ff', marginRight: '16px' }} />
               <div>
-                <Title level={4} style={{ margin: 0 }}>欢迎使用NetOps平台</Title>
+                <Title level={4} style={{ margin: 0 }}>欢迎使用 NetOps 平台</Title>
                 <Text>网络运维自动化平台，提高网络运维效率和可靠性</Text>
               </div>
             </div>
@@ -202,7 +291,7 @@ const Dashboard: React.FC = () => {
           <Card className="stat-card">
             <Statistic
               title="设备总数"
-              value={256}
+              value={deviceTotal}
               prefix={<DatabaseOutlined />}
               valueStyle={{ color: '#1890ff' }}
             />
@@ -211,14 +300,14 @@ const Dashboard: React.FC = () => {
         <Col xs={24} sm={12} md={6}>
           <Card hoverable className="stat-card">
             <Statistic
-              title={<span style={{ fontSize: 16 }}>自动化任务</span>}
-              value={42}
-              prefix={<RobotOutlined style={{ color: '#52c41a' }} />}
+              title={<span style={{ fontSize: 16 }}>配置备份（7 天）</span>}
+              value={configStats?.backup_7d_success ?? 0}
+              prefix={<SaveOutlined style={{ color: '#52c41a' }} />}
               valueStyle={{ color: '#52c41a', fontWeight: 'bold' }}
             />
             <div style={{ marginTop: 8 }}>
               <Text type="secondary">
-                <ArrowUpOutlined style={{ color: '#52c41a' }} /> 本周执行 12 次
+                <ArrowUpOutlined style={{ color: '#52c41a' }} /> 24h 内 {configStats?.backup_24h_success ?? 0} 次
               </Text>
             </div>
           </Card>
@@ -226,13 +315,16 @@ const Dashboard: React.FC = () => {
         <Col xs={24} sm={12} md={6}>
           <Card hoverable className="stat-card">
             <Statistic
-              title={<span style={{ fontSize: 16 }}>AI预测</span>}
-              value={18}
-              prefix={<BulbOutlined style={{ color: '#722ed1' }} />}
+              title={<span style={{ fontSize: 16 }}>作业执行（7 天）</span>}
+              value={jobStats?.total ?? 0}
+              prefix={<RobotOutlined style={{ color: '#722ed1' }} />}
               valueStyle={{ color: '#722ed1', fontWeight: 'bold' }}
             />
             <div style={{ marginTop: 8 }}>
-              <Badge status="processing" text="预测准确率 92%" />
+              <Badge
+                status={jobLoadError ? 'error' : 'processing'}
+                text={jobLoadError ? '加载失败' : `成功率 ${((jobStats?.success_rate ?? 0) * 100).toFixed(0)}%`}
+              />
             </div>
           </Card>
         </Col>
@@ -240,14 +332,18 @@ const Dashboard: React.FC = () => {
           <Card hoverable className="stat-card">
             <Statistic
               title={<span style={{ fontSize: 16 }}>活跃告警</span>}
-              value={3}
-              prefix={<AlertOutlined style={{ color: '#f5222d' }} />}
-              valueStyle={{ color: '#f5222d', fontWeight: 'bold' }}
+              value={alertTotal}
+              prefix={<AlertOutlined style={{ color: alertTotal > 0 ? '#f5222d' : '#52c41a' }} />}
+              valueStyle={{ color: alertTotal > 0 ? '#f5222d' : '#52c41a', fontWeight: 'bold' }}
             />
             <div style={{ marginTop: 8 }}>
-              <Text type="danger">
-                <ArrowDownOutlined /> 较昨日减少 2 个
-              </Text>
+              {alertsLoadError ? (
+                <Text type="danger">告警接口加载失败</Text>
+              ) : (
+                <Text type={alertTotal > 0 ? 'danger' : 'secondary'}>
+                  {alertTotal > 0 ? '请及时处理' : '当前无告警'}
+                </Text>
+              )}
             </div>
           </Card>
         </Col>
@@ -255,60 +351,120 @@ const Dashboard: React.FC = () => {
 
       <Row gutter={[16, 16]} className="section-container">
         <Col xs={24} lg={12}>
-          <Card title="网络流量趋势" className="chart-card">
+          <Card title="配置备份趋势" className="chart-card">
             <div style={{ height: 300 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  data={networkData}
-                  margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <RechartsTooltip />
-                  <Legend />
-                  <Area 
-                    type="monotone" 
-                    dataKey="入站流量" 
-                    stroke="#8884d8" 
-                    fill="#8884d8" 
-                    fillOpacity={0.3} 
-                  />
-                  <Area 
-                    type="monotone" 
-                    dataKey="出站流量" 
-                    stroke="#82ca9d" 
-                    fill="#82ca9d" 
-                    fillOpacity={0.3} 
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              {backupsByDayChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={backupsByDayChartData}
+                    margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <RechartsTooltip />
+                    <Legend />
+                    <Area
+                      type="monotone"
+                      dataKey="备份数"
+                      stroke="#8884d8"
+                      fill="#8884d8"
+                      fillOpacity={0.3}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <Empty description="暂无备份数据" style={{ marginTop: 80 }} />
+              )}
             </div>
           </Card>
         </Col>
-        
+
         <Col xs={24} lg={12}>
           <Card title="设备类型分布" className="chart-card">
             <div style={{ height: 300, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={deviceTypeData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  >
-                    {deviceTypeData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <RechartsTooltip />
-                </PieChart>
-              </ResponsiveContainer>
+              {deviceTypePieData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={deviceTypePieData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    >
+                      {deviceTypePieData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <Empty description={cmdbLoadError ? 'CMDB 加载失败' : '暂无设备类型数据'} style={{ marginTop: 80 }} />
+              )}
+            </div>
+          </Card>
+        </Col>
+      </Row>
+
+      <Row gutter={[16, 16]} className="section-container">
+        <Col xs={24} lg={12}>
+          <Card title="告警按严重性" className="chart-card">
+            <div style={{ height: 220 }}>
+              {alertsBySeverityPieData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={alertsBySeverityPieData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={80}
+                      dataKey="value"
+                      label={({ name, value }) => `${name}: ${value}`}
+                    >
+                      {alertsBySeverityPieData.map((_, index) => (
+                        <Cell key={`cell-s-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <Empty description={alertsLoadError ? '告警加载失败' : '暂无告警'} style={{ marginTop: 60 }} />
+              )}
+            </div>
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card title="备份来源分布（7 天）" className="chart-card">
+            <div style={{ height: 220 }}>
+              {backupsBySource.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={backupsBySource}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={80}
+                      dataKey="value"
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    >
+                      {backupsBySource.map((_, index) => (
+                        <Cell key={`cell-src-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <Empty description="暂无备份来源数据" style={{ marginTop: 60 }} />
+              )}
             </div>
           </Card>
         </Col>
@@ -317,46 +473,58 @@ const Dashboard: React.FC = () => {
       <Row gutter={[16, 16]} className="section-container">
         <Col xs={24} lg={12}>
           <Card title="最近告警" className="list-card custom-table">
-            <Table 
-              columns={columns} 
-              dataSource={alertData} 
-              pagination={false}
-              size="middle"
-              className="custom-table"
-            />
+            {alertsLoadError ? (
+              <Empty description="告警列表加载失败" />
+            ) : (
+              <Table
+                columns={alertColumns}
+                dataSource={alerts.map((a) => ({ ...a, key: a.id }))}
+                pagination={false}
+                size="middle"
+                className="custom-table"
+                locale={{ emptyText: '暂无告警' }}
+              />
+            )}
           </Card>
         </Col>
-        
+
         <Col xs={24} lg={12}>
           <Card title="最近任务" className="list-card">
-            <List
-              itemLayout="horizontal"
-              dataSource={recentTasksData}
-              renderItem={item => (
-                <List.Item>
-                  <List.Item.Meta
-                    avatar={item.icon}
-                    title={<a href="#">{item.name}</a>}
-                    description={
-                      <Space>
-                        <Badge 
-                          status={
-                            item.status === 'success' ? 'success' : 
-                            item.status === 'processing' ? 'processing' : 'warning'
-                          } 
-                          text={
-                            item.status === 'success' ? '已完成' : 
-                            item.status === 'processing' ? '进行中' : '等待中'
-                          } 
-                        />
-                        <Divider type="vertical" />
-                        <Text type="secondary">{item.time}</Text>
-                      </Space>
-                    }
-                  />
-                </List.Item>
-              )}
-            />
+            {jobLoadError ? (
+              <Empty description="任务列表加载失败" />
+            ) : (
+              <List
+                itemLayout="horizontal"
+                dataSource={jobExecutions}
+                locale={{ emptyText: '暂无执行记录' }}
+                renderItem={(item) => {
+                  const statusStr = String(item.status);
+                  const { text, status: badgeStatus } = jobStatusDisplay(statusStr);
+                  const icon =
+                    statusStr === 'completed' ? (
+                      <CheckCircleOutlined style={{ fontSize: '24px', color: '#52c41a' }} />
+                    ) : statusStr === 'running' ? (
+                      <SyncOutlined spin style={{ fontSize: '24px', color: '#1890ff' }} />
+                    ) : (
+                      <ClockCircleOutlined style={{ fontSize: '24px', color: '#faad14' }} />
+                    );
+                  return (
+                    <List.Item>
+                      <List.Item.Meta
+                        avatar={icon}
+                        title={<span>{item.job_name || `作业 #${item.job_id}`}</span>}
+                        description={
+                          <Space>
+                            <Badge status={badgeStatus} text={text} />
+                            <Text type="secondary">{item.start_time ? item.start_time.slice(0, 19).replace('T', ' ') : '-'}</Text>
+                          </Space>
+                        }
+                      />
+                    </List.Item>
+                  );
+                }}
+              />
+            )}
           </Card>
         </Col>
       </Row>
@@ -364,4 +532,4 @@ const Dashboard: React.FC = () => {
   );
 };
 
-export default Dashboard; 
+export default Dashboard;

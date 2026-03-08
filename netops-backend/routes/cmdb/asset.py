@@ -126,6 +126,46 @@ def create_asset(
     db.refresh(db_asset)
     return db_asset
 
+@router.get("/assets/statistics", response_model=AssetStatistics, tags=["CMDB资产"])
+def get_asset_statistics(
+    db: Session = Depends(get_cmdb_db),
+):
+    """获取资产统计信息"""
+    total_assets = db.query(AssetModel).count()
+    device_type_stats = {}
+    device_types = db.query(DeviceTypeModel).all()
+    for dt in device_types:
+        count = db.query(AssetModel).filter(AssetModel.device_type_id == dt.id).count()
+        device_type_stats[dt.name] = count
+    vendor_stats = {}
+    vendors = db.query(VendorModel).all()
+    for v in vendors:
+        count = db.query(AssetModel).filter(AssetModel.vendor_id == v.id).count()
+        vendor_stats[v.name] = count
+    department_stats = {}
+    departments = db.query(DepartmentModel).all()
+    for d in departments:
+        count = db.query(AssetModel).filter(AssetModel.department_id == d.id).count()
+        department_stats[d.name] = count
+    location_stats = {}
+    locations = db.query(LocationModel).all()
+    for l in locations:
+        count = db.query(AssetModel).filter(AssetModel.location_id == l.id).count()
+        location_stats[l.name] = count
+    status_stats = {}
+    statuses = db.query(AssetStatusModel).all()
+    for s in statuses:
+        count = db.query(AssetModel).filter(AssetModel.status_id == s.id).count()
+        status_stats[s.name] = count
+    return {
+        "total_assets": total_assets,
+        "by_device_type": device_type_stats,
+        "by_vendor": vendor_stats,
+        "by_department": department_stats,
+        "by_location": location_stats,
+        "by_status": status_stats
+    }
+
 @router.get("/assets/{asset_id}", response_model=Asset, tags=["CMDB资产"])
 def get_asset(
     asset_id: int,
@@ -251,58 +291,6 @@ def query_assets(
             "system_type": {"name": a.system_type.name} if a.system_type else None,
         })
     return result
-
-@router.get("/assets/statistics", response_model=AssetStatistics, tags=["CMDB资产"])
-def get_asset_statistics(
-    db: Session = Depends(get_cmdb_db),
-):
-    """获取资产统计信息"""
-    # 计算总资产数
-    total_assets = db.query(AssetModel).count()
-    
-    # 按设备类型统计
-    device_type_stats = {}
-    device_types = db.query(DeviceTypeModel).all()
-    for dt in device_types:
-        count = db.query(AssetModel).filter(AssetModel.device_type_id == dt.id).count()
-        device_type_stats[dt.name] = count
-    
-    # 按厂商统计
-    vendor_stats = {}
-    vendors = db.query(VendorModel).all()
-    for v in vendors:
-        count = db.query(AssetModel).filter(AssetModel.vendor_id == v.id).count()
-        vendor_stats[v.name] = count
-    
-    # 按部门统计
-    department_stats = {}
-    departments = db.query(DepartmentModel).all()
-    for d in departments:
-        count = db.query(AssetModel).filter(AssetModel.department_id == d.id).count()
-        department_stats[d.name] = count
-    
-    # 按位置统计
-    location_stats = {}
-    locations = db.query(LocationModel).all()
-    for l in locations:
-        count = db.query(AssetModel).filter(AssetModel.location_id == l.id).count()
-        location_stats[l.name] = count
-    
-    # 按状态统计
-    status_stats = {}
-    statuses = db.query(AssetStatusModel).all()
-    for s in statuses:
-        count = db.query(AssetModel).filter(AssetModel.status_id == s.id).count()
-        status_stats[s.name] = count
-    
-    return {
-        "total_assets": total_assets,
-        "by_device_type": device_type_stats,
-        "by_vendor": vendor_stats,
-        "by_department": department_stats,
-        "by_location": location_stats,
-        "by_status": status_stats
-    }
 
 @router.post("/assets/import", response_model=ImportResponse, tags=["CMDB资产"])
 async def import_assets_from_csv(
