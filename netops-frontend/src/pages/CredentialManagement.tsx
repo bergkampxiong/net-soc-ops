@@ -51,8 +51,20 @@ const { Password } = Input;
 enum CredentialType {
   SSH_PASSWORD = 'ssh_password',
   API_KEY = 'api_key',
-  SSH_KEY = 'ssh_key'
+  SSH_KEY = 'ssh_key',
+  WINDOWS_DOMAIN = 'windows_domain'
 }
+
+// API 类型选项（与后端 APIVendor 一致）
+const API_VENDOR_OPTIONS = [
+  { value: 'generic', label: '常规 API' },
+  { value: 'aws', label: 'AWS' },
+  { value: 'aliyun', label: '阿里云' },
+  { value: 'tencent', label: '腾讯云' },
+  { value: 'huawei', label: '华为云' },
+  { value: 'vmware', label: 'VMware' },
+  { value: 'zscaler', label: 'Zscaler' },
+];
 
 // 定义凭证接口
 interface Credential {
@@ -65,8 +77,10 @@ interface Credential {
   enable_password?: string;
   api_key?: string;
   api_secret?: string;
+  api_vendor?: string;
   private_key?: string;
   passphrase?: string;
+  domain?: string;
   created_at: string;
   updated_at: string;
   status: string;
@@ -86,6 +100,10 @@ const CredentialManagement: React.FC = () => {
   const [form] = Form.useForm();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showPassword, setShowPassword] = useState<{ [key: number]: boolean }>({});
+  const [testWindowsModalVisible, setTestWindowsModalVisible] = useState<boolean>(false);
+  const [testWindowsLoading, setTestWindowsLoading] = useState<boolean>(false);
+  const [testWindowsCredential, setTestWindowsCredential] = useState<Credential | null>(null);
+  const [testWindowsForm] = Form.useForm();
   const [credentialTypes] = useState([
     { value: 'ssh', label: 'SSH密钥', icon: <KeyOutlined /> },
     { value: 'password', label: '密码', icon: <LockOutlined /> },
@@ -147,9 +165,11 @@ const CredentialManagement: React.FC = () => {
       credential_type: record.credential_type,
       username: record.username,
       api_key: record.api_key,
+      api_vendor: record.api_vendor,
       api_secret: '', // 出于安全考虑，不预填密码和密钥
       private_key: record.private_key,
-      passphrase: ''
+      passphrase: '',
+      domain: record.domain
     });
     setModalVisible(true);
   };
@@ -187,13 +207,25 @@ const CredentialManagement: React.FC = () => {
           case CredentialType.API_KEY:
             url = '/device/credential/api-key';
             break;
-          case CredentialType.SSH_KEY:
-            url = '/device/credential/ssh-key';
-            break;
+          case CredentialType.WINDOWS_DOMAIN:
+            url = '/device/credential/windows-domain';
+            await request.post(url, {
+              name: values.name,
+              description: values.description,
+              username: values.username,
+              password: values.password,
+              domain: values.domain
+            });
+            message.success('凭证创建成功');
+            setModalVisible(false);
+            form.resetFields();
+            fetchCredentials();
+            return;
         }
-        
-        await request.post(url, values);
-        message.success('凭证创建成功');
+        if (url) {
+          await request.post(url, values);
+          message.success('凭证创建成功');
+        }
       } else if (modalType === 'edit' && currentCredential) {
         // 编辑凭证
         // 仅发送更改的字段
@@ -229,6 +261,33 @@ const CredentialManagement: React.FC = () => {
     }
   };
 
+  // Windows/域控凭证测试连接
+  const handleTestWindowsCredential = async () => {
+    if (!testWindowsCredential) return;
+    try {
+      const values = await testWindowsForm.validateFields();
+      setTestWindowsLoading(true);
+      const res = await request.post(
+        `/device/credential/${testWindowsCredential.id}/test-windows`,
+        { host: values.host, port: values.port ?? 5985, use_ssl: !!values.use_ssl }
+      );
+      const data = res.data as { success: boolean; message: string };
+      if (data.success) {
+        message.success(data.message || '连接成功');
+        setTestWindowsModalVisible(false);
+        testWindowsForm.resetFields();
+      } else {
+        message.error(data.message || '连接失败');
+      }
+    } catch (error: any) {
+      if (error?.errorFields) return;
+      const msg = error?.response?.data?.detail || error?.message || '测试失败';
+      message.error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setTestWindowsLoading(false);
+    }
+  };
+
   // 渲染凭证类型标签
   const renderCredentialTypeTag = (type: CredentialType) => {
     switch (type) {
@@ -238,6 +297,8 @@ const CredentialManagement: React.FC = () => {
         return <Tag color="green" icon={<ApiOutlined />}>API凭证</Tag>;
       case CredentialType.SSH_KEY:
         return <Tag color="purple" icon={<KeyOutlined />}>SSH密钥凭证</Tag>;
+      case CredentialType.WINDOWS_DOMAIN:
+        return <Tag color="orange" icon={<CloudServerOutlined />}>Windows/域控凭证</Tag>;
       default:
         return <Tag>未知类型</Tag>;
     }
@@ -291,6 +352,18 @@ const CredentialManagement: React.FC = () => {
             title="编辑"
             onClick={() => showEditModal(record)}
           />
+          {record.credential_type === CredentialType.WINDOWS_DOMAIN && (
+            <Button
+              type="text"
+              icon={<CheckCircleOutlined />}
+              title="测试连接"
+              onClick={() => {
+                setTestWindowsCredential(record);
+                testWindowsForm.setFieldsValue({ host: '', port: 5985, use_ssl: false });
+                setTestWindowsModalVisible(true);
+              }}
+            />
+          )}
           <Popconfirm
             title="确定要删除此凭证吗?"
             onConfirm={() => handleDelete(record.id)}
@@ -312,8 +385,10 @@ const CredentialManagement: React.FC = () => {
       enable_password: undefined,
       api_key: undefined,
       api_secret: undefined,
+      api_vendor: undefined,
       private_key: undefined,
-      passphrase: undefined
+      passphrase: undefined,
+      domain: undefined
     });
   };
 
@@ -353,6 +428,9 @@ const CredentialManagement: React.FC = () => {
       case CredentialType.API_KEY:
         return (
           <>
+            <Form.Item name="api_vendor" label="API 类型">
+              <Select placeholder="请选择 API 类型" allowClear options={API_VENDOR_OPTIONS} />
+            </Form.Item>
             <Form.Item
               name="api_key"
               label="API Key"
@@ -371,7 +449,7 @@ const CredentialManagement: React.FC = () => {
           </>
         );
       
-      case CredentialType.SSH_KEY:
+      case CredentialType.WINDOWS_DOMAIN:
         return (
           <>
             <Form.Item
@@ -379,22 +457,18 @@ const CredentialManagement: React.FC = () => {
               label="用户名"
               rules={[{ required: true, message: '请输入用户名' }]}
             >
-              <Input placeholder="请输入用户名" />
+              <Input placeholder="Windows / 域账号" />
             </Form.Item>
             <Form.Item
-              name="private_key"
-              label="私钥"
-              rules={[{ required: modalType === 'create', message: '请输入私钥' }]}
-              extra="编辑模式下，如不修改私钥可留空"
+              name="password"
+              label="密码"
+              rules={[{ required: modalType === 'create', message: '请输入密码' }]}
+              extra="编辑模式下，如不修改密码可留空"
             >
-              <TextArea rows={6} placeholder="请粘贴SSH私钥内容" />
+              <Password placeholder="请输入密码" />
             </Form.Item>
-            <Form.Item
-              name="passphrase"
-              label="密钥密码"
-              extra="如果私钥有密码保护，请提供（可选）"
-            >
-              <Password placeholder="私钥密码（如果有）" />
+            <Form.Item name="domain" label="域" extra="可选，域控时填写">
+              <Input placeholder="例如：EXAMPLE" />
             </Form.Item>
           </>
         );
@@ -505,15 +579,15 @@ const CredentialManagement: React.FC = () => {
               CredentialType.API_KEY,
               "API凭证",
               <ApiOutlined style={{ color: '#52c41a' }} />,
-              "用于API访问的密钥凭证，包含API Key和Secret"
+              "用于API访问的密钥凭证，支持多云/厂商类型（AWS、阿里云等）"
             )}
           </Col>
           <Col span={8}>
             {renderCredentialTypeCard(
-              CredentialType.SSH_KEY,
-              "SSH密钥凭证",
-              <KeyOutlined style={{ color: '#722ed1' }} />,
-              "基于SSH密钥的凭证，包含用户名和私钥"
+              CredentialType.WINDOWS_DOMAIN,
+              "Windows/域控凭证",
+              <CloudServerOutlined style={{ color: '#fa8c16' }} />,
+              "Windows 登录或域控账号密码，用于 WinRM 等场景"
             )}
           </Col>
         </Row>
@@ -552,7 +626,7 @@ const CredentialManagement: React.FC = () => {
             >
               <Option value={CredentialType.SSH_PASSWORD}>SSH密码凭证</Option>
               <Option value={CredentialType.API_KEY}>API凭证</Option>
-              <Option value={CredentialType.SSH_KEY}>SSH密钥凭证</Option>
+              <Option value={CredentialType.WINDOWS_DOMAIN}>Windows/域控凭证</Option>
             </Select>
           </Form.Item>
           
@@ -572,6 +646,38 @@ const CredentialManagement: React.FC = () => {
           </Form.Item>
           
           {renderCredentialTypeFormItems()}
+        </Form>
+      </Modal>
+
+      {/* Windows/域控凭证测试连接 */}
+      <Modal
+        title="测试连接"
+        open={testWindowsModalVisible}
+        onCancel={() => { setTestWindowsModalVisible(false); testWindowsForm.resetFields(); }}
+        onOk={handleTestWindowsCredential}
+        confirmLoading={testWindowsLoading}
+        okText="测试"
+        destroyOnClose
+      >
+        <div style={{ marginBottom: 8 }}>
+          {testWindowsCredential && (
+            <Text type="secondary">使用凭证「{testWindowsCredential.name}」连接以下主机以验证账号密码是否正确。</Text>
+          )}
+        </div>
+        <Form form={testWindowsForm} layout="vertical" initialValues={{ port: 5985, use_ssl: false }}>
+          <Form.Item
+            name="host"
+            label="目标主机"
+            rules={[{ required: true, message: '请输入主机 IP 或主机名' }]}
+          >
+            <Input placeholder="例如 192.168.1.1 或 dc.example.com" />
+          </Form.Item>
+          <Form.Item name="port" label="WinRM 端口">
+            <Input type="number" placeholder="5985" />
+          </Form.Item>
+          <Form.Item name="use_ssl" valuePropName="checked" label="使用 HTTPS (WinRM 5986)">
+            <Select options={[{ value: false, label: '否 (5985)' }, { value: true, label: '是 (5986)' }]} />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -613,8 +719,19 @@ const CredentialManagement: React.FC = () => {
             
             {currentCredential.credential_type === CredentialType.API_KEY && (
               <>
+                <Descriptions.Item label="API 类型">
+                  {API_VENDOR_OPTIONS.find(o => o.value === currentCredential.api_vendor)?.label || currentCredential.api_vendor || '-'}
+                </Descriptions.Item>
                 <Descriptions.Item label="API Key">{currentCredential.api_key || '-'}</Descriptions.Item>
                 <Descriptions.Item label="API Secret"><Tag color="red">已加密</Tag></Descriptions.Item>
+              </>
+            )}
+            
+            {currentCredential.credential_type === CredentialType.WINDOWS_DOMAIN && (
+              <>
+                <Descriptions.Item label="用户名">{currentCredential.username || '-'}</Descriptions.Item>
+                <Descriptions.Item label="域">{currentCredential.domain || '-'}</Descriptions.Item>
+                <Descriptions.Item label="密码"><Tag color="red">已加密</Tag></Descriptions.Item>
               </>
             )}
             

@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from database.ipam_models import DhcpServer, DhcpScope, DhcpLease, DhcpWmiTarget
+from database.category_models import Credential, CredentialType
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,53 @@ $out = @{ servers = $servers; scopes = $scopes; leases = $leases }
 $json = $out | ConvertTo-Json -Depth 10 -Compress
 Write-Output $json
 """
+
+
+def test_winrm_connection(
+    host: str,
+    port: int,
+    username: str,
+    password: str,
+    domain: Optional[str] = None,
+    use_ssl: bool = False,
+) -> tuple[bool, str]:
+    """
+    测试 WinRM 连接是否可用（用于校验 Windows/域控凭证）。
+    返回 (成功, 消息)。
+    """
+    try:
+        import winrm
+    except ImportError:
+        return False, "未安装 pywinrm，请执行: pip install pywinrm"
+    winrm_user = (domain.strip() + "\\" + username.strip()) if (domain and domain.strip()) else (username or "")
+    endpoint = ("https" if use_ssl else "http") + "://" + host + ":" + str(port) + "/wsman"
+    try:
+        session = winrm.Session(
+            endpoint,
+            auth=(winrm_user, password or ""),
+            transport="ntlm" if winrm_user else "plaintext",
+            server_cert_validation="ignore" if use_ssl else None,
+        )
+        r = session.run_ps("Write-Output $env:COMPUTERNAME")
+        if r.status_code != 0:
+            err = (r.std_err or r.std_out or "脚本执行失败").decode("utf-8", errors="replace")
+            return False, err or "连接失败"
+        out = (r.std_out or b"").decode("utf-8", errors="replace").strip()
+        return True, "连接成功" + (f"（主机: {out}）" if out else "")
+    except Exception as e:
+        err_msg = str(e)
+        # 常见网络错误：仅记简短日志，不打印完整堆栈
+        if "timed out" in err_msg or "Timeout" in err_msg:
+            logger.error("WinRM 测试连接超时: %s:%s", host, port)
+            return False, f"连接超时：无法在限定时间内连到 {host}:{port}，请检查网络、防火墙及目标机 WinRM 服务是否启用。"
+        if "Connection refused" in err_msg or "refused" in err_msg.lower():
+            logger.error("WinRM 测试连接被拒绝: %s:%s", host, port)
+            return False, f"连接被拒绝：{host}:{port} 未开放或 WinRM 未监听，请确认端口与 WinRM 配置。"
+        if "No route" in err_msg or "Network is unreachable" in err_msg:
+            logger.error("WinRM 测试网络不可达: %s", host)
+            return False, f"网络不可达：无法访问 {host}，请检查网络或主机地址。"
+        logger.exception("WinRM 测试异常")
+        return False, err_msg
 
 
 def _run_winrm(host: str, port: int, username: str, password: str, use_ssl: bool, script: str) -> tuple[bool, str, Optional[dict]]:
@@ -124,11 +172,19 @@ def run_dhcp_wmi_sync(db: Session, target_id: Optional[int] = None) -> Dict[str,
     scope_key_to_id: Dict[str, int] = {}  # (server_name, scope_name) -> scope_id
 
     for t in targets:
+        username = t.username or ""
+        password = t.password or ""
+        wid = getattr(t, "windows_credential_id", None)
+        if wid:
+            cred = db.query(Credential).filter(Credential.id == wid, Credential.credential_type == CredentialType.WINDOWS_DOMAIN).first()
+            if cred:
+                username = cred.username or ""
+                password = cred.password or ""
         ok, err_msg, data = _run_winrm(
             t.host,
             t.port or 5985,
-            t.username or "",
-            t.password or "",
+            username,
+            password,
             t.use_ssl or False,
             DHCP_COLLECT_PS_SCRIPT,
         )

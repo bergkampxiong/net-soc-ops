@@ -187,6 +187,7 @@ class NetboxImportConfig(Base):
     id = Column(Integer, primary_key=True, index=True)
     base_url = Column(String(512), nullable=False, comment="NetBox 基础 URL")
     api_token = Column(String(256), nullable=True, comment="API Token")
+    api_credential_id = Column(Integer, nullable=True, comment="引用凭证表 API 凭证 ID，优先于 api_token")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -195,6 +196,7 @@ class NetboxImportConfig(Base):
             "id": self.id,
             "base_url": self.base_url,
             "api_token": "***" if self.api_token else None,
+            "api_credential_id": self.api_credential_id,
             "created_at": utc_to_beijing_str(self.created_at),
             "updated_at": utc_to_beijing_str(self.updated_at),
         }
@@ -212,6 +214,7 @@ class DhcpWmiTarget(Base):
     password = Column(String(512), nullable=True, comment="WinRM 密码")
     use_ssl = Column(Boolean, nullable=True, default=False, server_default="0", comment="是否 HTTPS WinRM")
     enabled = Column(Boolean, nullable=True, default=True, server_default="1", comment="是否启用")
+    windows_credential_id = Column(Integer, nullable=True, comment="引用凭证表 Windows/域控凭证 ID，优先于 username/password")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -225,6 +228,7 @@ class DhcpWmiTarget(Base):
             "password": "***" if (mask_password and self.password) else self.password,
             "use_ssl": self.use_ssl,
             "enabled": self.enabled,
+            "windows_credential_id": self.windows_credential_id,
             "created_at": utc_to_beijing_str(self.created_at),
             "updated_at": utc_to_beijing_str(self.updated_at),
         }

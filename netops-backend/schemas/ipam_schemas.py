@@ -55,6 +55,7 @@ class PrefixListResponse(BaseModel):
 class NetboxConfigBody(BaseModel):
     base_url: str
     api_token: Optional[str] = None
+    api_credential_id: Optional[int] = None  # 引用凭证表 API 凭证，优先于 api_token
 
 
 class NetboxImportBody(BaseModel):
@@ -125,6 +126,7 @@ class DhcpWmiTargetCreate(BaseModel):
     password: Optional[str] = None
     use_ssl: Optional[bool] = False
     enabled: Optional[bool] = True
+    windows_credential_id: Optional[int] = None  # 引用凭证表 Windows/域控凭证
 
 
 class DhcpWmiTargetUpdate(BaseModel):
@@ -135,6 +137,7 @@ class DhcpWmiTargetUpdate(BaseModel):
     password: Optional[str] = None
     use_ssl: Optional[bool] = None
     enabled: Optional[bool] = None
+    windows_credential_id: Optional[int] = None
 
 
 # ---------- Scope 关联 Prefix ----------

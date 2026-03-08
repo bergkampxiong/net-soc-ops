@@ -353,6 +353,45 @@ def init_device_connection_tables(engine):
         print(f"设备连接管理模块的表初始化失败: {str(e)}")
         raise
 
+def ensure_credential_api_vendor_domain(engine):
+    """为 credential_mgt_credentials 表添加 api_vendor、domain 列（若不存在）。"""
+    try:
+        inspector = inspect(engine)
+        if "credential_mgt_credentials" not in inspector.get_table_names():
+            return
+        columns = [col["name"] for col in inspector.get_columns("credential_mgt_credentials")]
+        with engine.connect() as conn:
+            if "api_vendor" not in columns:
+                conn.execute(text("ALTER TABLE credential_mgt_credentials ADD COLUMN api_vendor VARCHAR(32)"))
+                conn.commit()
+                print("已添加 api_vendor 列到 credential_mgt_credentials")
+            if "domain" not in columns:
+                conn.execute(text("ALTER TABLE credential_mgt_credentials ADD COLUMN domain VARCHAR(128)"))
+                conn.commit()
+                print("已添加 domain 列到 credential_mgt_credentials")
+    except Exception as e:
+        print(f"ensure_credential_api_vendor_domain 失败: {e}")
+
+
+def ensure_credential_type_enum(engine):
+    """确保 PostgreSQL credentialtype 枚举包含 WINDOWS_DOMAIN（与 Python CredentialType 一致）。"""
+    try:
+        with engine.connect() as conn:
+            # 若枚举中已有 WINDOWS_DOMAIN 则跳过
+            r = conn.execute(text("""
+                SELECT 1 FROM pg_enum e
+                JOIN pg_type t ON e.enumtypid = t.oid
+                WHERE t.typname = 'credentialtype' AND e.enumlabel = 'WINDOWS_DOMAIN'
+            """))
+            if r.fetchone() is not None:
+                return
+            conn.execute(text("ALTER TYPE credentialtype ADD VALUE 'WINDOWS_DOMAIN'"))
+            conn.commit()
+            print("已向 credentialtype 枚举添加 WINDOWS_DOMAIN")
+    except Exception as e:
+        print(f"ensure_credential_type_enum 失败: {e}")
+
+
 def init_credential_tables(engine):
     """初始化凭证相关的表"""
     try:
@@ -360,7 +399,11 @@ def init_credential_tables(engine):
         
         # 创建凭证表
         Credential.__table__.create(engine, checkfirst=True)
-        
+        # 凭证表新增列：api_vendor、domain（与计划一致，仅通过本脚本初始化）
+        ensure_credential_api_vendor_domain(engine)
+        # 确保 credentialtype 枚举包含 WINDOWS_DOMAIN（历史库可能缺少该值）
+        ensure_credential_type_enum(engine)
+
         # 创建默认凭证
         db = sessionmaker(autocommit=False, autoflush=False, bind=engine)()
         try:
@@ -650,6 +693,28 @@ def init_config_module_tables(engine):
         raise
 
 
+def ensure_ipam_credential_columns(engine):
+    """为 netbox_import_config、dhcp_wmi_targets 添加凭证引用列（若不存在）。"""
+    try:
+        inspector = inspect(engine)
+        if "netbox_import_config" in inspector.get_table_names():
+            columns = [col["name"] for col in inspector.get_columns("netbox_import_config")]
+            with engine.connect() as conn:
+                if "api_credential_id" not in columns:
+                    conn.execute(text("ALTER TABLE netbox_import_config ADD COLUMN api_credential_id INTEGER"))
+                    conn.commit()
+                    print("已添加 api_credential_id 列到 netbox_import_config")
+        if "dhcp_wmi_targets" in inspector.get_table_names():
+            columns = [col["name"] for col in inspector.get_columns("dhcp_wmi_targets")]
+            with engine.connect() as conn:
+                if "windows_credential_id" not in columns:
+                    conn.execute(text("ALTER TABLE dhcp_wmi_targets ADD COLUMN windows_credential_id INTEGER"))
+                    conn.commit()
+                    print("已添加 windows_credential_id 列到 dhcp_wmi_targets")
+    except Exception as e:
+        print(f"ensure_ipam_credential_columns 失败: {e}")
+
+
 def init_ipam_tables(engine):
     """初始化 IP 管理模块表（Aggregates、Prefixes、DHCP、NetBox 配置），PRD-IP管理功能。"""
     try:
@@ -660,6 +725,7 @@ def init_ipam_tables(engine):
         DhcpLease.__table__.create(engine, checkfirst=True)
         NetboxImportConfig.__table__.create(engine, checkfirst=True)
         DhcpWmiTarget.__table__.create(engine, checkfirst=True)
+        ensure_ipam_credential_columns(engine)
         print("IP 管理模块表（ipam_aggregates/ipam_prefixes/dhcp_servers/dhcp_scopes/dhcp_leases/netbox_import_config/dhcp_wmi_targets）创建完成")
     except Exception as e:
         print(f"IP 管理模块表初始化失败: {str(e)}")

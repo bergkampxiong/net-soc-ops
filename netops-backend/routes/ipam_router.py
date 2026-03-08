@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from database.session import get_db
 from database.ipam_models import IpamAggregate, IpamPrefix, DhcpServer, DhcpScope, DhcpLease, NetboxImportConfig, DhcpWmiTarget
+from database.category_models import Credential, CredentialType
 from schemas.ipam_schemas import (
     AggregateCreate,
     AggregateUpdate,
@@ -255,20 +256,25 @@ def delete_prefix(pref_id: int, db=Depends(get_db)):
 def get_netbox_config(db=Depends(get_db)):
     row = db.query(NetboxImportConfig).first()
     if not row:
-        return {"base_url": "", "api_token": None}
-    return {"base_url": row.base_url, "api_token": "***" if row.api_token else None}
+        return {"base_url": "", "api_token": None, "api_credential_id": None}
+    return {"base_url": row.base_url, "api_token": "***" if row.api_token else None, "api_credential_id": getattr(row, "api_credential_id", None)}
 
 
 @router.post("/import/netbox-config")
 def save_netbox_config(body: NetboxConfigBody, db=Depends(get_db)):
     row = db.query(NetboxImportConfig).first()
     if not row:
-        row = NetboxImportConfig(base_url=body.base_url.strip(), api_token=body.api_token.strip() if body.api_token else None)
+        row = NetboxImportConfig(
+            base_url=body.base_url.strip(),
+            api_token=body.api_token.strip() if body.api_token else None,
+            api_credential_id=body.api_credential_id,
+        )
         db.add(row)
     else:
         row.base_url = body.base_url.strip()
         if body.api_token is not None:
             row.api_token = body.api_token.strip() if body.api_token else None
+        row.api_credential_id = body.api_credential_id
     db.commit()
     db.refresh(row)
     return {"message": "已保存", "base_url": row.base_url}
@@ -307,6 +313,13 @@ def import_from_netbox(body: NetboxImportBody, db=Depends(get_db)):
     if not cfg or not cfg.base_url:
         raise HTTPException(status_code=400, detail="请先配置 NetBox 基础 URL 与 Token")
     token = (cfg.api_token or "").strip()
+    api_credential_id = getattr(cfg, "api_credential_id", None)
+    if api_credential_id:
+        cred = db.query(Credential).filter(Credential.id == api_credential_id, Credential.credential_type == CredentialType.API_KEY).first()
+        if cred and (cred.api_secret or cred.api_key):
+            token = (cred.api_secret or cred.api_key or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="请配置 NetBox API Token 或选择 API 凭证")
     base_url = cfg.base_url.rstrip("/")
     strategy = (body.strategy or "merge").lower()
     if strategy not in ("merge", "replace"):
@@ -426,6 +439,7 @@ def create_dhcp_wmi_target(body: DhcpWmiTargetCreate, db=Depends(get_db)):
         password=body.password,
         use_ssl=body.use_ssl or False,
         enabled=body.enabled if body.enabled is not None else True,
+        windows_credential_id=body.windows_credential_id,
     )
     db.add(t)
     db.commit()
@@ -452,6 +466,8 @@ def update_dhcp_wmi_target(target_id: int, body: DhcpWmiTargetUpdate, db=Depends
         t.use_ssl = body.use_ssl
     if body.enabled is not None:
         t.enabled = body.enabled
+    if body.windows_credential_id is not None:
+        t.windows_credential_id = body.windows_credential_id
     db.commit()
     db.refresh(t)
     return t.to_dict(mask_password=True)

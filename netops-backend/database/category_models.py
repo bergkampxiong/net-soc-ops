@@ -33,11 +33,23 @@ class DeviceGroupMember(Base):
     def __repr__(self):
         return f"<DeviceGroupMember {self.id}>"
 
+# API 厂商/类型枚举（用于 API 凭证展示与筛选）
+class APIVendor(str, enum.Enum):
+    GENERIC = "generic"
+    AWS = "aws"
+    ALIYUN = "aliyun"
+    TENCENT = "tencent"
+    HUAWEI = "huawei"
+    VMWARE = "vmware"
+    ZSCALER = "zscaler"
+
+
 # 凭证类型枚举
 class CredentialType(str, enum.Enum):
     SSH_PASSWORD = "ssh_password"
     API_KEY = "api_key"
     SSH_KEY = "ssh_key"
+    WINDOWS_DOMAIN = "windows_domain"
 
 # 凭证管理表
 class Credential(Base):
@@ -67,6 +79,11 @@ class Credential(Base):
     # SSH密钥（适用于SSH密钥）
     private_key = Column(Text, nullable=True)
     passphrase = Column(String(255), nullable=True)
+    
+    # API 类型（仅当 credential_type=API_KEY 时使用）
+    api_vendor = Column(String(32), nullable=True)
+    # 域（仅当 credential_type=WINDOWS_DOMAIN 时使用，WinRM 域控登录）
+    domain = Column(String(128), nullable=True)
     
     def __repr__(self):
         return f"<Credential {self.name} ({self.credential_type})>" 

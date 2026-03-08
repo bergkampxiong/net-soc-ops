@@ -1,14 +1,22 @@
 /**
  * IP 管理 - 网络导入：NetBox 迁移 + DHCP 采集配置（WMI）（PRD-IP管理功能）
+ * NetBox 可选用 API 凭证；DHCP WMI 可选用 Windows/域控凭证。
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Form, Input, Button, Space, message, Switch, Table, Popconfirm, Row, Col } from 'antd';
+import { Card, Form, Input, Button, Space, message, Switch, Table, Popconfirm, Row, Col, Select } from 'antd';
 import { CloudDownloadOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import request from '../../../utils/request';
 
 interface NetboxConfig {
   base_url: string;
   api_token?: string;
+  api_credential_id?: number | null;
+}
+
+interface CredentialOption {
+  id: number;
+  name: string;
+  credential_type: string;
 }
 
 interface DhcpWmiTargetRow {
@@ -20,6 +28,7 @@ interface DhcpWmiTargetRow {
   password?: string;
   use_ssl?: boolean;
   enabled?: boolean;
+  windows_credential_id?: number | null;
 }
 
 const IPManagementImport: React.FC = () => {
@@ -34,19 +43,42 @@ const IPManagementImport: React.FC = () => {
   const [wmiForm] = Form.useForm();
   const [editingWmiId, setEditingWmiId] = useState<number | null>(null);
 
+  const [apiCredentials, setApiCredentials] = useState<CredentialOption[]>([]);
+  const [windowsCredentials, setWindowsCredentials] = useState<CredentialOption[]>([]);
+
   const loadNetboxConfig = useCallback(async () => {
     setNetboxLoading(true);
     try {
       const res = await request.get('/config-module/import/netbox-config');
       const data = res.data?.data ?? res.data;
-      setNetboxConfig({ base_url: data?.base_url ?? '', api_token: data?.api_token });
-      form.setFieldsValue({ base_url: data?.base_url ?? '', api_token: '' });
+      const apiCredId = data?.api_credential_id ?? null;
+      setNetboxConfig({ base_url: data?.base_url ?? '', api_token: data?.api_token, api_credential_id: apiCredId });
+      form.setFieldsValue({ base_url: data?.base_url ?? '', api_token: '', api_credential_id: apiCredId || undefined });
     } catch {
-      form.setFieldsValue({ base_url: '', api_token: '' });
+      form.setFieldsValue({ base_url: '', api_token: '', api_credential_id: undefined });
     } finally {
       setNetboxLoading(false);
     }
   }, [form]);
+
+  const loadApiCredentials = useCallback(async () => {
+    try {
+      const res = await request.get('/device/credential/?credential_type=api_key&limit=100');
+      const list = Array.isArray(res.data) ? res.data : [];
+      setApiCredentials(list.map((c: CredentialOption) => ({ id: c.id, name: c.name, credential_type: c.credential_type })));
+    } catch {
+      setApiCredentials([]);
+    }
+  }, []);
+  const loadWindowsCredentials = useCallback(async () => {
+    try {
+      const res = await request.get('/device/credential/?credential_type=windows_domain&limit=100');
+      const list = Array.isArray(res.data) ? res.data : [];
+      setWindowsCredentials(list.map((c: CredentialOption) => ({ id: c.id, name: c.name, credential_type: c.credential_type })));
+    } catch {
+      setWindowsCredentials([]);
+    }
+  }, []);
 
   const loadWmiTargets = useCallback(async () => {
     setWmiTargetsLoading(true);
@@ -67,6 +99,10 @@ const IPManagementImport: React.FC = () => {
   useEffect(() => {
     loadWmiTargets();
   }, [loadWmiTargets]);
+  useEffect(() => {
+    loadApiCredentials();
+    loadWindowsCredentials();
+  }, [loadApiCredentials, loadWindowsCredentials]);
 
   const saveNetboxConfig = async () => {
     const values = await form.validateFields();
@@ -74,6 +110,7 @@ const IPManagementImport: React.FC = () => {
       await request.post('/config-module/import/netbox-config', {
         base_url: values.base_url?.trim(),
         api_token: values.api_token?.trim() || undefined,
+        api_credential_id: values.api_credential_id ?? null,
       });
       message.success('配置已保存');
       loadNetboxConfig();
@@ -110,6 +147,7 @@ const IPManagementImport: React.FC = () => {
         password: values.password?.trim() || undefined,
         use_ssl: !!values.use_ssl,
         enabled: values.enabled !== false,
+        windows_credential_id: values.windows_credential_id ?? null,
       };
       if (editingWmiId != null) {
         await request.put(`/config-module/dhcp/wmi-targets/${editingWmiId}`, payload);
@@ -138,6 +176,7 @@ const IPManagementImport: React.FC = () => {
       password: '',
       use_ssl: row.use_ssl ?? false,
       enabled: row.enabled !== false,
+      windows_credential_id: row.windows_credential_id ?? undefined,
     });
   };
 
@@ -159,8 +198,11 @@ const IPManagementImport: React.FC = () => {
             <Form.Item name="base_url" label="NetBox 基础 URL" rules={[{ required: true }]} style={{ minWidth: 280 }}>
               <Input placeholder="https://netbox.example.com" />
             </Form.Item>
+            <Form.Item name="api_credential_id" label="API 凭证" style={{ width: 200 }}>
+              <Select allowClear placeholder="可选，选择后优先使用" options={apiCredentials.map(c => ({ value: c.id, label: c.name }))} />
+            </Form.Item>
             <Form.Item name="api_token" label="API Token">
-              <Input.Password placeholder="留空则使用已保存 Token" style={{ width: 200 }} />
+              <Input.Password placeholder="未选凭证时使用" style={{ width: 200 }} />
             </Form.Item>
             <Form.Item>
               <Button onClick={saveNetboxConfig} loading={netboxLoading}>保存配置</Button>
@@ -184,13 +226,18 @@ const IPManagementImport: React.FC = () => {
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12} md={8} lg={6}>
+                <Form.Item name="windows_credential_id" label="Windows 登录凭证">
+                  <Select allowClear placeholder="可选，选择后优先使用" options={windowsCredentials.map(c => ({ value: c.id, label: c.name }))} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={6}>
                 <Form.Item name="username" label="用户名">
-                  <Input placeholder="WinRM 用户" />
+                  <Input placeholder="未选凭证时填写" />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12} md={8} lg={6}>
                 <Form.Item name="password" label="密码">
-                  <Input.Password placeholder={editingWmiId != null ? '留空不修改' : ''} />
+                  <Input.Password placeholder={editingWmiId != null ? '留空不修改' : '未选凭证时填写'} />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12} md={8} lg={4}>
@@ -223,10 +270,16 @@ const IPManagementImport: React.FC = () => {
             dataSource={wmiTargets}
             size="small"
             pagination={false}
-            scroll={{ x: 660 }}
+            scroll={{ x: 780 }}
             columns={[
               { title: '主机', dataIndex: 'host', ellipsis: true, width: 140 },
               { title: '端口', dataIndex: 'port', width: 70 },
+              {
+                title: 'Windows 凭证',
+                dataIndex: 'windows_credential_id',
+                width: 100,
+                render: (id: number | null) => (id ? windowsCredentials.find(c => c.id === id)?.name ?? `#${id}` : '-'),
+              },
               { title: '用户名', dataIndex: 'username', ellipsis: true, width: 100 },
               { title: '密码', dataIndex: 'password', width: 80, render: () => '***' },
               { title: 'HTTPS', dataIndex: 'use_ssl', width: 70, render: (v: boolean) => (v ? '是' : '否') },
