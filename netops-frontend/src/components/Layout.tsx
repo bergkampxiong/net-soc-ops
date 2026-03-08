@@ -30,6 +30,8 @@ import {
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import request from '../utils/request';
 import { setDisplayTimezone } from '../utils/formatTime';
+import sessionManager from '../utils/sessionManager';
+import { setSessionActivityCallback } from '../utils/sessionActivity';
 
 const { Header, Sider, Content } = AntLayout;
 
@@ -57,6 +59,16 @@ const Layout: React.FC = () => {
     };
 
     fetchUserInfo();
+  }, []);
+
+  // 使用系统管理-安全设置中的会话超时时间，初始化会话管理器
+  useEffect(() => {
+    sessionManager.init();
+    setSessionActivityCallback(() => sessionManager.resetSessionTimer());
+    return () => {
+      setSessionActivityCallback(null);
+      sessionManager.stop();
+    };
   }, []);
 
   // 加载全局时钟时区（与系统管理-全局配置一致，所有时间展示使用此刻）

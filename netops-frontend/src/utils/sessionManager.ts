@@ -205,34 +205,32 @@ class SessionManager {
   }
 
   /**
-   * 从服务器获取超时设置
+   * 从服务器获取超时设置（系统管理-安全设置-会话策略的会话超时时间）
+   * 任意登录用户可读，与角色无关
    */
   private async getTimeoutFromServer(): Promise<number | null> {
     try {
-      // 先尝试获取当前用户信息，确认是否有权限
-      const userResponse = await request.get('/auth/me');
-      const userRole = userResponse.data?.role;
-      
-      // 如果不是管理员，使用默认设置
-      if (userRole !== 'Admin') {
-        console.log('非管理员用户，使用默认会话超时设置');
-        return null;
-      }
-      
-      // 获取安全设置
-      const response = await request.get('/security/settings');
-      if (response.data && response.data.session_timeout_minutes) {
+      const response = await request.get('/security/session-timeout');
+      if (response.data && typeof response.data.session_timeout_minutes === 'number') {
         return response.data.session_timeout_minutes;
       }
       return null;
     } catch (error: any) {
-      // 如果是权限错误，静默处理
       if (error?.response && (error.response.status === 401 || error.response.status === 403)) {
-        console.log('无权限获取安全设置，使用默认会话超时设置');
+        console.log('获取会话超时设置失败，使用默认值');
         return null;
       }
-      console.error('获取安全设置失败:', error);
+      console.error('获取会话超时设置失败:', error);
       return null;
+    }
+  }
+
+  /**
+   * 重置会话计时器（供请求拦截器在刷新 token 成功后调用，视为用户活动）
+   */
+  public resetSessionTimer(): void {
+    if (this.initialized) {
+      this.handleUserActivity();
     }
   }
 
@@ -270,4 +268,5 @@ class SessionManager {
   }
 }
 
-export default SessionManager; 
+const sessionManager = new SessionManager();
+export default sessionManager; 

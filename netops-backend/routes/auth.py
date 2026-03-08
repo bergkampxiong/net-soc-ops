@@ -211,14 +211,14 @@ async def login(
     # 检查是否是首次登录
     is_first_login = not user.last_login
 
-    # 如果是首次登录，需要修改密码
+    # 如果是首次登录，需要修改密码（仍发放 30 分钟 token 与 refresh_token，避免 15 分钟即掉线）
     if is_first_login:
-        # 创建临时访问令牌
         access_token = create_access_token(
             data={"sub": user.username},
-            expires_delta=timedelta(minutes=15)  # 临时令牌15分钟有效期
+            expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         )
-        
+        refresh_token, _ = create_refresh_token(user_id=user.id, db=db)
+
         # 记录首次登录事件
         log_event(
             db=db,
@@ -227,10 +227,11 @@ async def login(
             ip_address=client_ip,
             details={"ip": client_ip}
         )
-        
+
         return {
             "access_token": access_token,
             "token_type": "bearer",
+            "refresh_token": refresh_token,
             "is_first_login": True
         }
 

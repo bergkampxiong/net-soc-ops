@@ -1,5 +1,6 @@
 import axios, { AxiosResponse, AxiosInstance } from 'axios';
 import { message } from 'antd';
+import { notifySessionActivity } from './sessionActivity';
 
 // 标准响应格式
 export interface StandardResponse<T> {
@@ -134,6 +135,7 @@ request.interceptors.response.use(
           const newToken = response.data.access_token;
           localStorage.setItem('token', newToken);
           originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          notifySessionActivity(); // 刷新成功视为活动，重置会话超时计时器
           return request(originalRequest);
         }
       } catch (refreshError) {

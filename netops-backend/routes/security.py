@@ -9,6 +9,9 @@ from auth.authentication import get_current_active_user
 
 router = APIRouter()
 
+# 默认会话超时（分钟），当 DB 无配置时使用
+DEFAULT_SESSION_TIMEOUT_MINUTES = 30
+
 class SecuritySettingsModel(BaseModel):
     password_expiry_days: int
     max_failed_attempts: int
@@ -21,6 +24,18 @@ class SecuritySettingsModel(BaseModel):
     password_require_lowercase: bool
     password_require_numbers: bool
     password_require_special: bool
+
+@router.get("/session-timeout")
+async def get_session_timeout(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """获取会话超时时间（分钟），供前端会话策略使用，任意登录用户可读"""
+    settings = db.query(SecuritySettings).first()
+    if not settings:
+        return {"session_timeout_minutes": DEFAULT_SESSION_TIMEOUT_MINUTES}
+    return {"session_timeout_minutes": settings.session_timeout_minutes}
+
 
 @router.get("/settings")
 async def get_security_settings(
