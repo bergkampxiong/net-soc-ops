@@ -49,6 +49,7 @@ from database.config_module_models import (
     ConfigEosInfo,
 )
 from database.strix_models import StrixScanTask, StrixConfig
+from database.ipam_models import IpamAggregate, IpamPrefix, DhcpServer, DhcpScope, DhcpLease, NetboxImportConfig, DhcpWmiTarget
 from database.system_global_config_models import SystemGlobalConfig
 from database.frontend_cert_config_models import FrontendCertConfig
 from database.session import Base as SessionBase
@@ -649,6 +650,22 @@ def init_config_module_tables(engine):
         raise
 
 
+def init_ipam_tables(engine):
+    """初始化 IP 管理模块表（Aggregates、Prefixes、DHCP、NetBox 配置），PRD-IP管理功能。"""
+    try:
+        IpamAggregate.__table__.create(engine, checkfirst=True)
+        IpamPrefix.__table__.create(engine, checkfirst=True)
+        DhcpServer.__table__.create(engine, checkfirst=True)
+        DhcpScope.__table__.create(engine, checkfirst=True)
+        DhcpLease.__table__.create(engine, checkfirst=True)
+        NetboxImportConfig.__table__.create(engine, checkfirst=True)
+        DhcpWmiTarget.__table__.create(engine, checkfirst=True)
+        print("IP 管理模块表（ipam_aggregates/ipam_prefixes/dhcp_servers/dhcp_scopes/dhcp_leases/netbox_import_config/dhcp_wmi_targets）创建完成")
+    except Exception as e:
+        print(f"IP 管理模块表初始化失败: {str(e)}")
+        raise
+
+
 def init_strix_tables(engine):
     """初始化 Strix 集成表：扫描任务、OpenAPI 配置。"""
     try:
@@ -759,7 +776,10 @@ def init_databases():
             
             # 初始化配置管理模块表
             init_config_module_tables(engine)
-            
+
+            # 初始化 IP 管理模块表（Aggregates、Prefixes、DHCP、NetBox 导入）
+            init_ipam_tables(engine)
+
             # 初始化 Strix 集成表
             init_strix_tables(engine)
             ensure_strix_scan_task_unified_report(engine)

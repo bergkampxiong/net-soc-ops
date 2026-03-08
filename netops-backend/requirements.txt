@@ -34,6 +34,9 @@ tzlocal>=3.0
 celery==5.3.6
 Pillow==10.2.0
 
+# DHCP WMI 采集（WinRM 连接 Windows）
+pywinrm>=0.4.3
+
 # Network device (discovery: Cisco / Huawei / H3C / Ruijie / PaloAlto / Fortinet)
 netmiko==3.4.0
 paramiko==3.5.1

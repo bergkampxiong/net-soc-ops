@@ -32,6 +32,7 @@ import database.config_management_models  # 导入配置管理模型
 
 # 导入路由
 from routes import auth, users, audit, ldap, security, config_management, config_generator_router, config_module
+from routes.ipam_router import router as ipam_router
 from routes.strix_integration import router as strix_router
 from routes.system_global_config import router as system_global_config_router
 from routes.frontend_cert_config import router as frontend_cert_config_router
@@ -127,6 +128,7 @@ app.include_router(device_router)
 app.include_router(config_management.router, prefix="/api", tags=["config"])
 app.include_router(config_generator_router, prefix="/api/config-generator", tags=["config-generator"])
 app.include_router(config_module.router, prefix="/api/config-module")
+app.include_router(ipam_router, prefix="/api/config-module")
 app.include_router(strix_router, prefix="/api/config-module")
 app.include_router(system_global_config_router, prefix="/api")
 app.include_router(frontend_cert_config_router, prefix="/api")
@@ -161,9 +163,28 @@ def cleanup_expired_records():
     finally:
         db.close()
 
+# DHCP WMI 每 2 小时同步任务
+def dhcp_wmi_sync_job():
+    """使用已配置的 Windows 凭证通过 WinRM 拉取 DHCP 数据并写入本地表。"""
+    from database.session import SessionLocal
+    from services.dhcp_wmi_sync import run_dhcp_wmi_sync
+    db = SessionLocal()
+    try:
+        result = run_dhcp_wmi_sync(db, target_id=None)
+        if result.get("targets_ok", 0) > 0 or result.get("targets_fail", 0) > 0:
+            print(f"DHCP WMI 同步: {result.get('message', '')}")
+        if result.get("error_per_target"):
+            for e in result["error_per_target"]:
+                print(f"  target {e.get('host')}: {e.get('error')}")
+    except Exception as e:
+        print(f"DHCP WMI 同步失败: {e}")
+    finally:
+        db.close()
+
 # 启动定期清理任务
 scheduler = BackgroundScheduler()
 scheduler.add_job(cleanup_expired_records, 'interval', hours=24)  # 每24小时执行一次
+scheduler.add_job(dhcp_wmi_sync_job, 'interval', hours=2, id='dhcp_wmi_sync')  # 每 2 小时同步 DHCP
 scheduler.start()
 
 @app.on_event("startup")

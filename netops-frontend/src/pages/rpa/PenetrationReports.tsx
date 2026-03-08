@@ -333,20 +333,18 @@ const PenetrationReports: React.FC = () => {
                   </Space>
                 }>
                   <Row gutter={24}>
-                    <Col span={6}><Statistic title="模型" value={(progress?.model ?? detail.strix_stats?.model) || '-'} valueStyle={{ fontSize: 14 }} /></Col>
-                    <Col span={6}><Statistic title="漏洞数" value={(progress?.vulnerabilities ?? detail.strix_stats?.vulnerabilities) ?? 0} /></Col>
-                    <Col span={6}><Statistic title="Agents" value={(progress?.agents ?? detail.strix_stats?.agents) ?? 0} /></Col>
-                    <Col span={6}><Statistic title="Tools" value={(progress?.tools ?? detail.strix_stats?.tools) ?? 0} /></Col>
+                    <Col span={8}><Statistic title="模型" value={(progress?.model ?? detail.strix_stats?.model) || '-'} valueStyle={{ fontSize: 14 }} /></Col>
+                    <Col span={8}><Statistic title="Agents" value={(progress?.agents ?? detail.strix_stats?.agents) ?? 0} /></Col>
+                    <Col span={8}><Statistic title="Tools" value={(progress?.tools ?? detail.strix_stats?.tools) ?? 0} /></Col>
                   </Row>
                 </Card>
               )}
               {(detail.status === 'success' || detail.status === 'failed') && detail.strix_stats && (
                 <Card size="small" title="运行状态" style={{ marginTop: 16 }}>
                   <Row gutter={24}>
-                    <Col span={6}><Statistic title="模型" value={detail.strix_stats.model || '-'} valueStyle={{ fontSize: 14 }} /></Col>
-                    <Col span={6}><Statistic title="漏洞数" value={detail.strix_stats.vulnerabilities ?? 0} /></Col>
-                    <Col span={6}><Statistic title="Agents" value={detail.strix_stats.agents ?? 0} /></Col>
-                    <Col span={6}><Statistic title="Tools" value={detail.strix_stats.tools ?? 0} /></Col>
+                    <Col span={8}><Statistic title="模型" value={detail.strix_stats.model || '-'} valueStyle={{ fontSize: 14 }} /></Col>
+                    <Col span={8}><Statistic title="Agents" value={detail.strix_stats.agents ?? 0} /></Col>
+                    <Col span={8}><Statistic title="Tools" value={detail.strix_stats.tools ?? 0} /></Col>
                   </Row>
                 </Card>
               )}

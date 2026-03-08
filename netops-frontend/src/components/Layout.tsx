@@ -25,6 +25,7 @@ import {
   LineChartOutlined,
   LockOutlined,
   FileTextOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import request from '../utils/request';
@@ -122,6 +123,11 @@ const Layout: React.FC = () => {
     if (path.startsWith('/config-module/management')) return ['config-module/management'];
     if (path.startsWith('/config-module/compliance')) return ['config-module/compliance'];
     if (path.startsWith('/config-module/eos')) return ['config-module/eos'];
+    if (path.startsWith('/config-module/ip-management/aggregates')) return ['ip-management/aggregates'];
+    if (path.startsWith('/config-module/ip-management/prefixes')) return ['ip-management/prefixes'];
+    if (path.startsWith('/config-module/ip-management/import')) return ['ip-management/import'];
+    if (path.startsWith('/config-module/ip-management/dhcp')) return ['ip-management/dhcp'];
+    if (path.startsWith('/config-module/ip-management')) return ['ip-management/aggregates'];
     if (path.startsWith('/config-module')) return ['config-module'];
     if (path.startsWith('/aiops')) return ['aiops'];
     if (path.startsWith('/system')) return ['system'];
@@ -143,8 +149,9 @@ const Layout: React.FC = () => {
     if (path.startsWith('/rpa/task-job-management')) return ['rpa', 'rpa-task-job-management'];
     if (path.startsWith('/rpa/system-integration')) return ['rpa', 'rpa-system-integration'];
     if (path.startsWith('/rpa')) return ['rpa'];
+    if (path.startsWith('/config-module/ip-management')) return ['ip-management'];
     if (path.startsWith('/config-module')) return ['config-module'];
-    
+
     return [];
   };
 
@@ -299,6 +306,17 @@ const Layout: React.FC = () => {
       ],
     },
     {
+      key: 'ip-management',
+      icon: <GlobalOutlined />,
+      label: 'IP 管理',
+      children: [
+        { key: 'ip-management/aggregates', label: '聚合（Aggregates）', icon: <DatabaseOutlined /> },
+        { key: 'ip-management/prefixes', label: '网段（Prefixes）', icon: <DatabaseOutlined /> },
+        { key: 'ip-management/dhcp', label: 'DHCP 服务管理', icon: <SettingOutlined /> },
+        { key: 'ip-management/import', label: '网络导入', icon: <BarChartOutlined /> },
+      ],
+    },
+    {
       key: 'aiops',
       icon: <BulbOutlined />,
       label: 'AIOPS',
@@ -371,6 +389,8 @@ const Layout: React.FC = () => {
               handleMenuClick('/device/category');
             } else if (key === 'credential-management') {
               handleMenuClick('/device/credentials');
+            } else if (typeof key === 'string' && key.startsWith('ip-management/')) {
+              handleMenuClick(`/config-module/${key}`);
             } else {
               // 导航到相应路由，但保持当前展开的菜单状态
               const currentOpenKeys = [...openKeys];
