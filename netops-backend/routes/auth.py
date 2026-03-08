@@ -219,6 +219,10 @@ async def login(
         )
         refresh_token, _ = create_refresh_token(user_id=user.id, db=db)
 
+        # 更新最后登录时间，否则下次登录仍会被判为首次登录
+        user.last_login = datetime.utcnow().isoformat()
+        db.commit()
+
         # 记录首次登录事件
         log_event(
             db=db,
@@ -272,7 +276,7 @@ async def login(
     # 更新最后登录时间
     user.last_login = datetime.utcnow().isoformat()
     db.commit()
-    
+
     # 记录登录成功事件
     log_event(
         db=db,

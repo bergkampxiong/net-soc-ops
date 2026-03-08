@@ -27,6 +27,18 @@ module.exports = {
       '/api': {
         target: process.env.REACT_APP_API_PROXY_TARGET || 'http://127.0.0.1:8000',
         changeOrigin: true,
+        onProxyReq: (proxyReq, req) => {
+          // 优先保留上游（如 Nginx）已设置的真实 IP，否则用本代理看到的客户端地址
+          const forwarded = req.headers['x-forwarded-for'];
+          let clientIp = forwarded
+            ? (typeof forwarded === 'string' ? forwarded.split(',')[0] : forwarded[0]).trim()
+            : (req.socket?.remoteAddress || req.connection?.remoteAddress || '127.0.0.1');
+          if (clientIp === '::1' || clientIp === '::ffff:127.0.0.1') {
+            clientIp = '127.0.0.1';
+          }
+          proxyReq.setHeader('X-Forwarded-For', forwarded || clientIp);
+          proxyReq.setHeader('X-Real-IP', clientIp);
+        },
       },
     },
   },
