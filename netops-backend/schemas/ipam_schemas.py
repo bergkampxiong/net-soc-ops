@@ -23,6 +23,10 @@ class AggregateListResponse(BaseModel):
     total: int
 
 
+class AvailableRangesResponse(BaseModel):
+    items: List[str]  # CIDR 字符串列表
+
+
 # ---------- Prefixes ----------
 class PrefixCreate(BaseModel):
     prefix: str

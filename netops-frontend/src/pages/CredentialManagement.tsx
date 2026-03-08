@@ -434,17 +434,16 @@ const CredentialManagement: React.FC = () => {
             <Form.Item
               name="api_key"
               label="API Key"
-              rules={[{ required: modalType === 'create', message: '请输入API Key' }]}
+              extra="目标接口不需要认证时可留空"
             >
-              <Input placeholder="请输入API Key" />
+              <Input placeholder="请输入API Key（不需要认证时可留空）" />
             </Form.Item>
             <Form.Item
               name="api_secret"
               label="API Secret"
-              rules={[{ required: modalType === 'create', message: '请输入API Secret' }]}
-              extra="编辑模式下，如不修改密钥可留空"
+              extra="编辑模式下如不修改可留空；目标不需要认证时可留空"
             >
-              <Password placeholder="请输入API Secret" />
+              <Password placeholder="请输入API Secret（不需要认证时可留空）" />
             </Form.Item>
           </>
         );

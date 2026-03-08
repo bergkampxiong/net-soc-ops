@@ -3,7 +3,9 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Space, Input, Modal, Form, Select, Checkbox, message, Popconfirm, Card } from 'antd';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import type { TableRowSelection } from 'antd/es/table/interface';
+import { PlusOutlined, ReloadOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Link } from 'react-router-dom';
 import request from '../../../utils/request';
 
 interface PrefixRow {
@@ -40,6 +42,8 @@ const IPManagementPrefixes: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form] = Form.useForm();
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [batchDeleting, setBatchDeleting] = useState(false);
 
   const loadAggregates = useCallback(async () => {
     try {
@@ -147,13 +151,57 @@ const IPManagementPrefixes: React.FC = () => {
     }
   };
 
+  const handleBatchDelete = async () => {
+    const ids = selectedRowKeys.map(Number).filter((id) => Number.isInteger(id) && id > 0);
+    if (ids.length === 0) return;
+    setBatchDeleting(true);
+    let successCount = 0;
+    for (const id of ids) {
+      try {
+        await request.delete(`/config-module/ipam/prefixes/${id}`);
+        successCount += 1;
+      } catch (e: any) {
+        const failMsg = e?.response?.data?.detail || '删除失败';
+        message.error(`删除 ID ${id} 失败：${failMsg}`);
+      }
+    }
+    setBatchDeleting(false);
+    setSelectedRowKeys([]);
+    if (successCount > 0) {
+      message.success(`已删除 ${successCount} 条`);
+      load();
+    }
+  };
+
+  const rowSelection: TableRowSelection<PrefixRow> = {
+    selectedRowKeys,
+    onChange: (keys) => setSelectedRowKeys(keys),
+  };
+
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 80 },
-    { title: 'Prefix', dataIndex: 'prefix', ellipsis: true },
+    {
+      title: 'Prefix',
+      dataIndex: 'prefix',
+      ellipsis: true,
+      render: (text: string, row: PrefixRow) => (
+        <Link to={`/config-module/ip-management/prefixes/${row.id}`}>{text || '-'}</Link>
+      ),
+    },
     { title: 'Status', dataIndex: 'status', width: 100 },
     { title: 'VLAN ID', dataIndex: 'vlan_id', width: 90 },
     { title: 'Location', dataIndex: 'location', ellipsis: true },
-    { title: 'Aggregate ID', dataIndex: 'aggregate_id', width: 100 },
+    {
+      title: '所属 Aggregate',
+      dataIndex: 'aggregate_id',
+      width: 140,
+      render: (aggId: number | undefined) =>
+        aggId != null ? (
+          <Link to={`/config-module/ip-management/aggregates/${aggId}`}>
+            {aggregateOptions.find((o) => o.value === aggId)?.label ?? `#${aggId}`}
+          </Link>
+        ) : '—',
+    },
     { title: '描述', dataIndex: 'description', ellipsis: true },
     {
       title: '操作',
@@ -174,6 +222,20 @@ const IPManagementPrefixes: React.FC = () => {
     <Card title="网段（Prefixes）">
       <Space style={{ marginBottom: 16 }} wrap>
         <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>新增</Button>
+        <Popconfirm
+          title={`确定删除选中的 ${selectedRowKeys.length} 条？`}
+          onConfirm={handleBatchDelete}
+          disabled={selectedRowKeys.length === 0}
+        >
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            loading={batchDeleting}
+            disabled={selectedRowKeys.length === 0}
+          >
+            批量删除{selectedRowKeys.length > 0 ? ` (${selectedRowKeys.length})` : ''}
+          </Button>
+        </Popconfirm>
         <Button icon={<ReloadOutlined />} onClick={() => load()}>刷新</Button>
         <Input.Search placeholder="Prefix 筛选" allowClear style={{ width: 200 }} onSearch={(v) => { setFilterPrefix(v); setSkip(0); }} />
         <Select
@@ -188,6 +250,7 @@ const IPManagementPrefixes: React.FC = () => {
       <Table
         rowKey="id"
         loading={loading}
+        rowSelection={rowSelection}
         columns={columns}
         dataSource={list}
         pagination={{

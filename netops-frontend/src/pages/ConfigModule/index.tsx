@@ -6,7 +6,9 @@ import ConfigModuleCompliance from './Compliance';
 import ConfigModuleEos from './Eos';
 import IPManagementLayout from './IPManagement/Layout';
 import IPManagementAggregates from './IPManagement/Aggregates';
+import IPManagementAggregateDetail from './IPManagement/AggregateDetail';
 import IPManagementPrefixes from './IPManagement/Prefixes';
+import IPManagementPrefixDetail from './IPManagement/PrefixDetail';
 import IPManagementImport from './IPManagement/Import';
 import IPManagementDhcpServers from './IPManagement/DhcpServers';
 import IPManagementDhcpScopes from './IPManagement/DhcpScopes';
@@ -24,7 +26,9 @@ const ConfigModule: React.FC = () => {
       <Route path="ip-management" element={<IPManagementLayout />}>
         <Route index element={<Navigate to="/config-module/ip-management/aggregates" replace />} />
         <Route path="aggregates" element={<IPManagementAggregates />} />
+        <Route path="aggregates/:id" element={<IPManagementAggregateDetail />} />
         <Route path="prefixes" element={<IPManagementPrefixes />} />
+        <Route path="prefixes/:id" element={<IPManagementPrefixDetail />} />
         <Route path="import" element={<IPManagementImport />} />
         <Route path="dhcp" element={<IPManagementDhcpServers />} />
         <Route path="dhcp/servers/:serverId" element={<IPManagementDhcpScopes />} />

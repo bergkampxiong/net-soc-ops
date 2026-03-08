@@ -25,10 +25,10 @@ class SSHPasswordCredentialCreate(CredentialBase):
     password: str
     enable_password: Optional[str] = None
 
-# API凭证请求模型
+# API 凭证请求模型（目标不需要认证时 Key/Secret 可留空）
 class APICredentialCreate(CredentialBase):
-    api_key: str
-    api_secret: str
+    api_key: Optional[str] = None
+    api_secret: Optional[str] = None
     api_vendor: Optional[str] = None  # generic/aws/aliyun/tencent/huawei/vmware/zscaler
 
 # Windows/域控登录凭证请求模型
@@ -176,8 +176,8 @@ async def create_api_credential(
         name=credential.name,
         description=credential.description,
         credential_type=CredentialType.API_KEY,
-        api_key=credential.api_key,
-        api_secret=credential.api_secret,
+        api_key=(credential.api_key or "").strip() or None,
+        api_secret=(credential.api_secret or "").strip() or None,
         api_vendor=credential.api_vendor if credential.api_vendor else None,
     )
     
