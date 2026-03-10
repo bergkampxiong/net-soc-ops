@@ -355,6 +355,7 @@ const PenetrationReports: React.FC = () => {
                     <>
                       <Button icon={<FileTextOutlined />} onClick={() => downloadUnifiedReport(detail.id)}>下载统一报告</Button>
                       <Button icon={<EyeOutlined />} onClick={() => previewUnifiedReport(detail.id)}>预览统一报告</Button>
+                      <Button icon={<ReloadOutlined />} loading={generatingId === detail.id} onClick={() => generateUnifiedReport(detail.id)}>重新生成统一报告</Button>
                     </>
                   ) : (
                     <Button icon={<PlusOutlined />} loading={generatingId === detail.id} onClick={() => generateUnifiedReport(detail.id)}>生成统一报告</Button>
