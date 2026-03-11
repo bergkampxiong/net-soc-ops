@@ -63,6 +63,7 @@ case "$combo" in
 esac
 
 requested_version="${VERSION:-}"
+specific_version=""
 if [[ -z "$requested_version" ]]; then
   api_json=$(curl -sSf "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null) || true
   if command -v jq &>/dev/null && [[ -n "$api_json" ]]; then
