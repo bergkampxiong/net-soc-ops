@@ -121,7 +121,7 @@ export const PDStatusCheckPanel: React.FC<PDStatusCheckPanelProps> = ({
           name="webhookUrl"
           label="Webhook 地址"
           rules={[{ required: true, message: '请输入 Webhook 地址' }]}
-          extra="执行完成后将巡检结果报告 POST 到该地址"
+          extra="执行完成后将巡检结果 POST 到该地址，例如：https://your-webhook.example.com/inspection"
         >
           <Input placeholder="https://your-webhook.example.com/inspection" />
         </Form.Item>
