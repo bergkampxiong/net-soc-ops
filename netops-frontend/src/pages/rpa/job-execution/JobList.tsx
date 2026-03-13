@@ -231,7 +231,7 @@ const JobList: React.FC = () => {
             options={[
               { label: '网络配置', value: 'network_config' },
               { label: '设备巡检', value: 'device_check' },
-              { label: '数据采集', value: 'data_collection' },
+              { label: '日常巡检', value: 'daily_inspection' },
             ]}
           />
         </Form.Item>

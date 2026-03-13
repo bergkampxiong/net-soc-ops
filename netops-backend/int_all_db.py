@@ -54,6 +54,7 @@ from database.system_global_config_models import SystemGlobalConfig
 from database.frontend_cert_config_models import FrontendCertConfig
 from database.session import Base as SessionBase
 from app.models.job import Job, JobExecution
+from database.inspection_models import InspectionChecklist, InspectionChecklistItem
 import database.config_models  # noqa: F401  # 将 config_files, config_versions 注册到 ModelsBase
 import database.credential_models  # noqa: F401  # 将 credentials 注册到 SessionBase
 import database.ldap_models  # noqa: F401  # 将 ldap_templates 注册到 database.base.Base
@@ -616,6 +617,18 @@ def init_job_tables(engine):
         print(f"作业执行控制相关表创建失败: {str(e)}")
         raise
 
+
+def init_inspection_tables(engine):
+    """初始化日常巡检模块表（巡检清单、清单项）。"""
+    try:
+        InspectionChecklist.__table__.create(engine, checkfirst=True)
+        InspectionChecklistItem.__table__.create(engine, checkfirst=True)
+        print("日常巡检模块表（inspection_checklists、inspection_checklist_items）创建完成")
+    except Exception as e:
+        print(f"日常巡检模块表初始化失败: {str(e)}")
+        raise
+
+
 def ensure_config_backup_job_execution_id(engine):
     """确保 config_module_backups 表存在 job_execution_id 列（兼容已有库）。"""
     try:
@@ -839,6 +852,9 @@ def init_databases():
             
             # 初始化作业执行控制表
             init_job_tables(engine)
+
+            # 初始化日常巡检模块表
+            init_inspection_tables(engine)
             
             # 初始化配置管理模块表
             init_config_module_tables(engine)

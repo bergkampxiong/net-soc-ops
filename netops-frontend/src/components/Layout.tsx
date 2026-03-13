@@ -247,7 +247,7 @@ const Layout: React.FC = () => {
             },
             {
               key: 'rpa/atomic-components/data-collection',
-              label: '数据采集组件',
+              label: '日常巡检组件',
             },
             {
               key: 'rpa/atomic-components/penetration-test',

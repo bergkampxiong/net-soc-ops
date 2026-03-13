@@ -11,7 +11,7 @@ export const PDStatusCheckNode: React.FC<PDStatusCheckNodeProps> = ({ data }) =>
   return (
     <PDBaseNode
       data={data}
-      type="状态检查节点"
+      type="日常巡检节点"
       className="pd-status-check-node"
       icon={<CheckCircleOutlined style={{ fontSize: 16, color: '#52c41a' }} />}
     />

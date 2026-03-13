@@ -278,7 +278,7 @@ async def publish_process_definition(
         raise HTTPException(status_code=404, detail="流程定义不存在")
     db.commit()
 
-    # 查询流程名称与 nodes，根据是否含渗透测试节点决定作业类型
+    # 查询流程名称与 nodes，根据节点类型决定作业类型
     row = db.execute(text("SELECT name, nodes FROM process_definitions WHERE id = :id"), {'id': process_id}).fetchone()
     name = row[0] if row else process_id
     nodes_raw = row[1] if row and len(row) > 1 else None
@@ -286,8 +286,13 @@ async def publish_process_definition(
     if nodes_raw:
         try:
             nodes_list = json.loads(nodes_raw) if isinstance(nodes_raw, str) else (nodes_raw or [])
-            if any((n.get("type") == "penetrationTest" for n in nodes_list)):
+            has_penetration = any((n.get("type") == "penetrationTest" for n in nodes_list))
+            has_status_check = any((n.get("type") == "statusCheck" for n in nodes_list))
+            has_device_connect = any((n.get("type") == "deviceConnect" for n in nodes_list))
+            if has_penetration:
                 job_type = "penetration_task"
+            elif has_status_check and not has_device_connect:
+                job_type = "daily_inspection"
         except (TypeError, ValueError):
             pass
     job_service = JobService(db)

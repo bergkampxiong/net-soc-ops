@@ -31,7 +31,7 @@ import database.category_models  # 再导入设备分类模型
 import database.config_management_models  # 导入配置管理模型
 
 # 导入路由
-from routes import auth, users, audit, ldap, security, config_management, config_generator_router, config_module
+from routes import auth, users, audit, ldap, security, config_management, config_generator_router, config_module, inspection
 from routes.ipam_router import router as ipam_router
 from routes.strix_integration import router as strix_router
 from routes.system_global_config import router as system_global_config_router
@@ -134,6 +134,7 @@ app.include_router(ssh_connections.router, prefix="/api")
 app.include_router(process_management.router, prefix="")
 app.include_router(job_router, prefix="/api")  # 添加job路由注册
 app.include_router(monitoring_integration_router)  # 监控系统集成 Webhook + 告警
+app.include_router(inspection.router, prefix="/api")  # 日常巡检清单 API
 
 # 定期清理任务
 def cleanup_expired_records():

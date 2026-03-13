@@ -1,9 +1,11 @@
 import json
 import os
+import re
 import subprocess
 import tempfile
 import threading
 import time
+import requests
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, text
 from typing import List, Optional, Tuple, Any
@@ -14,8 +16,57 @@ from app.process_designer.code_generator import CodeGenerator
 from celery import shared_task
 from fastapi import HTTPException
 from database.strix_models import StrixScanTask
+from database.inspection_models import InspectionChecklist, InspectionChecklistItem
 from routes.strix_integration import register_strix_process, unregister_strix_process, _load_strix_config_kv
 from utils.strix_runner import _parse_stdout_stats, get_strix_env_from_config
+
+
+def _is_url_target(target: str) -> bool:
+    """判断目标是否为 URL（用 curl），否则视为 IP/主机名（用 ping）。"""
+    if not target or not isinstance(target, str):
+        return False
+    t = target.strip()
+    if t.startswith("http://") or t.startswith("https://"):
+        return True
+    if "://" in t:
+        return True
+    return False
+
+
+def _run_ping(target: str, timeout_sec: int = 5) -> Tuple[bool, str]:
+    """对 target 执行 ping，返回 (成功, 详情)。"""
+    try:
+        result = subprocess.run(
+            ["ping", "-c", "1", "-W", str(min(timeout_sec, 5)), target],
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec + 1,
+        )
+        if result.returncode == 0:
+            out = (result.stdout or "").strip()
+            if "time=" in out or "rtt" in out.lower():
+                m = re.search(r"time=([\d.]+)\s*ms", out)
+                rtt = m.group(1) + "ms" if m else "正常"
+            else:
+                rtt = "正常"
+            return True, rtt
+        return False, result.stderr or result.stdout or "无响应"
+    except subprocess.TimeoutExpired:
+        return False, "超时"
+    except Exception as e:
+        return False, str(e)
+
+
+def _run_curl(target: str, timeout_sec: int = 10) -> Tuple[bool, str]:
+    """对 target 执行 HTTP 请求，返回 (成功, 详情)。"""
+    try:
+        r = requests.get(target, timeout=timeout_sec, allow_redirects=True)
+        return True, f"HTTP {r.status_code}"
+    except requests.exceptions.Timeout:
+        return False, "请求超时"
+    except requests.exceptions.RequestException as e:
+        return False, str(e) if len(str(e)) < 200 else str(e)[:200] + "..."
+
 
 class JobService:
     def __init__(self, db: Session):
@@ -555,6 +606,71 @@ class JobService:
                 unregister_strix_process(task_id)
                 task.finished_at = datetime.utcnow()
                 self.db.commit()
+
+        # 日常巡检节点（statusCheck）：按清单执行 ping/curl，生成报告并 POST 到 Webhook
+        daily_inspection_nodes = [n for n in nodes if n.get("type") == "statusCheck"]
+        for di_node in daily_inspection_nodes:
+            data = di_node.get("data") or {}
+            checklist_id = data.get("checklistId")
+            report_title = (data.get("reportTitle") or "").strip() or "日常巡检报告"
+            webhook_url = (data.get("webhookUrl") or "").strip()
+            if not checklist_id or not webhook_url:
+                script_logs += "\n[日常巡检] 跳过节点: 未配置巡检清单或 Webhook 地址\n"
+                continue
+            checklist = self.db.query(InspectionChecklist).filter(InspectionChecklist.id == int(checklist_id)).first()
+            if not checklist:
+                script_logs += f"\n[日常巡检] 跳过节点: 清单 id={checklist_id} 不存在\n"
+                continue
+            items = (
+                self.db.query(InspectionChecklistItem)
+                .filter(InspectionChecklistItem.checklist_id == checklist.id)
+                .order_by(InspectionChecklistItem.sort_order, InspectionChecklistItem.id)
+                .all()
+            )
+            if not items:
+                script_logs += f"\n[日常巡检] 清单「{checklist.name}」无巡检项，跳过\n"
+                continue
+            report_items = []
+            failed_items = []
+            for it in items:
+                target = (it.target or "").strip()
+                if not target:
+                    report_items.append(
+                        {"name": it.name, "target": "", "method": "skip", "success": False, "detail": "目标为空"}
+                    )
+                    failed_items.append({"name": it.name, "target": ""})
+                    continue
+                if _is_url_target(target):
+                    ok, detail = _run_curl(target)
+                    method = "curl"
+                else:
+                    ok, detail = _run_ping(target)
+                    method = "ping"
+                report_items.append(
+                    {"name": it.name, "target": target, "method": method, "success": ok, "detail": detail}
+                )
+                if not ok:
+                    failed_items.append({"name": it.name, "target": target})
+            from datetime import timezone
+            inspection_time = datetime.now(timezone.utc).astimezone().isoformat()
+            report = {
+                "inspectionTime": inspection_time,
+                "reportTitle": report_title,
+                "items": report_items,
+                "summary": {
+                    "total": len(report_items),
+                    "passed": sum(1 for x in report_items if x["success"]),
+                    "failed": len(failed_items),
+                    "allPassed": len(failed_items) == 0,
+                    "failedItems": failed_items,
+                },
+            }
+            script_logs += f"\n[日常巡检] 清单「{checklist.name}」共 {len(report_items)} 项，通过 {report['summary']['passed']}，失败 {report['summary']['failed']}\n"
+            try:
+                resp = requests.post(webhook_url, json=report, timeout=15, headers={"Content-Type": "application/json"})
+                script_logs += f"[日常巡检] 报告已推送至 Webhook，HTTP {resp.status_code}\n"
+            except Exception as e:
+                script_logs += f"[日常巡检] Webhook 推送失败: {e}\n"
 
         execution = self.db.query(JobExecution).filter(JobExecution.id == execution_id).first()
         if execution:

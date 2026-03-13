@@ -124,7 +124,7 @@ const nodeConfigs = [
   },
   {
     type: 'statusCheck',
-    title: '状态检查',
+    title: '日常巡检',
     icon: <CheckCircleOutlined style={{ fontSize: 26, color: '#52c41a' }} />,
   },
   {
@@ -401,7 +401,7 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
     [reactFlowInstance, setNodes, onDirtyChange]
   );
 
-  // 验证流程完整性（若存在渗透测试节点则不强制要求设备连接与配置下发/备份）
+  // 验证流程完整性（若存在渗透测试或仅日常巡检节点则不强制要求设备连接与配置下发/备份）
   const validateProcess = () => {
     const hasStartNode = nodes.some(node => node.type === 'start');
     if (!hasStartNode) {
@@ -414,8 +414,10 @@ const FlowDesigner: React.FC<PDFlowDesignerProps> = ({ processId, onDirtyChange,
       return false;
     }
     const hasPenetrationTest = nodes.some(node => node.type === 'penetrationTest');
-    if (!hasPenetrationTest) {
-      const hasDeviceConnect = nodes.some(node => node.type === 'deviceConnect');
+    const hasStatusCheck = nodes.some(node => node.type === 'statusCheck');
+    const hasDeviceConnect = nodes.some(node => node.type === 'deviceConnect');
+    const needDeviceConfig = !hasPenetrationTest && !(hasStatusCheck && !hasDeviceConnect);
+    if (needDeviceConfig) {
       if (!hasDeviceConnect) {
         message.error('流程必须包含至少一个设备连接节点');
         return false;
