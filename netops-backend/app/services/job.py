@@ -609,6 +609,7 @@ class JobService:
 
         # 日常巡检节点（statusCheck）：按清单执行 ping/curl，生成报告并 POST 到 Webhook
         daily_inspection_nodes = [n for n in nodes if n.get("type") == "statusCheck"]
+        last_inspection_summary = None
         for di_node in daily_inspection_nodes:
             data = di_node.get("data") or {}
             checklist_id = data.get("checklistId")
@@ -666,8 +667,29 @@ class JobService:
                 },
             }
             script_logs += f"\n[日常巡检] 清单「{checklist.name}」共 {len(report_items)} 项，通过 {report['summary']['passed']}，失败 {report['summary']['failed']}\n"
+            last_inspection_summary = {
+                "job_type": "daily_inspection",
+                "checklist_name": checklist.name,
+                "total": report["summary"]["total"],
+                "passed": report["summary"]["passed"],
+                "failed": report["summary"]["failed"],
+                "allPassed": report["summary"]["allPassed"],
+            }
             try:
-                resp = requests.post(webhook_url, json=report, timeout=15, headers={"Content-Type": "application/json"})
+                # Slack Incoming Webhook 仅接受 {"text": "..."} 或 blocks，否则返回 invalid_payload；其他 Webhook 使用完整 JSON 报告
+                if "hooks.slack.com" in webhook_url:
+                    lines = [
+                        f"*{report['reportTitle']}*",
+                        f"时间: {report['inspectionTime']}",
+                        f"共 {report['summary']['total']} 项，通过 {report['summary']['passed']}，失败 {report['summary']['failed']}",
+                    ]
+                    if report["summary"]["failedItems"]:
+                        lines.append("失败项: " + ", ".join(f"{x['name']}({x['target']})" for x in report["summary"]["failedItems"]))
+                    slack_payload = {"text": "\n".join(lines)}
+                    webhook_body = slack_payload
+                else:
+                    webhook_body = report
+                resp = requests.post(webhook_url, json=webhook_body, timeout=15, headers={"Content-Type": "application/json"})
                 script_logs += f"[日常巡检] 报告已推送至 Webhook，HTTP {resp.status_code}\n"
             except Exception as e:
                 script_logs += f"[日常巡检] Webhook 推送失败: {e}\n"
@@ -678,7 +700,11 @@ class JobService:
             execution.logs = (execution.logs or "") + script_logs
             if not execution_failed:
                 execution.status = "completed"
-                execution.result = {"returncode": script_returncode, "strix_scan_ids": strix_scan_ids}
+                if last_inspection_summary is not None and not has_traditional and len(penetration_nodes) == 0:
+                    result_payload = last_inspection_summary
+                else:
+                    result_payload = {"returncode": script_returncode, "strix_scan_ids": strix_scan_ids}
+                execution.result = result_payload
 
         job = self.db.query(Job).filter(Job.id == job_id).first()
         if job:

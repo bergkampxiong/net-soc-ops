@@ -37,7 +37,7 @@ const RPARouter: React.FC = () => {
         <Route path="device-connections" element={<DeviceConnections />} />
         <Route path="config-management" element={<ConfigManagement />} />
         <Route path="config-generator" element={<ConfigGenerator />} />
-        <Route path="data-collection" element={<DataCollection />} />
+        <Route path="data-collection/*" element={<DataCollection />} />
         <Route path="penetration-test" element={<PenetrationTest />} />
       </Route>
       
