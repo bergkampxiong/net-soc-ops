@@ -14,8 +14,13 @@ import {
   Select,
   Tabs,
   Typography,
+  TimePicker,
+  Collapse,
 } from 'antd';
+import type { Dayjs } from 'dayjs';
+import dayjs from 'dayjs';
 import { formatBeijingToSecond } from '@/utils/formatTime';
+import { buildCronExpression, parseCronToPreset, formatScheduleSummary, type RecurrenceMode } from './scheduleCronUtils';
 import {
   PlayCircleOutlined,
   PauseCircleOutlined,
@@ -101,23 +106,93 @@ const JobDetail: React.FC = () => {
     }
   }, [searchParams, job?.run_type]);
 
+  // 打开转为定期弹窗时，若已有 schedule_config 则尝试回填预设
+  useEffect(() => {
+    if (!convertModalVisible || !job) return;
+    const config = job.schedule_config;
+    if (config?.type === 'cron' && config.cron_expression) {
+      const preset = parseCronToPreset(config.cron_expression);
+      if (preset) {
+        const [h, m] = preset.timeHHmm.split(':').map(Number);
+        convertForm.setFieldsValue({
+          scheduleMode: preset.recurrence,
+          executionTime: dayjs().hour(h).minute(m).second(0).millisecond(0),
+          dayOfWeek: preset.dayOfWeek,
+          dayOfMonth: preset.dayOfMonth,
+          timezone: config.timezone || 'Asia/Shanghai',
+        });
+        return;
+      }
+      convertForm.setFieldsValue({
+        scheduleMode: 'advanced',
+        advancedType: 'cron',
+        cron_expression: config.cron_expression,
+        timezone: config.timezone || 'Asia/Shanghai',
+      });
+      return;
+    }
+    if (config?.type === 'interval') {
+      convertForm.setFieldsValue({
+        scheduleMode: 'advanced',
+        advancedType: 'interval',
+        interval_seconds: config.interval_seconds,
+        timezone: config.timezone || 'Asia/Shanghai',
+      });
+      return;
+    }
+    convertForm.setFieldsValue({
+      scheduleMode: 'daily',
+      executionTime: dayjs().hour(14).minute(0).second(0).millisecond(0),
+      dayOfWeek: 1,
+      dayOfMonth: 1,
+      timezone: 'Asia/Shanghai',
+    });
+  }, [convertModalVisible, job?.schedule_config, job?.id]);
+
   const handleConvertToScheduled = async () => {
     try {
       const values = await convertForm.validateFields();
-      const schedule_config = {
-        enabled: true,
-        type: values.type,
-        cron_expression: values.cron_expression || undefined,
-        interval_seconds: values.interval_seconds || undefined,
-        timezone: values.timezone || 'Asia/Shanghai',
-      };
+      const timezone = values.timezone || 'Asia/Shanghai';
+      let scheduleConfig: { enabled: boolean; type: string; cron_expression?: string; interval_seconds?: number; timezone: string };
+      if (values.scheduleMode === 'advanced') {
+        if (values.advancedType === 'interval') {
+          scheduleConfig = {
+            enabled: true,
+            type: 'interval',
+            interval_seconds: values.interval_seconds,
+            timezone,
+          };
+        } else {
+          scheduleConfig = {
+            enabled: true,
+            type: 'cron',
+            cron_expression: values.cron_expression,
+            timezone,
+          };
+        }
+      } else {
+        const mode = values.scheduleMode as RecurrenceMode;
+        const timeHHmm = values.executionTime ? (values.executionTime as Dayjs).format('HH:mm') : '14:00';
+        const cron_expression = buildCronExpression(
+          mode,
+          timeHHmm,
+          values.dayOfWeek,
+          values.dayOfMonth
+        );
+        scheduleConfig = {
+          enabled: true,
+          type: 'cron',
+          cron_expression,
+          timezone,
+        };
+      }
       await request.put(`/jobs/${id}`, {
         name: job?.name,
         job_type: job?.job_type ?? 'config_backup',
         run_type: 'scheduled',
-        schedule_config,
+        schedule_config: scheduleConfig,
       });
-      message.success('已转为定期作业');
+      message.success(job?.run_type === 'scheduled' ? '调度已更新' : '已转为定期作业');
       setConvertModalVisible(false);
       convertForm.resetFields();
       fetchJobDetail();
@@ -362,6 +437,14 @@ const JobDetail: React.FC = () => {
                 转为定期
               </Button>
             )}
+            {job.run_type === 'scheduled' && (
+              <Button
+                icon={<CalendarOutlined />}
+                onClick={() => setConvertModalVisible(true)}
+              >
+                编辑调度
+              </Button>
+            )}
             <Button
               icon={<EditOutlined />}
               onClick={() => navigate(`/rpa/job-execution/jobs/${id}/edit`)}
@@ -431,7 +514,14 @@ const JobDetail: React.FC = () => {
                 <pre>{JSON.stringify(job.parameters || {}, null, 2)}</pre>
               </Descriptions.Item>
               <Descriptions.Item label="调度配置" span={3}>
-                <pre>{JSON.stringify(job.schedule_config || {}, null, 2)}</pre>
+                <div>
+                  {job.schedule_config && (
+                    <div style={{ marginBottom: 8 }}>
+                      {formatScheduleSummary(job.schedule_config)}
+                    </div>
+                  )}
+                  <pre style={{ marginBottom: 0, fontSize: 12 }}>{JSON.stringify(job.schedule_config || {}, null, 2)}</pre>
+                </div>
               </Descriptions.Item>
             </Descriptions>
           </TabPane>
@@ -452,35 +542,89 @@ const JobDetail: React.FC = () => {
       </Card>
 
       <Modal
-        title="转为定期作业"
+        title={job?.run_type === 'scheduled' ? '编辑调度' : '转为定期作业'}
         open={convertModalVisible}
         onOk={handleConvertToScheduled}
         onCancel={() => { setConvertModalVisible(false); convertForm.resetFields(); }}
         okText="确定"
         cancelText="取消"
       >
-        <Form form={convertForm} layout="vertical" initialValues={{ type: 'cron', timezone: 'Asia/Shanghai' }}>
-          <Form.Item name="type" label="调度类型" rules={[{ required: true }]}>
-            <Select options={[
-              { label: 'Cron 表达式', value: 'cron' },
-              { label: '固定间隔(秒)', value: 'interval' },
-            ]} />
+        <Form form={convertForm} layout="vertical" initialValues={{ scheduleMode: 'daily', timezone: 'Asia/Shanghai' }}>
+          <Form.Item name="scheduleMode" label="调度类型" rules={[{ required: true }]}>
+            <Select
+              options={[
+                { label: '每天', value: 'daily' },
+                { label: '每周', value: 'weekly' },
+                { label: '每月', value: 'monthly' },
+                { label: '高级', value: 'advanced' },
+              ]}
+            />
           </Form.Item>
-          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.type !== cur.type}>
-            {({ getFieldValue }) =>
-              getFieldValue('type') === 'cron' ? (
-                <Form.Item name="cron_expression" label="Cron 表达式" rules={[{ required: true, message: '请输入 cron 表达式' }]}>
-                  <Input placeholder="如 0 0 * * * 表示每天 0 点" />
-                </Form.Item>
-              ) : (
-                <Form.Item name="interval_seconds" label="间隔(秒)" rules={[{ required: true, message: '请输入间隔秒数' }]}>
-                  <Input type="number" placeholder="如 3600" />
-                </Form.Item>
-              )
-            }
+          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.scheduleMode !== cur.scheduleMode}>
+            {({ getFieldValue }) => {
+              const mode = getFieldValue('scheduleMode');
+              if (mode === 'advanced') {
+                return (
+                  <Collapse ghost>
+                    <Collapse.Panel header="自定义调度" key="1">
+                      <Form.Item name="advancedType" label="类型" rules={[{ required: true }]}>
+                        <Select
+                          options={[
+                            { label: 'Cron 表达式', value: 'cron' },
+                            { label: '固定间隔(秒)', value: 'interval' },
+                          ]}
+                        />
+                      </Form.Item>
+                      <Form.Item noStyle shouldUpdate={(p, c) => p.advancedType !== c.advancedType}>
+                        {({ getFieldValue: gf }) =>
+                          gf('advancedType') === 'cron' ? (
+                            <Form.Item name="cron_expression" label="Cron 表达式" rules={[{ required: true, message: '请输入 cron 表达式' }]}>
+                              <Input placeholder="如 0 14 * * * 表示每天 14:00" />
+                            </Form.Item>
+                          ) : (
+                            <Form.Item name="interval_seconds" label="间隔(秒)" rules={[{ required: true, message: '请输入间隔秒数' }]}>
+                              <Input type="number" placeholder="如 3600" />
+                            </Form.Item>
+                          )
+                        }
+                      </Form.Item>
+                    </Collapse.Panel>
+                  </Collapse>
+                );
+              }
+              return (
+                <>
+                  <Form.Item name="executionTime" label="执行时间" rules={[{ required: true, message: '请选择执行时间' }]}>
+                    <TimePicker format="HH:mm" style={{ width: '100%' }} />
+                  </Form.Item>
+                  {mode === 'weekly' && (
+                    <Form.Item name="dayOfWeek" label="星期" rules={[{ required: true }]}>
+                      <Select
+                        options={[
+                          { label: '周一', value: 1 },
+                          { label: '周二', value: 2 },
+                          { label: '周三', value: 3 },
+                          { label: '周四', value: 4 },
+                          { label: '周五', value: 5 },
+                          { label: '周六', value: 6 },
+                          { label: '周日', value: 7 },
+                        ]}
+                      />
+                    </Form.Item>
+                  )}
+                  {mode === 'monthly' && (
+                    <Form.Item name="dayOfMonth" label="日期(几号)" rules={[{ required: true }]}>
+                      <Select
+                        options={Array.from({ length: 31 }, (_, i) => ({ label: `${i + 1} 号`, value: i + 1 }))}
+                      />
+                    </Form.Item>
+                  )}
+                </>
+              );
+            }}
           </Form.Item>
           <Form.Item name="timezone" label="时区">
-            <Input />
+            <Input placeholder="如 Asia/Shanghai" />
           </Form.Item>
         </Form>
       </Modal>

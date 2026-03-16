@@ -178,10 +178,49 @@ def dhcp_wmi_sync_job():
     finally:
         db.close()
 
+def run_scheduled_jobs():
+    """扫描 next_run_at 已到的定期作业并执行，执行后更新下次执行时间。"""
+    from database.session import SessionLocal
+    from app.models.job import Job
+    from app.services.job import JobService, _compute_next_run_at
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        # 使用 FOR UPDATE 行锁，保证多进程/多实例下同一作业只被一个进程认领，避免重复执行
+        due = (
+            db.query(Job)
+            .filter(
+                Job.run_type == "scheduled",
+                Job.next_run_at.isnot(None),
+                Job.next_run_at <= now,
+                Job.status != "terminated",
+            )
+            .with_for_update()
+            .all()
+        )
+        job_ids = []
+        for job in due:
+            if job.schedule_config and job.schedule_config.get("type") == "cron":
+                next_run = _compute_next_run_at(job.schedule_config)
+                if next_run is not None:
+                    job.next_run_at = next_run
+            job_ids.append(job.id)
+        if due:
+            db.commit()
+        for job_id in job_ids:
+            try:
+                JobService(db).execute_job(job_id)
+            except Exception as e:
+                logging.warning("定期作业执行失败 job_id=%s: %s", job_id, e)
+    finally:
+        db.close()
+
+
 # 启动定期清理任务
 scheduler = BackgroundScheduler()
 scheduler.add_job(cleanup_expired_records, 'interval', hours=24)  # 每24小时执行一次
 scheduler.add_job(dhcp_wmi_sync_job, 'interval', hours=2, id='dhcp_wmi_sync')  # 每 2 小时同步 DHCP
+scheduler.add_job(run_scheduled_jobs, "interval", minutes=1, id="scheduled_job_runner")
 scheduler.start()
 
 @app.on_event("startup")

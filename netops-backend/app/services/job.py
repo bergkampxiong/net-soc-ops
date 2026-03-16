@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, text
 from typing import List, Optional, Tuple, Any
 from datetime import datetime, timedelta
+import pytz
+from croniter import croniter
 from app.models.job import Job, JobExecution
 from app.schemas.job import JobCreate, JobUpdate, JobExecutionCreate
 from app.process_designer.code_generator import CodeGenerator
@@ -68,6 +70,25 @@ def _run_curl(target: str, timeout_sec: int = 10) -> Tuple[bool, str]:
         return False, str(e) if len(str(e)) < 200 else str(e)[:200] + "..."
 
 
+def _compute_next_run_at(schedule_config: dict) -> Optional[datetime]:
+    """根据 schedule_config（type=cron + cron_expression + timezone）计算下次执行时间，返回 UTC 朴素时间。"""
+    if not schedule_config or schedule_config.get("type") != "cron":
+        return None
+    cron_expression = schedule_config.get("cron_expression")
+    timezone_str = schedule_config.get("timezone") or "Asia/Shanghai"
+    if not cron_expression:
+        return None
+    try:
+        tz = pytz.timezone(timezone_str)
+        base = datetime.now(tz)
+        it = croniter(cron_expression, base)
+        next_run = it.get_next(datetime)
+        next_run_utc = next_run.astimezone(pytz.UTC)
+        return next_run_utc.replace(tzinfo=None)
+    except Exception:
+        return None
+
+
 class JobService:
     def __init__(self, db: Session):
         self.db = db
@@ -102,6 +123,7 @@ class JobService:
 
     def create_job(self, job: JobCreate) -> Job:
         """创建作业"""
+        schedule_config_dict = job.schedule_config.dict() if job.schedule_config else None
         db_job = Job(
             name=job.name,
             description=job.description,
@@ -109,11 +131,15 @@ class JobService:
             process_definition_id=job.process_definition_id,
             run_type=job.run_type or "once",
             parameters=job.parameters,
-            schedule_config=job.schedule_config.dict() if job.schedule_config else None,
+            schedule_config=schedule_config_dict,
             status="created",
             created_by="system",
             updated_by="system",
         )
+        if schedule_config_dict:
+            next_run = _compute_next_run_at(schedule_config_dict)
+            if next_run is not None:
+                db_job.next_run_at = next_run
         self.db.add(db_job)
         self.db.commit()
         self.db.refresh(db_job)
@@ -142,6 +168,10 @@ class JobService:
         for key, value in update_data.items():
             if hasattr(db_job, key):
                 setattr(db_job, key, value)
+        if "schedule_config" in update_data and update_data["schedule_config"]:
+            next_run = _compute_next_run_at(update_data["schedule_config"])
+            if next_run is not None:
+                db_job.next_run_at = next_run
         db_job.updated_by = "system"
         db_job.updated_at = datetime.utcnow()
         self.db.commit()
@@ -702,8 +732,11 @@ class JobService:
                 execution.status = "completed"
                 if last_inspection_summary is not None and not has_traditional and len(penetration_nodes) == 0:
                     result_payload = last_inspection_summary
-                else:
+                elif len(penetration_nodes) > 0:
                     result_payload = {"returncode": script_returncode, "strix_scan_ids": strix_scan_ids}
+                else:
+                    # 仅配置备份/设备连接等传统节点时，不包含 strix_scan_ids
+                    result_payload = {"returncode": script_returncode}
                 execution.result = result_payload
 
         job = self.db.query(Job).filter(Job.id == job_id).first()
