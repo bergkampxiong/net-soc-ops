@@ -216,12 +216,11 @@ def run_scheduled_jobs():
         db.close()
 
 
-# 启动定期清理任务
+# 定期任务：仅注册 job，在 startup_event 中启动，避免 uvicorn --reload 时父子进程各启动一次导致重复执行
 scheduler = BackgroundScheduler()
 scheduler.add_job(cleanup_expired_records, 'interval', hours=24)  # 每24小时执行一次
 scheduler.add_job(dhcp_wmi_sync_job, 'interval', hours=2, id='dhcp_wmi_sync')  # 每 2 小时同步 DHCP
 scheduler.add_job(run_scheduled_jobs, "interval", minutes=1, id="scheduled_job_runner")
-scheduler.start()
 
 @app.on_event("startup")
 async def startup_event():
@@ -232,7 +231,7 @@ async def startup_event():
     # 启动连接管理器
     await device_connection_manager.start()
     
-    # 启动调度器（如果尚未启动）
+    # 仅在实际运行应用的进程中启动调度器（reload 时子进程才跑应用，避免双份调度）
     try:
         if not scheduler.running:
             scheduler.start()
