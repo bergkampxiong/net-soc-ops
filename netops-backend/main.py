@@ -50,7 +50,7 @@ from utils.device_connection_manager import device_connection_manager
 from tasks import scheduler
 
 # 创建应用
-app = FastAPI(title="NetOps API", version="1.870")
+app = FastAPI(title="NetOps API", version="1.871")
 
 # 添加中间件来获取真实客户端IP
 @app.middleware("http")
@@ -162,7 +162,7 @@ def cleanup_expired_records():
 
 # DHCP WMI 每 2 小时同步任务
 def dhcp_wmi_sync_job():
-    """使用已配置的 Windows 凭证通过 WinRM 拉取 DHCP 数据并写入本地表。"""
+    """使用已配置的 Windows 凭证经 WMI(DCOM) 拉取 DHCP 数据并写入本地表。"""
     from database.session import SessionLocal
     from services.dhcp_wmi_sync import run_dhcp_wmi_sync
     db = SessionLocal()
