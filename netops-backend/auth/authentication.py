@@ -64,7 +64,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     """获取当前用户"""
-    print(f"获取当前用户，令牌: {token[:10] if token else 'None'}...")
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -74,11 +73,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         sub = payload.get("sub")
         if sub is None:
-            print("令牌中没有 sub")
             raise credentials_exception
-        print(f"从令牌中获取 sub: {sub}")
-    except JWTError as e:
-        print(f"JWT错误: {str(e)}")
+    except JWTError:
         raise credentials_exception
 
     # sub 可能是 username（登录时）或 user.id（刷新 token 后），需兼容两种格式
@@ -88,10 +84,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     if user is None:
         user = get_user(db, username=str(sub))
     if user is None:
-        print(f"找不到用户: sub={sub}")
         raise credentials_exception
-    
-    print(f"找到用户: {user.username}, 角色: {user.role}")
+
     return user
 
 

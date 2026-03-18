@@ -50,7 +50,7 @@ from utils.device_connection_manager import device_connection_manager
 from tasks import scheduler
 
 # 创建应用
-app = FastAPI(title="NetOps API", version="1.0.0")
+app = FastAPI(title="NetOps API", version="1.870")
 
 # 添加中间件来获取真实客户端IP
 @app.middleware("http")
@@ -265,14 +265,15 @@ async def favicon():
     return Response(status_code=204)
 
 if __name__ == "__main__":
+    import os
     import uvicorn
-    # 排除运行时目录，避免 data/、__pycache__ 等变更触发反复 reload（watchfiles 刷屏）
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        reload_excludes=[
+
+    # 守护/生产后台建议关闭 reload：单进程占端口，避免与旧实例或其它 reload 子进程抢 8000
+    _reload = os.environ.get("NETOPS_UVICORN_RELOAD", "1").strip().lower() in ("1", "true", "yes")
+    _kw = dict(host="0.0.0.0", port=8000, reload=_reload)
+    if _reload:
+        # 排除运行时目录，避免 data/、__pycache__ 等变更触发反复 reload（watchfiles 刷屏）
+        _kw["reload_excludes"] = [
             "data",
             "data/*",
             "data/**",
@@ -286,5 +287,5 @@ if __name__ == "__main__":
             ".venv/*",
             "*.pyc",
             "*.pyo",
-        ],
-    ) 
+        ]
+    uvicorn.run("main:app", **_kw) 
