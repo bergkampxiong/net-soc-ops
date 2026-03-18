@@ -203,7 +203,7 @@ class NetboxImportConfig(Base):
 
 
 class DhcpWmiTarget(Base):
-    """DHCP WMI 采集目标：Windows 主机 + WinRM 凭证，用于通过 WinRM 执行 PowerShell 读取 DHCP。"""
+    """DHCP WMI 采集目标：Windows DHCP 主机 + 凭证；采集端经 DCOM/WMI 读取 DHCP（port/use_ssl 字段保留兼容，采集时忽略）。"""
     __tablename__ = "dhcp_wmi_targets"
 
     id = Column(Integer, primary_key=True, index=True)

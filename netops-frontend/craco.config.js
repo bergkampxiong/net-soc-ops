@@ -9,6 +9,13 @@ const certPath = path.join(certDir, 'cert.pem');
 const hasCert = devHttps && fs.existsSync(keyPath) && fs.existsSync(certPath);
 
 module.exports = {
+  // 关闭 ESLint 文件缓存，避免 node_modules/.cache 为 root 属主时出现 EACCES
+  eslint: {
+    enable: true,
+    pluginOptions: {
+      cache: false,
+    },
+  },
   webpack: {
     alias: {
       '@': path.resolve(__dirname, 'src'),

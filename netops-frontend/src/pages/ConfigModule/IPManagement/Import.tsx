@@ -3,7 +3,7 @@
  * NetBox 可选用 API 凭证；DHCP WMI 可选用 Windows/域控凭证。
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Form, Input, Button, Space, message, Switch, Table, Popconfirm, Row, Col, Select } from 'antd';
+import { Card, Form, Input, Button, Space, message, Switch, Table, Popconfirm, Row, Col, Select, Typography } from 'antd';
 import { CloudDownloadOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import request from '../../../utils/request';
 
@@ -138,8 +138,8 @@ const IPManagementImport: React.FC = () => {
       const payload = {
         name: values.name?.trim() || undefined,
         host: values.host?.trim(),
-        port: values.port != null ? Number(values.port) : 5985,
-        use_ssl: !!values.use_ssl,
+        port: 5985,
+        use_ssl: false,
         enabled: values.enabled !== false,
         windows_credential_id: values.windows_credential_id ?? null,
       };
@@ -165,8 +165,6 @@ const IPManagementImport: React.FC = () => {
     wmiForm.setFieldsValue({
       name: row.name,
       host: row.host,
-      port: row.port ?? 5985,
-      use_ssl: row.use_ssl ?? false,
       enabled: row.enabled !== false,
       windows_credential_id: row.windows_credential_id ?? undefined,
     });
@@ -201,27 +199,20 @@ const IPManagementImport: React.FC = () => {
             从 NetBox 导入 Aggregates 与 Prefixes
           </Button>
         </Card>
-        <Card title="DHCP 采集配置（WMI）" size="small" type="inner">
+        <Card title="DHCP 采集配置（WMI / DCOM）" size="small" type="inner">
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+            采集端通过 WMI 连接 Windows DHCP 服务器（命名空间 root\Microsoft\Windows\DHCP）。请放行本系统到目标机的 TCP 135 及 RPC 动态端口，账号需具备读取 DHCP 的权限。
+          </Typography.Paragraph>
           <Form form={wmiForm} layout="vertical" style={{ marginBottom: 16 }} onFinish={saveWmiTarget}>
             <Row gutter={16}>
               <Col xs={24} sm={12} md={8} lg={6}>
-                <Form.Item name="host" label="Windows 主机（IP 或主机名）" rules={[{ required: true, message: '必填' }]}>
+                <Form.Item name="host" label="Windows DHCP 主机（IP 或主机名）" rules={[{ required: true, message: '必填' }]}>
                   <Input placeholder="IP 或主机名" />
                 </Form.Item>
               </Col>
-              <Col xs={24} sm={12} md={8} lg={4}>
-                <Form.Item name="port" label="端口" initialValue={5985}>
-                  <Input type="number" placeholder="5985" />
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={12} md={8} lg={6}>
+              <Col xs={24} sm={12} md={8} lg={8}>
                 <Form.Item name="windows_credential_id" label="Windows 登录凭证" rules={[{ required: true, message: '请选择 Windows 登录凭证' }]}>
                   <Select allowClear placeholder="请选择" options={windowsCredentials.map(c => ({ value: c.id, label: c.name }))} />
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={12} md={8} lg={4}>
-                <Form.Item name="use_ssl" label="HTTPS" valuePropName="checked" initialValue={false}>
-                  <Switch />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12} md={8} lg={4}>
@@ -249,17 +240,15 @@ const IPManagementImport: React.FC = () => {
             dataSource={wmiTargets}
             size="small"
             pagination={false}
-            scroll={{ x: 780 }}
+            scroll={{ x: 680 }}
             columns={[
-              { title: '主机', dataIndex: 'host', ellipsis: true, width: 140 },
-              { title: '端口', dataIndex: 'port', width: 70 },
+              { title: '主机', dataIndex: 'host', ellipsis: true, width: 160 },
               {
                 title: 'Windows 凭证',
                 dataIndex: 'windows_credential_id',
-                width: 140,
+                width: 160,
                 render: (id: number | null) => (id ? windowsCredentials.find(c => c.id === id)?.name ?? `#${id}` : '-'),
               },
-              { title: 'HTTPS', dataIndex: 'use_ssl', width: 70, render: (v: boolean) => (v ? '是' : '否') },
               { title: '启用', dataIndex: 'enabled', width: 70, render: (v: boolean) => (v ? '是' : '否') },
               {
                 title: '操作',

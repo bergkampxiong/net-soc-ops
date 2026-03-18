@@ -334,9 +334,9 @@ async def get_full_credential(
 
 # Windows/域控凭证测试连接请求体
 class TestWindowsCredentialBody(BaseModel):
-    host: str = Field(..., description="测试目标主机 IP 或主机名")
-    port: int = Field(5985, description="WinRM 端口")
-    use_ssl: bool = Field(False, description="是否使用 HTTPS")
+    host: str = Field(..., description="测试目标主机 IP 或主机名（DHCP 服务器）")
+    port: int = Field(5985, description="兼容字段，WMI 测试忽略")
+    use_ssl: bool = Field(False, description="兼容字段，WMI 测试忽略")
 
 
 # Windows/域控凭证测试连接
@@ -347,7 +347,7 @@ async def test_windows_credential(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    """使用已保存的 Windows/域控凭证测试 WinRM 连接是否可用。"""
+    """使用已保存的 Windows/域控凭证测试 WMI(DCOM) 是否可访问目标机 DHCP 命名空间。port/use_ssl 保留兼容，不参与连接。"""
     credential = db.query(Credential).filter(Credential.id == credential_id).first()
     if not credential:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="凭证不存在")
@@ -356,14 +356,12 @@ async def test_windows_credential(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="仅支持 Windows/域控凭证类型",
         )
-    from services.dhcp_wmi_sync import test_winrm_connection
+    from services.dhcp_wmi_sync import test_wmi_connection
 
-    ok, message = test_winrm_connection(
+    ok, message = test_wmi_connection(
         host=body.host,
-        port=body.port,
         username=credential.username or "",
         password=credential.password or "",
         domain=credential.domain,
-        use_ssl=body.use_ssl,
     )
     return {"success": ok, "message": message}

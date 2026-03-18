@@ -269,7 +269,7 @@ const CredentialManagement: React.FC = () => {
       setTestWindowsLoading(true);
       const res = await request.post(
         `/device/credential/${testWindowsCredential.id}/test-windows`,
-        { host: values.host, port: values.port ?? 5985, use_ssl: !!values.use_ssl }
+        { host: values.host, port: 5985, use_ssl: false }
       );
       const data = res.data as { success: boolean; message: string };
       if (data.success) {
@@ -356,10 +356,10 @@ const CredentialManagement: React.FC = () => {
             <Button
               type="text"
               icon={<CheckCircleOutlined />}
-              title="测试连接"
+              title="测试 WMI"
               onClick={() => {
                 setTestWindowsCredential(record);
-                testWindowsForm.setFieldsValue({ host: '', port: 5985, use_ssl: false });
+                testWindowsForm.setFieldsValue({ host: '' });
                 setTestWindowsModalVisible(true);
               }}
             />
@@ -466,7 +466,7 @@ const CredentialManagement: React.FC = () => {
             >
               <Password placeholder="请输入密码" />
             </Form.Item>
-            <Form.Item name="domain" label="域" extra="可选，域控时填写">
+            <Form.Item name="domain" label="域" extra="域账号：填 AD 的 NetBIOS 域名。本机账号：填目标服务器计算机名。测试/采集时目标地址仍填 IP 或域名即可。">
               <Input placeholder="例如：EXAMPLE" />
             </Form.Item>
           </>
@@ -586,7 +586,7 @@ const CredentialManagement: React.FC = () => {
               CredentialType.WINDOWS_DOMAIN,
               "Windows/域控凭证",
               <CloudServerOutlined style={{ color: '#fa8c16' }} />,
-              "Windows 登录或域控账号密码，用于 WinRM 等场景"
+              "Windows 登录或域控账号密码，用于 DHCP WMI(DCOM) 采集等场景"
             )}
           </Col>
         </Row>
@@ -650,7 +650,7 @@ const CredentialManagement: React.FC = () => {
 
       {/* Windows/域控凭证测试连接 */}
       <Modal
-        title="测试连接"
+        title="测试 WMI（DCOM）连接"
         open={testWindowsModalVisible}
         onCancel={() => { setTestWindowsModalVisible(false); testWindowsForm.resetFields(); }}
         onOk={handleTestWindowsCredential}
@@ -658,24 +658,13 @@ const CredentialManagement: React.FC = () => {
         okText="测试"
         destroyOnClose
       >
-        <div style={{ marginBottom: 8 }}>
-          {testWindowsCredential && (
-            <Text type="secondary">使用凭证「{testWindowsCredential.name}」连接以下主机以验证账号密码是否正确。</Text>
-          )}
-        </div>
-        <Form form={testWindowsForm} layout="vertical" initialValues={{ port: 5985, use_ssl: false }}>
+        <Form form={testWindowsForm} layout="vertical">
           <Form.Item
             name="host"
-            label="目标主机"
+            label="目标主机（DHCP 服务器）"
             rules={[{ required: true, message: '请输入主机 IP 或主机名' }]}
           >
-            <Input placeholder="例如 192.168.1.1 或 dc.example.com" />
-          </Form.Item>
-          <Form.Item name="port" label="WinRM 端口">
-            <Input type="number" placeholder="5985" />
-          </Form.Item>
-          <Form.Item name="use_ssl" valuePropName="checked" label="使用 HTTPS (WinRM 5986)">
-            <Select options={[{ value: false, label: '否 (5985)' }, { value: true, label: '是 (5986)' }]} />
+            <Input placeholder="例如 192.168.1.1 或 dhcp.example.com" />
           </Form.Item>
         </Form>
       </Modal>

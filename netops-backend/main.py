@@ -50,7 +50,7 @@ from utils.device_connection_manager import device_connection_manager
 from tasks import scheduler
 
 # 创建应用
-app = FastAPI(title="NetOps API", version="1.871")
+app = FastAPI(title="NetOps API", version="1.872")
 
 # 添加中间件来获取真实客户端IP
 @app.middleware("http")
