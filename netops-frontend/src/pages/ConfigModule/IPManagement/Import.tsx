@@ -3,7 +3,7 @@
  * NetBox 可选用 API 凭证；DHCP WMI 可选用 Windows/域控凭证。
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Form, Input, Button, Space, message, Switch, Table, Popconfirm, Row, Col, Select, Typography } from 'antd';
+import { Card, Form, Input, Button, Space, message, Switch, Table, Popconfirm, Row, Col, Select } from 'antd';
 import { CloudDownloadOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import request from '../../../utils/request';
 
@@ -81,8 +81,10 @@ const IPManagementImport: React.FC = () => {
     setWmiTargetsLoading(true);
     try {
       const res = await request.get('/config-module/dhcp/wmi-targets');
-      const data = res.data?.data ?? res.data;
-      setWmiTargets(Array.isArray(data?.items) ? data.items : []);
+      const raw = res.data?.data ?? res.data;
+      // 后端返回 { data: 目标数组 }；兼容 { items: [] }
+      const items = Array.isArray(raw) ? raw : (Array.isArray(raw?.items) ? raw.items : []);
+      setWmiTargets(items);
     } catch {
       setWmiTargets([]);
     } finally {
@@ -200,9 +202,6 @@ const IPManagementImport: React.FC = () => {
           </Button>
         </Card>
         <Card title="DHCP 采集配置（WMI / DCOM）" size="small" type="inner">
-          <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-            采集端通过 WMI 连接 Windows DHCP 服务器（命名空间 root\Microsoft\Windows\DHCP）。请放行本系统到目标机的 TCP 135 及 RPC 动态端口，账号需具备读取 DHCP 的权限。
-          </Typography.Paragraph>
           <Form form={wmiForm} layout="vertical" style={{ marginBottom: 16 }} onFinish={saveWmiTarget}>
             <Row gutter={16}>
               <Col xs={24} sm={12} md={8} lg={6}>

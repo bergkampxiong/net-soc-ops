@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Table, Card, Input, Select, Button, Space, message } from 'antd';
 import { ReloadOutlined, SyncOutlined } from '@ant-design/icons';
-import request from '../../../utils/request';
+import request, { DHCP_WMI_SYNC_TIMEOUT } from '../../../utils/request';
 import { useNavigate } from 'react-router-dom';
 
 interface DhcpServerRow {
@@ -63,7 +63,12 @@ const IPManagementDhcpServers: React.FC = () => {
   const syncFromWmi = async () => {
     setSyncFromWmiLoading(true);
     try {
-      const res = await request.post('/config-module/dhcp/sync-from-wmi');
+      // WinRM 分阶段+多作用域并行，总时长可能达数十分钟
+      const res = await request.post(
+        '/config-module/dhcp/sync-from-wmi',
+        {},
+        { timeout: DHCP_WMI_SYNC_TIMEOUT }
+      );
       const data = res.data?.data ?? res.data;
       const success = data?.success !== false;
       if (success) {

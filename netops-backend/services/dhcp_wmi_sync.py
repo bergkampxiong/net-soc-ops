@@ -4,6 +4,10 @@ import ipaddress
 import json
 import logging
 import re
+import socket
+import time
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from sqlalchemy.orm import Session
@@ -13,60 +17,175 @@ from database.category_models import Credential, CredentialType
 
 logger = logging.getLogger(__name__)
 
+# pywinrm 要求 read_timeout_sec 必须严格大于 operation_timeout_sec
+WINRM_DHCP_SCOPE_PHASE_OPERATION_SEC = 600
+WINRM_DHCP_SCOPE_PHASE_READ_SEC = 720
+WINRM_DHCP_PER_SCOPE_OPERATION_SEC = 600
+WINRM_DHCP_PER_SCOPE_READ_SEC = 720
+WINRM_LEASE_DETAIL_MAX_ADDRESSES = 12000
+WINRM_LEASE_DETAIL_FALLBACK_MAX_POOL = 16384
+# 同机多路 WinRM 易拥塞，降为 2 路并行
+WINRM_LEASE_FETCH_MAX_WORKERS = 2
+
+_DEBUG_DHCP_LOG = "/app/net-soc-ops/.cursor/debug-e86f26.log"
+
+
+def _dhcp_debug_log(message: str, data: Dict[str, Any]) -> None:
+    """失败时写入 NDJSON，便于对照（不含密码）。"""
+    try:
+        row = {"sessionId": "e86f26", "message": message, "timestamp": int(time.time() * 1000), **data}
+        with open(_DEBUG_DHCP_LOG, "a", encoding="utf-8") as df:
+            df.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def _winrm_tcp_probe(host: str, port: int, timeout_sec: float = 10.0) -> Optional[str]:
+    """对 WinRM 端口做 TCP 探测；失败返回错误文案，成功返回 None。"""
+    try:
+        with socket.create_connection((host.strip(), int(port)), timeout=timeout_sec):
+            pass
+        return None
+    except OSError as e:
+        return str(e)[:200]
+
+
+def _is_transient_winrm_timeout(exc: BaseException) -> bool:
+    """仅识别真实网络/HTTP 读超时，勿把 pywinrm 参数校验（文案含 timeout）当超时。"""
+    s = str(exc)
+    if "read_timeout_sec must exceed" in s or "operation_timeout_sec" in s and "must exceed" in s:
+        return False
+    try:
+        from requests.exceptions import ConnectTimeout, ReadTimeout
+
+        if isinstance(exc, (ReadTimeout, ConnectTimeout)):
+            return True
+    except ImportError:
+        pass
+    sl = s.lower()
+    return "read timed out" in sl or "connection timed out" in sl
+
+
+def _winrm_try_parse_dhcp_json(raw_out: bytes) -> Optional[dict]:
+    """从 WinRM 标准输出中提取 DHCP 采集结果 JSON（忽略前后杂行）。"""
+    if not raw_out:
+        return None
+    text = raw_out.decode("utf-8", errors="replace").strip()
+    candidates = [text] + [ln.strip() for ln in text.splitlines() if ln.strip() and ln.strip().startswith("{")]
+    for chunk in reversed(candidates):
+        try:
+            d = json.loads(chunk)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(d, dict):
+            continue
+        if "scopes" in d and "servers" in d:
+            return d
+        if d.get("error") is not None and len(d) <= 2:
+            return d
+    return None
+
+
+# 远程 WMI 读 DHCP 时，impacket 未设置 RPC_C_IMP_LEVEL_IMPERSONATE，DHCP 提供程序常返回 0 实例；
+# SolarWinds 等产品实际采用「WinRM + DCOM 回退」。故 WMI 无数据时自动尝试 WinRM(PowerShell) 采集。
+# 另：StdRegProv 读注册表需 ExecMethod，impacket 未暴露，未实现。
+
 NS_CIMV2 = "//./root/cimv2"
 NS_DHCP = "//./root/Microsoft/Windows/DHCP"
+DHCP_NAMESPACE_CANDIDATES = (
+    "//./root/Microsoft/Windows/DHCP",
+    "//./root/Microsoft/Windows/DHCPv2",
+    "//./root/Microsoft/Windows/DHCPv4",
+    "//./root/Microsoft/Windows",
+)
 
 # Windows Server 2019 等使用无 MSFT_ 前缀的类名（DhcpServerv4*）；部分版本用 MSFT_DhcpServerV4* / v4*
 DHCP_SCOPE_CLASS_NAMES = ("DhcpServerv4Scope", "MSFT_DhcpServerV4Scope", "MSFT_DhcpServerv4Scope")
 DHCP_LEASE_CLASS_NAMES = ("DhcpServerv4Lease", "MSFT_DhcpServerV4Lease", "MSFT_DhcpServerv4Lease")
 DHCP_RESERVATION_CLASS_NAMES = ("DhcpServerv4Reservation", "MSFT_DhcpServerV4Reservation", "MSFT_DhcpServerv4Reservation")
 
-# 在 Windows 上执行的 PowerShell（原 WinRM 方案，仅作参考保留）
-DHCP_COLLECT_PS_SCRIPT = r"""
-$ErrorActionPreference = 'Stop'
-try {
-    if (-not (Get-Module -ListAvailable -Name DHCPServer)) { throw 'DHCPServer module not found' }
-    Import-Module DHCPServer -ErrorAction Stop
-} catch {
-    Write-Output ('{"error":"' + ($_.Exception.Message -replace '"','\"') + '"}')
-    exit 1
+# WinRM 阶段 1：仅 Get-DhcpServerv4Scope + 池大小，不调用 ScopeStatistics（WinRM 下易慢/超时）
+DHCP_COLLECT_PS_SCOPES_STATS = r"""$ProgressPreference='SilentlyContinue';$VerbosePreference='SilentlyContinue';$WarningPreference='SilentlyContinue';$ErrorActionPreference='Stop'
+try{Import-Module DHCPServer -EA Stop|Out-Null}catch{Write-Output ('{"error":"'+($_.Exception.Message -replace '"','\"')+'"}');exit 1}
+$s=@();$c=@()
+try{
+$n=$env:COMPUTERNAME
+$ip=$null;try{$w=Get-WmiObject -Class Win32_NetworkAdapterConfiguration -EA SilentlyContinue|Where-Object{$_.IPEnabled}|Select-Object -First 1;if($w){$ip=@($w.IPAddress)|Where-Object{$_ -match '^\d+\.\d+' -and $_ -notlike '169.*'}|Select-Object -First 1}}catch{}
+$raw=Get-DhcpServerv4Scope -EA SilentlyContinue
+$sa=@();if($raw){if($raw -is [array]){$sa=$raw}else{$sa=@($raw)}}
+$tot=0
+foreach($sc in $sa){
+if(-not $sc -or -not $sc.StartRange -or -not $sc.EndRange){continue}
+$sr=$sc.StartRange.ToString();$er=$sc.EndRange.ToString()
+$sb=[System.Net.IPAddress]::Parse($sr).GetAddressBytes();[Array]::Reverse($sb);$su=[BitConverter]::ToUInt32($sb,0);$eb=[System.Net.IPAddress]::Parse($er).GetAddressBytes();[Array]::Reverse($eb);$eu=[BitConverter]::ToUInt32($eb,0);$r=[int64]$eu-[int64]$su+1
+$tot+=$r
+$m=if($sc.SubnetMask){$sc.SubnetMask.ToString()}else{'255.255.255.0'}
+$cidr=(([System.Net.IPAddress]::Parse($m).GetAddressBytes()|ForEach-Object{[convert]::ToString($_,2).Replace('0','')})-join'').Length
+$na=if($sc.NetworkId){$sc.NetworkId.ToString()}elseif($sc.ScopeId){$sc.ScopeId.ToString()}else{''}
+$scopeId=if($sc.ScopeId){$sc.ScopeId.ToString()}else{$na}
+$sn=if($null -ne $sc.Name -and '' -ne [string]$sc.Name){[string]$sc.Name}else{$scopeId}
+$c+=@{server_name=$n;name=$sn;network_address=$na;mask_cidr=$m+'/'+$cidr;enabled=($sc.State -eq 2);scope_id=$scopeId;total_ips=$r;used_ips=0;available_ips=$r;statistics_ok=$false}
 }
-$servers = @()
-$scopes = @()
-$leases = @()
-try {
-    $computerName = $env:COMPUTERNAME
-    $ip = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceAlias -notlike '*Loopback*' -and $_.IPAddress -notlike '169.*' } | Select-Object -First 1).IPAddress
-    $scopeList = Get-DhcpServerv4Scope -ErrorAction SilentlyContinue
-    $scopeCount = ($scopeList | Measure-Object).Count
-    $totalIps = 0; $usedIps = 0
-    foreach ($sc in $scopeList) {
-        $totalIps += ($sc.EndRange - $sc.StartRange + 1)
-        $addrCount = (Get-DhcpServerv4Lease -ScopeId $sc.ScopeId -ErrorAction SilentlyContinue | Measure-Object).Count
-        $usedIps += $addrCount
-        $mask = $sc.SubnetMask.ToString()
-        $cidr = switch -Regex ($mask) { '^255\.255\.255\.255$' { 32 } '^255\.255\.255\.254$' { 31 } '^255\.255\.255\.252$' { 30 } '^255\.255\.255\.248$' { 29 } '^255\.255\.255\.240$' { 28 } '^255\.255\.255\.224$' { 27 } '^255\.255\.255\.192$' { 26 } '^255\.255\.255\.128$' { 25 } '^255\.255\.255\.0$' { 24 } '^255\.255\.254\.0$' { 23 } '^255\.255\.252\.0$' { 22 } '^255\.255\.248\.0$' { 21 } '^255\.255\.240\.0$' { 20 } '^255\.255\.224\.0$' { 19 } '^255\.255\.192\.0$' { 18 } '^255\.255\.128\.0$' { 17 } '^255\.255\.0\.0$' { 16 } default { 24 } }
-        $scopes += @{ server_name = $computerName; name = $sc.Name; network_address = $sc.NetworkId.ToString(); mask_cidr = $mask + '/' + $cidr; enabled = ($sc.State -eq 2); scope_id = $sc.ScopeId.ToString(); total_ips = ($sc.EndRange - $sc.StartRange + 1); used_ips = $addrCount; available_ips = ($sc.EndRange - $sc.StartRange + 1 - $addrCount) }
-    }
-    $servers += @{ name = $computerName; type = 'Windows'; ip_address = $ip; failover_status = 'N/A'; num_scopes = $scopeCount; total_ips = $totalIps; used_ips = $usedIps; available_ips = ($totalIps - $usedIps); status = 'Up' }
-    foreach ($sc in $scopeList) {
-        $leaseList = Get-DhcpServerv4Lease -ScopeId $sc.ScopeId -ErrorAction SilentlyContinue
-        foreach ($l in $leaseList) {
-            $leases += @{ server_name = $computerName; scope_name = $sc.Name; ip_address = $l.IPAddress.ToString(); mac = $l.ClientId; client_name = $l.HostName; is_reservation = $false; status = $l.AddressState }
-        }
-        $resList = Get-DhcpServerv4Reservation -ScopeId $sc.ScopeId -ErrorAction SilentlyContinue
-        foreach ($r in $resList) {
-            $leases += @{ server_name = $computerName; scope_name = $sc.Name; ip_address = $r.IPAddress.ToString(); mac = $r.ClientId; client_name = $r.Name; is_reservation = $true; status = 'Reserved' }
-        }
-    }
-} catch {
-    Write-Output ('{"error":"' + ($_.Exception.Message -replace '"','\"') + '"}')
-    exit 1
-}
-$out = @{ servers = $servers; scopes = $scopes; leases = $leases }
-$json = $out | ConvertTo-Json -Depth 10 -Compress
-Write-Output $json
+$s+=@{name=$n;type='Windows';ip_address=$ip;failover_status='N/A';num_scopes=$sa.Count;total_ips=$tot;used_ips=0;available_ips=$tot;status='Up'}
+}catch{Write-Output ('{"error":"'+($_.Exception.Message -replace '"','\"')+'"}');exit 1}
+(@{servers=$s;scopes=$c}|ConvertTo-Json -Depth 10 -Compress)
 """
+
+# 按作用域拉租约（<<<SID>>> 等为占位，运行前替换）
+_DHCP_LEASES_PS_TEMPLATE = r"""$ProgressPreference='SilentlyContinue';$ErrorActionPreference='Stop'
+try{Import-Module DHCPServer -EA Stop|Out-Null}catch{Write-Output ('{"error":"'+($_.Exception.Message -replace '"','\"')+'"}');exit 1}
+$sid='<<<SID>>>';$scn='<<<SCN>>>';$srv='<<<SRV>>>';$l=@()
+foreach($x in Get-DhcpServerv4Lease -ScopeId $sid -EA SilentlyContinue){
+$ipa=if($x.IPAddress){$x.IPAddress.ToString()}else{''}
+$mac=if($null -ne $x.ClientId){[string]$x.ClientId}else{''}
+$hn=if($null -ne $x.HostName){[string]$x.HostName}else{''}
+$st=if($null -ne $x.AddressState){[string]$x.AddressState}else{''}
+if($ipa){$l+=@{server_name=$srv;scope_name=$scn;ip_address=$ipa;mac=$mac;client_name=$hn;is_reservation=$false;status=$st}}
+}
+foreach($x in Get-DhcpServerv4Reservation -ScopeId $sid -EA SilentlyContinue){
+$ipa=if($x.IPAddress){$x.IPAddress.ToString()}else{''}
+$mac=if($null -ne $x.ClientId){[string]$x.ClientId}else{''}
+$nm=if($null -ne $x.Name){[string]$x.Name}else{''}
+if($ipa){$l+=@{server_name=$srv;scope_name=$scn;ip_address=$ipa;mac=$mac;client_name=$nm;is_reservation=$true;status='Reserved'}}
+}
+if($l.Count-eq0){'[]'}else{ConvertTo-Json -InputObject @($l) -Depth 8 -Compress}
+"""
+
+
+def _winrm_ps_escape_single(value: str) -> str:
+    """PowerShell 单引号字符串内对单引号转义。"""
+    return (value or "").replace("'", "''")
+
+
+def _dhcp_winrm_leases_ps_script(scope_id: str, scope_name: str, server_name: str) -> str:
+    return (
+        _DHCP_LEASES_PS_TEMPLATE.replace("<<<SID>>>", _winrm_ps_escape_single(scope_id))
+        .replace("<<<SCN>>>", _winrm_ps_escape_single(scope_name or ""))
+        .replace("<<<SRV>>>", _winrm_ps_escape_single(server_name or ""))
+    )
+
+
+def _winrm_parse_lease_batch_json(raw_out: bytes) -> Tuple[List[dict], Optional[str]]:
+    """解析单作用域租约 JSON 数组；失败返回 ([], 错误信息)。"""
+    if not raw_out:
+        return [], None
+    text = raw_out.decode("utf-8", errors="replace").strip()
+    if text.startswith("{") and '"error"' in text:
+        try:
+            d = json.loads(text)
+            if isinstance(d, dict) and d.get("error"):
+                return [], str(d["error"])[:400]
+        except json.JSONDecodeError:
+            pass
+    try:
+        v = json.loads(text)
+        if isinstance(v, list):
+            return [x for x in v if isinstance(x, dict)], None
+        if isinstance(v, dict):
+            return [v], None
+    except json.JSONDecodeError:
+        pass
+    return [], (text[:400] or "租约 JSON 无效")
 
 
 def _mask_to_cidr(mask: str) -> int:
@@ -136,22 +255,111 @@ def _is_wbem_invalid_class(ex: BaseException) -> bool:
 def _wmi_query_rows_try_classes(
     i_wbem_services, select_clause: str, class_names: tuple, where_clause: Optional[str] = None
 ) -> List[Dict[str, Any]]:
-    """对多个 WMI 类名依次执行 SELECT 查询，返回第一个成功的行列表。where_clause 可选，如 \"WHERE ScopeId = '10.0.0.0'\"。"""
-    last_exc: Optional[Exception] = None
+    """
+    对多个 WMI 类名依次执行 SELECT。若某类存在但 0 行，继续试下一类（修复：此前首个类 0 行即返回，永不尝试 MSFT_*）。
+    仅当所有类均为无效类时抛出最后一次 WBEM 无效类异常。
+    where_clause 可选，如 \"WHERE ScopeId = '10.0.0.0'\"。
+    """
+    last_invalid: Optional[Exception] = None
+    saw_valid_query = False
     for cls in class_names:
         wql = f"{select_clause} FROM {cls}"
         if where_clause:
             wql = f"{wql} {where_clause}"
         try:
-            return _wmi_query_rows(i_wbem_services, wql)
+            rows = _wmi_query_rows(i_wbem_services, wql)
+            saw_valid_query = True
+            if rows:
+                return rows
         except Exception as e:
             if _is_wbem_invalid_class(e):
-                last_exc = e
+                last_invalid = e
                 continue
             raise
+    if not saw_valid_query and last_invalid is not None:
+        raise last_invalid
+    return []
+
+
+def _open_dhcp_wmi_service(level1, null_obj):
+    """使用 root/Microsoft/Windows/DHCP 命名空间，若不可用则尝试其他候选。"""
+    last_exc: Optional[Exception] = None
+    for ns in DHCP_NAMESPACE_CANDIDATES:
+        svc = None
+        try:
+            svc = level1.NTLMLogin(ns, null_obj, null_obj)
+            _wmi_query_rows(svc, "SELECT Name FROM __NAMESPACE")
+            return svc, ns
+        except Exception as e:
+            last_exc = e
+            if svc is not None:
+                try:
+                    svc.RemRelease()
+                except Exception:
+                    pass
+            continue
     if last_exc is not None:
         raise last_exc
-    return []
+    raise RuntimeError("未找到可用 DHCP WMI 命名空间")
+
+
+def _extract_scope_id(row: Dict[str, Any]) -> Optional[str]:
+    candidates = ("scopeid", "scope_id", "networkid", "subnetaddress", "networkaddress", "id")
+    for key in candidates:
+        val = row.get(key)
+        ip = _ipv4_to_str(val)
+        if ip and re.match(r"^\d{1,3}(\.\d{1,3}){3}$", ip):
+            return ip
+    return None
+
+
+def _discover_scope_rows_dynamic(svc_dhcp) -> List[Dict[str, Any]]:
+    """
+    动态发现 Scope 相关类，兼容部分环境中固定类无实例的情况。
+    仅使用 WMI，不依赖 WinRM。
+    """
+    rows_out: List[Dict[str, Any]] = []
+    try:
+        class_rows = _wmi_query_rows(
+            svc_dhcp,
+            "SELECT __CLASS FROM meta_class WHERE __CLASS LIKE '%Scope%'",
+        )
+    except Exception:
+        return rows_out
+
+    candidate_classes: List[str] = []
+    for r in class_rows:
+        cn = str(r.get("__class") or "").strip()
+        if not cn:
+            continue
+        cl = cn.lower()
+        if "scope" not in cl or "dhcp" not in cl or "stat" in cl:
+            continue
+        candidate_classes.append(cn)
+
+    seen_scope_ids: Set[str] = set()
+    for cls_name in candidate_classes:
+        try:
+            class_rows_data = _wmi_query_rows(svc_dhcp, f"SELECT * FROM {cls_name}")
+        except Exception:
+            continue
+        for r in class_rows_data:
+            scope_id = _extract_scope_id(r)
+            if not scope_id or scope_id in seen_scope_ids:
+                continue
+            seen_scope_ids.add(scope_id)
+            subnet_mask = _ipv4_to_str(r.get("subnetmask")) or "255.255.255.0"
+            rows_out.append(
+                {
+                    "scopeid": scope_id,
+                    "name": str(r.get("name") or scope_id),
+                    "subnetmask": subnet_mask,
+                    "startrange": _ipv4_to_str(r.get("startrange")) or scope_id,
+                    "endrange": _ipv4_to_str(r.get("endrange")) or scope_id,
+                    "state": r.get("state", 1),
+                }
+            )
+    return rows_out
 
 
 def _ipv4_to_str(v: Any) -> Optional[str]:
@@ -363,8 +571,15 @@ def test_wmi_connection(
     level1 = None
     try:
         dcom, level1 = _open_wmi_dcom_level1(host, username, password, domain)
-        svc_dhcp = level1.NTLMLogin(NS_DHCP, NULL, NULL)
+        svc_dhcp, ns_used = _open_dhcp_wmi_service(level1, NULL)
         rows = _wmi_query_rows_try_classes(svc_dhcp, "SELECT ScopeId", DHCP_SCOPE_CLASS_NAMES)
+        if not rows:
+            try:
+                rows = _wmi_query_rows(svc_dhcp, "SELECT ScopeId FROM DhcpServerv4ScopeStatistics")
+            except Exception:
+                rows = []
+        if not rows:
+            rows = _discover_scope_rows_dynamic(svc_dhcp)
         try:
             svc_dhcp.RemRelease()
         except Exception:
@@ -378,7 +593,7 @@ def test_wmi_connection(
             svc_cim.RemRelease()
         except Exception:
             pass
-        return True, f"WMI 连接成功（DHCP 命名空间可访问，作用域数约 {len(rows)}，主机: {cn}）"
+        return True, f"WMI 连接成功（命名空间: {ns_used}，作用域数约 {len(rows)}，主机: {cn}）"
     except Exception as e:
         err = str(e)
         logger.exception("WMI 测试异常 host=%s", host)
@@ -431,7 +646,7 @@ def _collect_dhcp_via_remote_wmi(
     try:
         dcom, level1 = _open_wmi_dcom_level1(host, username, password, domain)
         svc_cim = level1.NTLMLogin(NS_CIMV2, NULL, NULL)
-        svc_dhcp = level1.NTLMLogin(NS_DHCP, NULL, NULL)
+        svc_dhcp, dhcp_ns_used = _open_dhcp_wmi_service(level1, NULL)
 
         comp_rows = _wmi_query_rows(svc_cim, "SELECT Name FROM Win32_ComputerSystem")
         computer_name = (comp_rows[0].get("name") if comp_rows else None) or host
@@ -459,9 +674,64 @@ def _collect_dhcp_via_remote_wmi(
         if not server_ip:
             server_ip = host
 
-        scope_rows = _wmi_query_rows_try_classes(svc_dhcp, "SELECT *", DHCP_SCOPE_CLASS_NAMES)
+        _SCOPE_COLS = "ScopeId, Name, SubnetMask, StartRange, EndRange, State"
+        scope_rows = []
+        try:
+            _ex_rows = _wmi_query_rows(
+                svc_dhcp, f"SELECT {_SCOPE_COLS} FROM DhcpServerv4Scope"
+            )
+            if _ex_rows:
+                scope_rows = _ex_rows
+        except Exception:
+            pass
         if not scope_rows:
-            return False, "未查询到 DHCP 作用域（作用域类为空），请确认本机为 DHCP 服务器。", None
+            scope_rows = _wmi_query_rows_try_classes(svc_dhcp, "SELECT *", DHCP_SCOPE_CLASS_NAMES)
+        if not scope_rows:
+            stat_rows: List[Dict[str, Any]] = []
+            try:
+                stat_rows = _wmi_query_rows(svc_dhcp, "SELECT * FROM DhcpServerv4ScopeStatistics")
+            except Exception:
+                stat_rows = []
+            if stat_rows:
+                for r in stat_rows:
+                    sid_raw = r.get("scopeid")
+                    sid = _ipv4_to_str(sid_raw)
+                    if isinstance(sid_raw, (bytes, bytearray)):
+                        try:
+                            sid = sid_raw.decode("utf-16-le", errors="ignore").split("\x00")[0].strip() or sid
+                        except Exception:
+                            pass
+                    if not sid or not re.match(r"^\d{1,3}(\.\d{1,3}){3}$", str(sid).strip()):
+                        continue
+                    sid = str(sid).strip()
+                    sm = _ipv4_to_str(r.get("subnetmask")) or "255.255.255.0"
+                    scope_rows.append({
+                        "scopeid": sid,
+                        "name": str(r.get("name") or sid),
+                        "subnetmask": sm,
+                        "startrange": sid,
+                        "endrange": sid,
+                        "state": 1,
+                    })
+                logger.info("DHCP WMI 通过 ScopeStatistics 回退得到 %s 个作用域 host=%s", len(scope_rows), host)
+        if not scope_rows:
+            scope_rows = _discover_scope_rows_dynamic(svc_dhcp)
+            if scope_rows:
+                logger.info(
+                    "DHCP WMI 通过动态类发现得到 %s 个作用域 host=%s namespace=%s",
+                    len(scope_rows),
+                    host,
+                    dhcp_ns_used,
+                )
+        if not scope_rows:
+            return (
+                False,
+                (
+                    f"目标 {host} 的 WMI 中 IPv4 作用域为 0（命名空间 {dhcp_ns_used}）。"
+                    "将尝试 WinRM 回退；若未配置或回退失败，请在目标机启用 WinRM(5985) 并在本系统 DHCP 目标中填写端口。"
+                ),
+                None,
+            )
 
         scopes_out: List[dict] = []
         leases_out: List[dict] = []
@@ -600,7 +870,7 @@ def test_winrm_connection(
 
 
 def _run_winrm(host: str, port: int, username: str, password: str, use_ssl: bool, script: str) -> tuple[bool, str, Optional[dict]]:
-    """保留：通过 WinRM 执行 PowerShell（参考）。"""
+    """通过 WinRM 执行 PowerShell，返回解析后的 JSON。"""
     try:
         import winrm
     except ImportError:
@@ -632,9 +902,201 @@ def _run_winrm(host: str, port: int, username: str, password: str, use_ssl: bool
         return False, str(e), None
 
 
+def _collect_dhcp_via_winrm_powershell(
+    host: str,
+    port: int,
+    use_ssl: bool,
+    username: str,
+    password: str,
+    domain: Optional[str],
+) -> Tuple[bool, str, Optional[dict]]:
+    """
+    阶段 1：枚举作用域；阶段 2：按作用域拉租约（池过大跳过明细）；用量由租约条数回写。
+    """
+    try:
+        import winrm
+    except ImportError:
+        return False, "未安装 pywinrm，无法 WinRM 回退", None
+    d = (domain or "").strip()
+    u = (username or "").strip()
+    winrm_user = f"{d}\\{u}" if d and u else (u or "")
+    endpoint = f"{'https' if use_ssl else 'http'}://{host}:{port}/wsman"
+    sess_kw: Dict[str, Any] = {
+        "auth": (winrm_user, password or ""),
+        "transport": "ntlm" if winrm_user else "plaintext",
+        "server_cert_validation": "ignore" if use_ssl else None,
+    }
+
+    def _session(read_sec: int, op_sec: int) -> Any:
+        # pywinrm：HTTP 读超时须大于 WS-Man OperationTimeout
+        if read_sec <= op_sec:
+            read_sec = op_sec + 120
+        return winrm.Session(
+            endpoint,
+            read_timeout_sec=read_sec,
+            operation_timeout_sec=op_sec,
+            **sess_kw,
+        )
+
+    try:
+        tcp_err = _winrm_tcp_probe(host, port, 10.0)
+        if tcp_err:
+            _dhcp_debug_log("winrm_tcp_probe_fail", {"host": host, "port": port, "error": tcp_err})
+            return False, (
+                f"采集机到 {host}:{port} TCP 探测失败（{tcp_err}）。"
+                "请在后端主机放通出站 WinRM；勿与办公电脑连通性混淆。"
+            ), None
+        t0 = time.monotonic()
+        session = _session(WINRM_DHCP_SCOPE_PHASE_READ_SEC, WINRM_DHCP_SCOPE_PHASE_OPERATION_SEC)
+        r = session.run_ps(DHCP_COLLECT_PS_SCOPES_STATS.strip())
+        phase1_elapsed = time.monotonic() - t0
+        logger.info(
+            "WinRM DHCP 阶段1 host=%s 耗时=%.1fs status=%s 输出字节=%s",
+            host,
+            phase1_elapsed,
+            r.status_code,
+            len(r.std_out or b""),
+        )
+        data = _winrm_try_parse_dhcp_json(r.std_out or b"")
+        if isinstance(data, dict) and data.get("error") is not None and "scopes" not in data:
+            return False, str(data["error"])[:800], None
+        if not data or not isinstance(data.get("scopes"), list):
+            err = (r.std_err or b"").decode("utf-8", errors="replace").strip()
+            err = err or (r.std_out or b"").decode("utf-8", errors="replace")[:800]
+            return False, err or "WinRM 阶段1 无有效作用域 JSON", None
+        scopes_list = data["scopes"]
+        if not scopes_list and r.status_code == 0:
+            return False, "WinRM 已执行但 scopes 为空（目标机 Get-DhcpServerv4Scope 无结果）", data
+        if not scopes_list:
+            err = (r.std_out or b"").decode("utf-8", errors="replace")[:800]
+            return False, err or "作用域列表为空", None
+
+        all_leases: List[dict] = []
+        to_fetch: List[dict] = []
+        skipped_large: List[str] = []
+
+        for sc in scopes_list:
+            tot_pool = int(sc.get("total_ips") or 0) or 0
+            used = int(sc.get("used_ips") or 0) or 0
+            st_ok = sc.get("statistics_ok") is True or str(sc.get("statistics_ok")).lower() in ("true", "1")
+            if st_ok and used > WINRM_LEASE_DETAIL_MAX_ADDRESSES:
+                skipped_large.append(str(sc.get("name") or sc.get("scope_id") or "?"))
+                continue
+            if not st_ok and tot_pool > WINRM_LEASE_DETAIL_FALLBACK_MAX_POOL:
+                skipped_large.append(str(sc.get("name") or sc.get("scope_id") or "?") + "(地址池过大未拉明细)")
+                continue
+            to_fetch.append(sc)
+
+        lease_errors: List[str] = []
+
+        def _fetch_leases_one(sc_row: dict) -> Tuple[List[dict], Optional[str]]:
+            sid = str(sc_row.get("scope_id") or "")
+            ps = _dhcp_winrm_leases_ps_script(sid, str(sc_row.get("name") or ""), str(sc_row.get("server_name") or ""))
+            for lease_attempt in range(2):
+                try:
+                    s2 = _session(WINRM_DHCP_PER_SCOPE_READ_SEC, WINRM_DHCP_PER_SCOPE_OPERATION_SEC)
+                    rr = s2.run_ps(ps)
+                    break
+                except BaseException as ex:
+                    if lease_attempt == 0 and _is_transient_winrm_timeout(ex):
+                        time.sleep(5)
+                        continue
+                    return [], str(ex)[:200]
+            else:
+                return [], "租约 WinRM 重试耗尽"
+            rows, perr = _winrm_parse_lease_batch_json(rr.std_out or b"")
+            if perr:
+                return [], perr
+            if rr.status_code != 0 and not rows:
+                es = (rr.std_err or b"").decode("utf-8", errors="replace").strip()[:200]
+                return [], es or f"exit={rr.status_code}"
+            return rows, None
+
+        if to_fetch:
+            t1 = time.monotonic()
+            n_workers = max(1, min(WINRM_LEASE_FETCH_MAX_WORKERS, len(to_fetch)))
+            with ThreadPoolExecutor(max_workers=n_workers) as ex:
+                futures = [ex.submit(_fetch_leases_one, sc) for sc in to_fetch]
+                for fut in as_completed(futures):
+                    rows, err = fut.result()
+                    if err:
+                        lease_errors.append(err[:150])
+                    else:
+                        all_leases.extend(rows)
+            logger.info(
+                "WinRM DHCP 阶段2 host=%s 作用域数=%s 并行=%s 耗时=%.1fs 租约条数=%s 异常数=%s",
+                host,
+                len(to_fetch),
+                n_workers,
+                time.monotonic() - t1,
+                len(all_leases),
+                len(lease_errors),
+            )
+
+        if lease_errors and not all_leases and to_fetch:
+            return False, "WinRM 租约阶段失败: " + "; ".join(lease_errors[:4]), None
+
+        # 阶段2 拉到的租约条数回写作用域用量（Statistics 失败时阶段1 曾为 0）
+        _lease_cnt: Dict[Tuple[str, str], int] = defaultdict(int)
+        for le in all_leases:
+            _lease_cnt[(str(le.get("server_name") or ""), str(le.get("scope_name") or ""))] += 1
+        _tot_u = 0
+        for sc in scopes_list:
+            k = (str(sc.get("server_name") or ""), str(sc.get("name") or ""))
+            n = _lease_cnt.get(k, 0)
+            if n > 0:
+                sc["used_ips"] = n
+                tr = int(sc.get("total_ips") or 0) or 0
+                sc["available_ips"] = max(0, tr - n)
+            _tot_u += int(sc.get("used_ips") or 0) or 0
+        if data.get("servers") and isinstance(data["servers"], list):
+            for srv in data["servers"]:
+                if isinstance(srv, dict):
+                    srv["used_ips"] = _tot_u
+                    tt = int(srv.get("total_ips") or 0) or 0
+                    srv["available_ips"] = max(0, tt - _tot_u)
+
+        data["leases"] = all_leases
+        if skipped_large:
+            logger.info("WinRM DHCP 未拉租约明细的作用域: %s", skipped_large)
+        if lease_errors:
+            logger.warning("WinRM DHCP 部分作用域租约拉取异常: %s", lease_errors[:8])
+        return True, "", data
+    except json.JSONDecodeError as e:
+        return False, "WinRM JSON 解析失败: " + str(e)[:400], None
+    except Exception as e:
+        el = str(e).lower()
+        en = type(e).__name__.lower()
+        # TCP 建连失败（日志里 connect timeout=720 即此类，非脚本跑得慢）
+        if (
+            "connecttimeout" in en
+            or "connect timeout=" in el
+            or ("max retries exceeded" in el and "wsman" in el and ("connect" in el or "newconnection" in el))
+        ):
+            _dhcp_debug_log("winrm_tcp_connect_fail", {"host": host, "port": port, "error": str(e)[:400]})
+            return False, (
+                f"WinRM：运行后端的机器无法与 {host}:{port} 建立 TCP（连接超时/不可达）。"
+                f"请在**后端所在主机**上测试到 {host}:{port} 的连通（与浏览器所在电脑无关）；"
+                "放通后端→目标的防火墙，并确认目标 Listen 5985。"
+            ), None
+        if "timed out" in el or "timeout" in el:
+            _dhcp_debug_log(
+                "winrm_final_timeout",
+                {"host": host, "port": port, "error": str(e)[:500]},
+            )
+            return False, (
+                f"WinRM 等待响应超时 {host}:{port}（读超时约 {WINRM_DHCP_SCOPE_PHASE_READ_SEC}s）。"
+                "若同时出现 TCP 连不上，请先解决采集机到 5985 的路由与防火墙。"
+            ), None
+        if "refused" in el or "connection refused" in el:
+            return False, f"WinRM 连接被拒绝 {host}:{port}，请启用 WinRM 并放行端口。", None
+        logger.exception("WinRM DHCP 采集异常 host=%s", host)
+        return False, str(e)[:500], None
+
+
 def run_dhcp_wmi_sync(db: Session, target_id: Optional[int] = None) -> Dict[str, Any]:
     """
-    从已配置的 DHCP 目标通过远程 WMI(DCOM) 采集并写入 dhcp_servers/dhcp_scopes/dhcp_leases。
+    从已配置的 DHCP 目标采集：先 WMI(DCOM)，作用域为 0 或失败时自动用 WinRM(PowerShell) 回退，写入 dhcp 表。
     """
     q = db.query(DhcpWmiTarget).filter(DhcpWmiTarget.enabled == True)
     if target_id is not None:
@@ -647,19 +1109,7 @@ def run_dhcp_wmi_sync(db: Session, target_id: Optional[int] = None) -> Dict[str,
     targets_ok = 0
     targets_fail = 0
 
-    try:
-        db.query(DhcpLease).delete()
-        db.query(DhcpScope).delete()
-        db.query(DhcpServer).delete()
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        logger.exception("清空 DHCP 表失败")
-        return {"success": False, "message": "清空表失败: " + str(e), "targets_ok": 0, "targets_fail": len(targets), "error_per_target": []}
-
-    server_name_to_id: Dict[str, int] = {}
-    scope_key_to_id: Dict[str, int] = {}
-
+    collected_batches: List[Tuple[DhcpWmiTarget, dict]] = []
     for t in targets:
         username = t.username or ""
         password = t.password or ""
@@ -678,10 +1128,50 @@ def run_dhcp_wmi_sync(db: Session, target_id: Optional[int] = None) -> Dict[str,
 
         ok, err_msg, data = _collect_dhcp_via_remote_wmi(t.host, username, password, domain)
         if not ok:
-            error_per_target.append({"target_id": t.id, "host": t.host, "error": err_msg})
-            targets_fail += 1
-            continue
+            wport = int(t.port or 5985)
+            wssl = bool(t.use_ssl is True)
+            ok_w, err_w, data_w = _collect_dhcp_via_winrm_powershell(
+                t.host, wport, wssl, username, password, domain
+            )
+            if ok_w and data_w:
+                ok, err_msg, data = True, "", data_w
+                logger.info(
+                    "DHCP 已通过 WinRM 回退采集 host=%s port=%s 作用域数=%s",
+                    t.host, wport, len(data_w.get("scopes") or []),
+                )
+            else:
+                error_per_target.append({
+                    "target_id": t.id,
+                    "host": t.host,
+                    "error": f"{err_msg}；WinRM 回退: {err_w}",
+                })
+                targets_fail += 1
+                continue
+        collected_batches.append((t, data))
 
+    if not collected_batches:
+        return {
+            "success": False,
+            "message": f"采集失败：{len(error_per_target)} 个目标未返回数据，已保留原有 DHCP 库表。",
+            "targets_ok": 0,
+            "targets_fail": targets_fail,
+            "error_per_target": error_per_target,
+        }
+
+    try:
+        db.query(DhcpLease).delete()
+        db.query(DhcpScope).delete()
+        db.query(DhcpServer).delete()
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.exception("清空 DHCP 表失败")
+        return {"success": False, "message": "清空表失败: " + str(e), "targets_ok": 0, "targets_fail": len(targets), "error_per_target": error_per_target}
+
+    server_name_to_id: Dict[str, int] = {}
+    scope_key_to_id: Dict[str, int] = {}
+
+    for t, data in collected_batches:
         try:
             servers = data.get("servers") or []
             scopes = data.get("scopes") or []

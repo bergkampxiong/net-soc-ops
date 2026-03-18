@@ -23,6 +23,8 @@ interface CustomAxiosInstance extends Omit<AxiosInstance, 'get' | 'delete' | 'po
 
 // 长时间任务（如渗透测试、作业执行）使用的超时时间（毫秒），默认 10 分钟
 export const LONG_REQUEST_TIMEOUT = 600000;
+// DHCP WMI+WinRM 多作用域并行拉租约
+export const DHCP_WMI_SYNC_TIMEOUT = 30 * 60 * 1000;
 
 // 创建axios实例
 // baseURL设置为/api，这样：
