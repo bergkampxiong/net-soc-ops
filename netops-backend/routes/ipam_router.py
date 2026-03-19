@@ -39,9 +39,17 @@ from schemas.ipam_schemas import (
     DhcpWmiTargetUpdate,
     DhcpScopesListResponse,
     DhcpLeasesListResponse,
+    IpamCsvImportBody,
+    IpamTableImportResult,
 )
 from services.dhcp_wmi_sync import run_dhcp_wmi_sync
 from services.phpipam_import import apply_phpipam_subnets_to_db, fetch_phpipam_subnets
+from services.ipam_validators import (
+    validate_cidr_format,
+    ipam_aggregate_overlaps_existing,
+    check_prefix_in_aggregate,
+)
+from services.ipam_csv_import import import_aggregates_csv, import_prefixes_csv
 
 logger = logging.getLogger(__name__)
 
@@ -53,48 +61,24 @@ router = APIRouter(
 
 
 def _parse_cidr(cidr: str):
-    """解析 CIDR，返回 ipaddress.IPv4Network 或 IPv6Network，无效则抛 ValueError。"""
+    """解析 CIDR，无效则抛 HTTPException。"""
     try:
-        return ipaddress.ip_network(cidr, strict=False)
-    except ValueError:
-        raise HTTPException(status_code=400, detail=f"无效 CIDR: {cidr}")
+        validate_cidr_format(cidr)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 def _aggregates_overlap(db, prefix_str: str, exclude_id: Optional[int] = None) -> bool:
     """检查 prefix_str 是否与已有 Aggregate 重叠（排除 exclude_id）。"""
-    try:
-        new_net = ipaddress.ip_network(prefix_str, strict=False)
-    except ValueError:
-        return True
-    q = db.query(IpamAggregate).filter(IpamAggregate.prefix.isnot(None))
-    if exclude_id is not None:
-        q = q.filter(IpamAggregate.id != exclude_id)
-    for agg in q.all():
-        if not agg.prefix:
-            continue
-        try:
-            existing = ipaddress.ip_network(agg.prefix, strict=False)
-            if new_net.overlaps(existing):
-                return True
-        except ValueError:
-            continue
-    return False
+    return ipam_aggregate_overlaps_existing(db, prefix_str, exclude_id)
 
 
 def _prefix_in_aggregate(db, prefix_str: str, aggregate_id: Optional[int]) -> None:
-    """若提供了 aggregate_id，校验 prefix 的 CIDR 完全落在该 Aggregate 范围内，否则抛 HTTPException。"""
-    if aggregate_id is None:
-        return
-    agg = db.query(IpamAggregate).filter(IpamAggregate.id == aggregate_id).first()
-    if not agg or not agg.prefix:
-        raise HTTPException(status_code=400, detail="所选 Aggregate 不存在或无效")
+    """若提供了 aggregate_id，校验 prefix 落在 Aggregate 内，否则抛 HTTPException。"""
     try:
-        prefix_net = ipaddress.ip_network(prefix_str, strict=False)
-        agg_net = ipaddress.ip_network(agg.prefix, strict=False)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效 CIDR")
-    if not prefix_net.subnet_of(agg_net):
-        raise HTTPException(status_code=400, detail="Prefix 不在所选 Aggregate 范围内")
+        check_prefix_in_aggregate(db, prefix_str, aggregate_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 def _address_range_to_cidrs(start: ipaddress.IPv4Address, end: ipaddress.IPv4Address) -> List[str]:
@@ -420,6 +404,26 @@ def delete_prefix(pref_id: int, db=Depends(get_db)):
     db.delete(p)
     db.commit()
     return {"message": "已删除"}
+
+
+@router.post("/ipam/aggregates/import", response_model=IpamTableImportResult)
+def import_aggregates_from_csv(body: IpamCsvImportBody, db=Depends(get_db)):
+    """固定中文表头的 CSV 导入聚合，详见 docs/IPAM表格导入格式.md"""
+    try:
+        imported, updated, failed, errs = import_aggregates_csv(db, body.content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return IpamTableImportResult(imported=imported, updated=updated, failed=failed, errors=errs or None)
+
+
+@router.post("/ipam/prefixes/import", response_model=IpamTableImportResult)
+def import_prefixes_from_csv(body: IpamCsvImportBody, db=Depends(get_db)):
+    """固定中文表头的 CSV 导入网段，详见 docs/IPAM表格导入格式.md"""
+    try:
+        imported, updated, failed, errs = import_prefixes_csv(db, body.content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return IpamTableImportResult(imported=imported, updated=updated, failed=failed, errors=errs or None)
 
 
 # ---------- NetBox 配置与导入 ----------

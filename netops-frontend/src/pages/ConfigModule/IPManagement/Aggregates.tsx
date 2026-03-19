@@ -7,6 +7,8 @@ import type { TableRowSelection } from 'antd/es/table/interface';
 import { PlusOutlined, ReloadOutlined, DeleteOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import request from '../../../utils/request';
+import IpamCsvImportControls from './IpamCsvImportControls';
+import { IPAM_AGGREGATE_CSV_HEADERS } from './ipamImportTemplates';
 
 interface AggregateRow {
   id: number;
@@ -211,6 +213,12 @@ const IPManagementAggregates: React.FC = () => {
             批量删除{selectedRowKeys.length > 0 ? ` (${selectedRowKeys.length})` : ''}
           </Button>
         </Popconfirm>
+        <IpamCsvImportControls
+          importEndpoint="/config-module/ipam/aggregates/import"
+          templateFileName="ipam_aggregates_import_template.csv"
+          headers={IPAM_AGGREGATE_CSV_HEADERS}
+          onImported={() => load()}
+        />
         <Button icon={<ReloadOutlined />} onClick={() => load()}>刷新</Button>
         <Input.Search
           placeholder="Prefix 筛选"

@@ -93,6 +93,20 @@ class PhpipamImportResult(BaseModel):
     message: str = ""
 
 
+# ---------- 表格（CSV）导入 ----------
+class IpamCsvImportBody(BaseModel):
+    """与 CMDB 资产导入一致：整段 CSV 文本"""
+    content: str
+
+
+class IpamTableImportResult(BaseModel):
+    """表格导入结果：新建、更新、失败与逐条错误说明"""
+    imported: int = 0
+    updated: int = 0
+    failed: int = 0
+    errors: Optional[List[str]] = None
+
+
 # ---------- DHCP Sync（Agent 或手动上报） ----------
 class DhcpServerSyncItem(BaseModel):
     name: Optional[str] = None

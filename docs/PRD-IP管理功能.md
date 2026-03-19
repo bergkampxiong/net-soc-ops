@@ -280,3 +280,8 @@ erDiagram
 
 - Windows DHCP 服务器可通过 WMI 类（如 `MSFT_DhcpServer`、`MSFT_DhcpScope`、租约与保留的相应类）或 PowerShell 模块 `DhcpServer` 获取服务器列表、作用域、IP 租约与保留。
 - 若 NetOps 后端无法直连 Windows，可采用 Agent 部署在可访问 DHCP 的机器上，定期或按需拉取数据并上报到 NetOps 后端 API，由后端写入 dhcp_servers、dhcp_scopes、dhcp_leases 等表。
+
+### 14.3 聚合与网段表格导入（CSV）
+
+- 固定表头、填写规则与模板说明见 **[IPAM表格导入格式.md](./IPAM表格导入格式.md)**。
+- 接口：`POST /api/config-module/ipam/aggregates/import`、`POST /api/config-module/ipam/prefixes/import`，请求体 `{ "content": "<CSV 全文>" }`。

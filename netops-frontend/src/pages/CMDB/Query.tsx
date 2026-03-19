@@ -1126,8 +1126,8 @@ K8SCluster001,K8SC001,K8S Cluster,,,192.168.3.0/24,,linux,在线,机房C,赵六,
             showSizeChanger: true,
             showQuickJumper: true,
             showTotal: (total) => `共 ${total} 条记录`,
-            defaultPageSize: 10,
-            pageSizeOptions: ['10', '20', '50', '100'],
+            defaultPageSize: 15,
+            pageSizeOptions: ['30', '50', '100'],
           }}
           scroll={{ x: 'max-content', y: 'calc(100vh - 300px)' }}
           size="middle"
