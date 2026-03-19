@@ -7,6 +7,7 @@ from typing import Optional, List
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.sql import func
 
 from database.session import get_db
 from database.ipam_models import (
@@ -316,7 +317,35 @@ def list_prefixes(
         q = q.filter(IpamPrefix.location.ilike(f"%{location}%"))
     total = q.count()
     rows = q.order_by(IpamPrefix.prefix).offset(skip).limit(limit).all()
-    return PrefixListResponse(items=[r.to_dict() for r in rows], total=total)
+    prefix_ids = [r.id for r in rows]
+    utilization_by_prefix = {}
+    if prefix_ids:
+        scope_stats = (
+            db.query(
+                DhcpScope.prefix_id,
+                func.coalesce(func.sum(DhcpScope.used_ips), 0).label("used"),
+                func.coalesce(func.sum(DhcpScope.total_ips), 0).label("total"),
+            )
+            .filter(DhcpScope.prefix_id.in_(prefix_ids))
+            .group_by(DhcpScope.prefix_id)
+            .all()
+        )
+        for pid, used, total in scope_stats:
+            total_val = int(total) if total is not None else 0
+            used_val = int(used) if used is not None else 0
+            pct = round(used_val / total_val * 100, 2) if total_val else 0
+            utilization_by_prefix[pid] = {
+                "utilization_used": used_val,
+                "utilization_total": total_val,
+                "utilization_pct": pct,
+            }
+    items = []
+    for r in rows:
+        d = r.to_dict()
+        if r.id in utilization_by_prefix:
+            d.update(utilization_by_prefix[r.id])
+        items.append(d)
+    return PrefixListResponse(items=items, total=total)
 
 
 @router.post("/ipam/prefixes")
@@ -642,6 +671,67 @@ def dhcp_sync_from_wmi(db=Depends(get_db)):
 def list_dhcp_scopes(server_id: int, db=Depends(get_db)):
     rows = db.query(DhcpScope).filter(DhcpScope.dhcp_server_id == server_id).all()
     return DhcpScopesListResponse(items=[r.to_dict() for r in rows], total=len(rows))
+
+
+def _scope_to_cidr(scope: DhcpScope) -> Optional[str]:
+    """根据 Scope 的 network_address 与 mask_cidr 得到 CIDR 字符串，无效则返回 None。"""
+    na = (scope.network_address or "").strip()
+    mc = (scope.mask_cidr or "").strip()
+    if not na or not mc:
+        return None
+    # mask_cidr 格式可能为 "255.255.255.0/24" 或 "24" 或 "/24"
+    prefixlen = None
+    if "/" in mc:
+        parts = mc.split("/")
+        try:
+            prefixlen = int(parts[-1].strip())
+        except ValueError:
+            return None
+    else:
+        try:
+            prefixlen = int(mc)
+        except ValueError:
+            return None
+    if prefixlen < 0 or prefixlen > 128:
+        return None
+    cidr_str = f"{na}/{prefixlen}"
+    try:
+        ipaddress.ip_network(cidr_str, strict=False)
+        return cidr_str
+    except ValueError:
+        return None
+
+
+@router.get("/dhcp/scopes/{scope_id}/suggest-prefix")
+def suggest_scope_prefix(scope_id: int, db=Depends(get_db)):
+    """根据 Scope 网段推荐最贴近的 Prefix（包含该网段且前缀最长的那个）。"""
+    scope = db.query(DhcpScope).filter(DhcpScope.id == scope_id).first()
+    if not scope:
+        raise HTTPException(status_code=404, detail="Scope 不存在")
+    scope_cidr = _scope_to_cidr(scope)
+    if not scope_cidr:
+        return {"prefix_id": None, "prefix": None}
+    try:
+        scope_net = ipaddress.ip_network(scope_cidr, strict=False)
+    except ValueError:
+        return {"prefix_id": None, "prefix": None}
+    prefixes = db.query(IpamPrefix).limit(500).all()
+    candidates = []
+    for p in prefixes:
+        if not p.prefix:
+            continue
+        try:
+            prefix_net = ipaddress.ip_network(p.prefix, strict=False)
+        except ValueError:
+            continue
+        if scope_net.version != prefix_net.version:
+            continue
+        if scope_net.subnet_of(prefix_net) or scope_net == prefix_net:
+            candidates.append((p, prefix_net.prefixlen))
+    if not candidates:
+        return {"prefix_id": None, "prefix": None}
+    best = max(candidates, key=lambda x: x[1])
+    return {"prefix_id": best[0].id, "prefix": best[0].prefix}
 
 
 @router.get("/dhcp/scopes/{scope_id}")

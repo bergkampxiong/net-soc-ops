@@ -2,7 +2,7 @@
  * IP 管理 - 网段（Prefixes）列表与增删改（PRD-IP管理功能）
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Space, Input, Modal, Form, Select, Checkbox, message, Popconfirm, Card } from 'antd';
+import { Table, Button, Space, Input, Modal, Form, Select, Checkbox, message, Popconfirm, Card, Progress } from 'antd';
 import type { TableRowSelection } from 'antd/es/table/interface';
 import { PlusOutlined, ReloadOutlined, DeleteOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
@@ -20,6 +20,10 @@ interface PrefixRow {
   aggregate_id?: number;
   created_at?: string;
   updated_at?: string;
+  /** 关联 DHCP Scope 汇总的使用率（有 IP 数据时由后端返回） */
+  utilization_used?: number;
+  utilization_total?: number;
+  utilization_pct?: number;
 }
 
 const STATUS_OPTIONS = [
@@ -203,6 +207,23 @@ const IPManagementPrefixes: React.FC = () => {
         ) : '—',
     },
     { title: '描述', dataIndex: 'description', ellipsis: true },
+    {
+      title: '使用率',
+      key: 'utilization',
+      width: 140,
+      render: (_: unknown, row: PrefixRow) => {
+        if (row.utilization_total == null || row.utilization_total <= 0) {
+          return '—';
+        }
+        const pct = row.utilization_pct ?? 0;
+        return (
+          <Space size="small">
+            <Progress percent={pct} size="small" showInfo={false} style={{ width: 80 }} />
+            <span>{pct}%</span>
+          </Space>
+        );
+      },
+    },
     {
       title: '操作',
       key: 'action',

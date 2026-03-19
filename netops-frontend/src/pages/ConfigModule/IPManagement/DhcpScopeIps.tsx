@@ -77,9 +77,21 @@ const IPManagementDhcpScopeIps: React.FC = () => {
     loadScope();
   }, [loadScope]);
 
-  const openLinkModal = () => {
-    loadPrefixOptions();
-    form.setFieldsValue({ prefix_id: undefined });
+  const openLinkModal = async () => {
+    await loadPrefixOptions();
+    let suggestedPrefixId: number | null = null;
+    if (scopeId) {
+      try {
+        const res = await request.get(`/config-module/dhcp/scopes/${scopeId}/suggest-prefix`);
+        const data = res.data?.data ?? res.data ?? res;
+        if (data?.prefix_id != null) {
+          suggestedPrefixId = data.prefix_id;
+        }
+      } catch {
+        // 忽略失败，不预填
+      }
+    }
+    form.setFieldsValue({ prefix_id: suggestedPrefixId ?? undefined });
     setLinkModalVisible(true);
   };
 
