@@ -31,6 +31,8 @@ from schemas.ipam_schemas import (
     NetboxConfigBody,
     NetboxImportBody,
     NetboxImportResult,
+    PhpipamImportBody,
+    PhpipamImportResult,
     DhcpSyncBody,
     ScopeLinkPrefixBody,
     DhcpWmiTargetCreate,
@@ -39,6 +41,7 @@ from schemas.ipam_schemas import (
     DhcpLeasesListResponse,
 )
 from services.dhcp_wmi_sync import run_dhcp_wmi_sync
+from services.phpipam_import import apply_phpipam_subnets_to_db, fetch_phpipam_subnets
 
 logger = logging.getLogger(__name__)
 
@@ -535,18 +538,24 @@ def _fetch_netbox_prefixes(base_url: str, token: str) -> List[dict]:
 @router.post("/import/netbox", response_model=NetboxImportResult)
 def netbox_import(body: NetboxImportBody, db=Depends(get_db)):
     cfg = db.query(NetboxImportConfig).first()
-    if not cfg or not cfg.base_url:
-        raise HTTPException(status_code=400, detail="请先配置 NetBox 地址")
-    token = cfg.api_token or ""
-    if cfg.api_credential_id:
-        cred = db.query(Credential).filter(Credential.id == cfg.api_credential_id, Credential.credential_type == CredentialType.API_KEY).first()
+    base_url = (body.base_url.strip() if body.base_url else None) or (cfg.base_url if cfg else "") or ""
+    if not base_url.strip():
+        raise HTTPException(status_code=400, detail="请先配置 NetBox 地址或在请求中提供 base_url")
+    cred_id = body.api_credential_id
+    if cred_id is None and cfg is not None:
+        cred_id = cfg.api_credential_id
+    token = ""
+    if cfg is not None and cfg.api_token:
+        token = cfg.api_token or ""
+    if cred_id is not None:
+        cred = db.query(Credential).filter(Credential.id == cred_id, Credential.credential_type == CredentialType.API_KEY).first()
         if cred and getattr(cred, "api_secret", None):
             token = cred.api_secret or token
     if not token:
-        raise HTTPException(status_code=400, detail="请先选择 API 凭证")
+        raise HTTPException(status_code=400, detail="请先选择 API 凭证或在请求中提供 api_credential_id")
     try:
-        raw_aggs = _fetch_netbox_aggregates(cfg.base_url, token)
-        raw_prefixes = _fetch_netbox_prefixes(cfg.base_url, token)
+        raw_aggs = _fetch_netbox_aggregates(base_url, token)
+        raw_prefixes = _fetch_netbox_prefixes(base_url, token)
     except Exception as e:
         logger.exception("NetBox 拉取失败")
         raise HTTPException(status_code=502, detail="NetBox 拉取失败: " + str(e))
@@ -645,6 +654,38 @@ def netbox_import(body: NetboxImportBody, db=Depends(get_db)):
             pref_created += 1
     db.commit()
     return NetboxImportResult(
+        aggregates_created=agg_created,
+        aggregates_updated=agg_updated,
+        prefixes_created=pref_created,
+        prefixes_updated=pref_updated,
+        message="导入完成",
+    )
+
+
+@router.post("/import/phpipam", response_model=PhpipamImportResult)
+def phpipam_import(body: PhpipamImportBody, db=Depends(get_db)):
+    """一次性从 phpIPAM 导入：请求体提供 API 根路径与凭证，不落库。"""
+    api_base = body.api_base_url.strip()
+    if not api_base:
+        raise HTTPException(status_code=400, detail="请填写 phpIPAM API 根路径（含 /api/应用名）")
+    cred = db.query(Credential).filter(
+        Credential.id == body.api_credential_id,
+        Credential.credential_type == CredentialType.API_KEY,
+    ).first()
+    if not cred or not getattr(cred, "api_secret", None):
+        raise HTTPException(status_code=400, detail="请选择有效的 API 凭证（API Key）")
+    token = cred.api_secret
+    try:
+        raw_items = fetch_phpipam_subnets(api_base, token)
+    except Exception as e:
+        logger.exception("phpIPAM 拉取失败")
+        raise HTTPException(status_code=502, detail="phpIPAM 拉取失败: " + str(e))
+    try:
+        agg_created, agg_updated, pref_created, pref_updated = apply_phpipam_subnets_to_db(db, raw_items)
+    except Exception as e:
+        logger.exception("phpIPAM 写入本地失败")
+        raise HTTPException(status_code=500, detail="phpIPAM 导入写入失败: " + str(e))
+    return PhpipamImportResult(
         aggregates_created=agg_created,
         aggregates_updated=agg_updated,
         prefixes_created=pref_created,

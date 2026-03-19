@@ -1,16 +1,21 @@
 /**
- * IP 管理 - 网络导入：NetBox 迁移 + DHCP 采集配置（WMI）（PRD-IP管理功能）
- * NetBox 可选用 API 凭证；DHCP WMI 可选用 Windows/域控凭证。
+ * IP 管理 - 网络地址导入：NetBox / phpIPAM + DHCP 采集配置（WMI）
+ * 布局与系统管理页一致：左侧 Tabs + page-header
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Form, Input, Button, Space, message, Switch, Table, Popconfirm, Row, Col, Select } from 'antd';
-import { CloudDownloadOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Card, Form, Input, Button, Space, message, Switch, Table, Popconfirm, Row, Col, Select, Tabs, Typography } from 'antd';
+import {
+  CloudDownloadOutlined,
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  DatabaseOutlined,
+  GlobalOutlined,
+  SettingOutlined,
+} from '@ant-design/icons';
 import request from '../../../utils/request';
 
-interface NetboxConfig {
-  base_url: string;
-  api_credential_id?: number | null;
-}
+const { Title } = Typography;
 
 interface CredentialOption {
   id: number;
@@ -30,9 +35,10 @@ interface DhcpWmiTargetRow {
 
 const IPManagementImport: React.FC = () => {
   const [netboxLoading, setNetboxLoading] = useState(false);
-  const [netboxConfig, setNetboxConfig] = useState<NetboxConfig>({ base_url: '' });
   const [importing, setImporting] = useState(false);
-  const [form] = Form.useForm();
+  const [netboxForm] = Form.useForm();
+  const [phpipamForm] = Form.useForm();
+  const [phpipamImporting, setPhpipamImporting] = useState(false);
 
   const [wmiTargets, setWmiTargets] = useState<DhcpWmiTargetRow[]>([]);
   const [wmiTargetsLoading, setWmiTargetsLoading] = useState(false);
@@ -49,14 +55,13 @@ const IPManagementImport: React.FC = () => {
       const res = await request.get('/config-module/import/netbox-config');
       const data = res.data?.data ?? res.data;
       const apiCredId = data?.api_credential_id ?? null;
-      setNetboxConfig({ base_url: data?.base_url ?? '', api_credential_id: apiCredId });
-      form.setFieldsValue({ base_url: data?.base_url ?? '', api_credential_id: apiCredId || undefined });
+      netboxForm.setFieldsValue({ base_url: data?.base_url ?? '', api_credential_id: apiCredId || undefined });
     } catch {
-      form.setFieldsValue({ base_url: '', api_credential_id: undefined });
+      netboxForm.setFieldsValue({ base_url: '', api_credential_id: undefined });
     } finally {
       setNetboxLoading(false);
     }
-  }, [form]);
+  }, [netboxForm]);
 
   const loadApiCredentials = useCallback(async () => {
     try {
@@ -82,7 +87,6 @@ const IPManagementImport: React.FC = () => {
     try {
       const res = await request.get('/config-module/dhcp/wmi-targets');
       const raw = res.data?.data ?? res.data;
-      // 后端返回 { data: 目标数组 }；兼容 { items: [] }
       const items = Array.isArray(raw) ? raw : (Array.isArray(raw?.items) ? raw.items : []);
       setWmiTargets(items);
     } catch {
@@ -104,7 +108,7 @@ const IPManagementImport: React.FC = () => {
   }, [loadApiCredentials, loadWindowsCredentials]);
 
   const saveNetboxConfig = async () => {
-    const values = await form.validateFields();
+    const values = await netboxForm.validateFields();
     try {
       await request.post('/config-module/import/netbox-config', {
         base_url: values.base_url?.trim(),
@@ -118,9 +122,14 @@ const IPManagementImport: React.FC = () => {
   };
 
   const runImport = async () => {
+    const values = await netboxForm.validateFields();
     setImporting(true);
     try {
-      const res = await request.post('/config-module/import/netbox', { strategy: 'merge' });
+      const res = await request.post('/config-module/import/netbox', {
+        strategy: 'merge',
+        base_url: values.base_url?.trim(),
+        api_credential_id: values.api_credential_id ?? null,
+      });
       const data = res.data?.data ?? res.data;
       message.success(
         `导入完成：Aggregates 新增 ${data?.aggregates_created ?? 0}、更新 ${data?.aggregates_updated ?? 0}；` +
@@ -130,6 +139,27 @@ const IPManagementImport: React.FC = () => {
       message.error(e?.response?.data?.detail || '导入失败');
     } finally {
       setImporting(false);
+    }
+  };
+
+  const runPhpipamImport = async () => {
+    const values = await phpipamForm.validateFields();
+    setPhpipamImporting(true);
+    try {
+      const res = await request.post('/config-module/import/phpipam', {
+        api_base_url: values.phpipam_api_base_url?.trim(),
+        api_credential_id: values.phpipam_api_credential_id,
+        strategy: 'merge',
+      });
+      const data = res.data?.data ?? res.data;
+      message.success(
+        `phpIPAM 导入完成：Aggregates 新增 ${data?.aggregates_created ?? 0}、更新 ${data?.aggregates_updated ?? 0}；` +
+        `Prefixes 新增 ${data?.prefixes_created ?? 0}、更新 ${data?.prefixes_updated ?? 0}`
+      );
+    } catch (e: any) {
+      message.error(e?.response?.data?.detail || 'phpIPAM 导入失败');
+    } finally {
+      setPhpipamImporting(false);
     }
   };
 
@@ -182,91 +212,168 @@ const IPManagementImport: React.FC = () => {
     }
   };
 
+  const tabItems = [
+    {
+      key: 'netbox',
+      label: (
+        <span>
+          <DatabaseOutlined />
+          NetBox
+        </span>
+      ),
+      children: (
+        <div>
+          <Title level={4}>
+            <DatabaseOutlined /> NetBox 导入
+          </Title>
+          <Card loading={netboxLoading}>
+            <Form form={netboxForm} layout="vertical" style={{ maxWidth: 560 }}>
+              <Form.Item name="base_url" label="NetBox 基础 URL" rules={[{ required: true, message: '请填写 NetBox 地址' }]}>
+                <Input placeholder="https://netbox.example.com" />
+              </Form.Item>
+              <Form.Item name="api_credential_id" label="API 凭证" rules={[{ required: true, message: '请选择 API 凭证' }]}>
+                <Select allowClear placeholder="请选择" options={apiCredentials.map(c => ({ value: c.id, label: c.name }))} />
+              </Form.Item>
+              <Form.Item>
+                <Space wrap>
+                  <Button onClick={saveNetboxConfig} loading={netboxLoading}>
+                    保存配置
+                  </Button>
+                  <Button type="primary" icon={<CloudDownloadOutlined />} onClick={runImport} loading={importing}>
+                    从 NetBox 导入 Aggregates 与 Prefixes
+                  </Button>
+                </Space>
+              </Form.Item>
+            </Form>
+          </Card>
+        </div>
+      ),
+    },
+    {
+      key: 'phpipam',
+      label: (
+        <span>
+          <GlobalOutlined />
+          phpIPAM
+        </span>
+      ),
+      children: (
+        <div>
+          <Title level={4}>
+            <GlobalOutlined /> phpIPAM 导入
+          </Title>
+          <Card>
+            <Form form={phpipamForm} layout="vertical" style={{ maxWidth: 560 }}>
+              <Form.Item
+                name="phpipam_api_base_url"
+                label="API 根路径"
+                rules={[{ required: true, message: '请填写含 /api/应用名 的根路径' }]}
+                extra="示例：https://phpipam.example.com/api/my_app"
+              >
+                <Input placeholder="https://phpipam.example.com/api/my_app" />
+              </Form.Item>
+              <Form.Item name="phpipam_api_credential_id" label="API 凭证" rules={[{ required: true, message: '请选择 API 凭证' }]}>
+                <Select allowClear placeholder="请选择" options={apiCredentials.map(c => ({ value: c.id, label: c.name }))} />
+              </Form.Item>
+              <Form.Item>
+                <Button type="primary" icon={<CloudDownloadOutlined />} onClick={runPhpipamImport} loading={phpipamImporting}>
+                  从 phpIPAM 导入 Aggregates 与 Prefixes
+                </Button>
+              </Form.Item>
+            </Form>
+          </Card>
+        </div>
+      ),
+    },
+    {
+      key: 'dhcp-wmi',
+      label: (
+        <span>
+          <SettingOutlined />
+          DHCP 采集
+        </span>
+      ),
+      children: (
+        <div>
+          <Title level={4}>
+            <SettingOutlined /> DHCP 采集配置（WMI / DCOM）
+          </Title>
+          <Card>
+            <Form form={wmiForm} layout="vertical" style={{ marginBottom: 16 }} onFinish={saveWmiTarget}>
+              <Row gutter={16}>
+                <Col xs={24} sm={12} md={10}>
+                  <Form.Item name="host" label="Windows DHCP 主机（IP 或主机名）" rules={[{ required: true, message: '必填' }]}>
+                    <Input placeholder="IP 或主机名" />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={12} md={10}>
+                  <Form.Item name="windows_credential_id" label="Windows 登录凭证" rules={[{ required: true, message: '请选择 Windows 登录凭证' }]}>
+                    <Select allowClear placeholder="请选择" options={windowsCredentials.map(c => ({ value: c.id, label: c.name }))} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={12} md={4}>
+                  <Form.Item name="enabled" label="启用" valuePropName="checked" initialValue={true}>
+                    <Switch />
+                  </Form.Item>
+                </Col>
+                <Col xs={24}>
+                  <Form.Item>
+                    <Space>
+                      <Button type="primary" htmlType="submit" loading={wmiSaveLoading} icon={<PlusOutlined />}>
+                        {editingWmiId != null ? '更新' : '添加'}
+                      </Button>
+                      {editingWmiId != null && (
+                        <Button onClick={() => { setEditingWmiId(null); wmiForm.resetFields(); }}>取消</Button>
+                      )}
+                    </Space>
+                  </Form.Item>
+                </Col>
+              </Row>
+            </Form>
+            <Table
+              rowKey="id"
+              loading={wmiTargetsLoading}
+              dataSource={wmiTargets}
+              size="small"
+              pagination={false}
+              scroll={{ x: 680 }}
+              columns={[
+                { title: '主机', dataIndex: 'host', ellipsis: true, width: 160 },
+                {
+                  title: 'Windows 凭证',
+                  dataIndex: 'windows_credential_id',
+                  width: 160,
+                  render: (id: number | null) => (id ? windowsCredentials.find(c => c.id === id)?.name ?? `#${id}` : '-'),
+                },
+                { title: '启用', dataIndex: 'enabled', width: 70, render: (v: boolean) => (v ? '是' : '否') },
+                {
+                  title: '操作',
+                  width: 120,
+                  fixed: 'right' as const,
+                  render: (_: unknown, row: DhcpWmiTargetRow) => (
+                    <Space>
+                      <Button type="link" size="small" icon={<EditOutlined />} onClick={() => editWmiTarget(row)}>编辑</Button>
+                      <Popconfirm title="确定删除该采集目标？" onConfirm={() => deleteWmiTarget(row.id)}>
+                        <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+                      </Popconfirm>
+                    </Space>
+                  ),
+                },
+              ]}
+            />
+          </Card>
+        </div>
+      ),
+    },
+  ];
+
   return (
-    <Card title="网络导入">
-      <Space direction="vertical" style={{ width: '100%' }} size="middle">
-        <Card title="NetBox 迁移" size="small" type="inner">
-          <Form form={form} layout="inline" style={{ marginBottom: 16 }}>
-            <Form.Item name="base_url" label="NetBox 基础 URL" rules={[{ required: true }]} style={{ minWidth: 280 }}>
-              <Input placeholder="https://netbox.example.com" />
-            </Form.Item>
-            <Form.Item name="api_credential_id" label="API 凭证" rules={[{ required: true, message: '请选择 API 凭证' }]} style={{ width: 200 }}>
-              <Select allowClear placeholder="请选择" options={apiCredentials.map(c => ({ value: c.id, label: c.name }))} />
-            </Form.Item>
-            <Form.Item>
-              <Button onClick={saveNetboxConfig} loading={netboxLoading}>保存配置</Button>
-            </Form.Item>
-          </Form>
-          <Button type="primary" icon={<CloudDownloadOutlined />} onClick={runImport} loading={importing}>
-            从 NetBox 导入 Aggregates 与 Prefixes
-          </Button>
-        </Card>
-        <Card title="DHCP 采集配置（WMI / DCOM）" size="small" type="inner">
-          <Form form={wmiForm} layout="vertical" style={{ marginBottom: 16 }} onFinish={saveWmiTarget}>
-            <Row gutter={16}>
-              <Col xs={24} sm={12} md={8} lg={6}>
-                <Form.Item name="host" label="Windows DHCP 主机（IP 或主机名）" rules={[{ required: true, message: '必填' }]}>
-                  <Input placeholder="IP 或主机名" />
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={12} md={8} lg={8}>
-                <Form.Item name="windows_credential_id" label="Windows 登录凭证" rules={[{ required: true, message: '请选择 Windows 登录凭证' }]}>
-                  <Select allowClear placeholder="请选择" options={windowsCredentials.map(c => ({ value: c.id, label: c.name }))} />
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={12} md={8} lg={4}>
-                <Form.Item name="enabled" label="启用" valuePropName="checked" initialValue={true}>
-                  <Switch />
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={12} md={8} lg={4}>
-                <Form.Item label=" " colon={false}>
-                  <Space>
-                    <Button type="primary" htmlType="submit" loading={wmiSaveLoading} icon={<PlusOutlined />}>
-                      {editingWmiId != null ? '更新' : '添加'}
-                    </Button>
-                    {editingWmiId != null && (
-                      <Button onClick={() => { setEditingWmiId(null); wmiForm.resetFields(); }}>取消</Button>
-                    )}
-                  </Space>
-                </Form.Item>
-              </Col>
-            </Row>
-          </Form>
-          <Table
-            rowKey="id"
-            loading={wmiTargetsLoading}
-            dataSource={wmiTargets}
-            size="small"
-            pagination={false}
-            scroll={{ x: 680 }}
-            columns={[
-              { title: '主机', dataIndex: 'host', ellipsis: true, width: 160 },
-              {
-                title: 'Windows 凭证',
-                dataIndex: 'windows_credential_id',
-                width: 160,
-                render: (id: number | null) => (id ? windowsCredentials.find(c => c.id === id)?.name ?? `#${id}` : '-'),
-              },
-              { title: '启用', dataIndex: 'enabled', width: 70, render: (v: boolean) => (v ? '是' : '否') },
-              {
-                title: '操作',
-                width: 120,
-                fixed: 'right' as const,
-                render: (_: unknown, row: DhcpWmiTargetRow) => (
-                  <Space>
-                    <Button type="link" size="small" icon={<EditOutlined />} onClick={() => editWmiTarget(row)}>编辑</Button>
-                    <Popconfirm title="确定删除该采集目标？" onConfirm={() => deleteWmiTarget(row.id)}>
-                      <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
-                    </Popconfirm>
-                  </Space>
-                ),
-              },
-            ]}
-          />
-        </Card>
-      </Space>
-    </Card>
+    <div className="ip-network-import">
+      <div className="page-header">
+        <h2>网络地址导入</h2>
+      </div>
+      <Tabs defaultActiveKey="netbox" tabPosition="left" style={{ minHeight: 'calc(100vh - 200px)' }} items={tabItems} />
+    </div>
   );
 };
 

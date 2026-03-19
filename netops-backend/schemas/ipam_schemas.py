@@ -64,9 +64,28 @@ class NetboxConfigBody(BaseModel):
 
 class NetboxImportBody(BaseModel):
     strategy: Optional[str] = "merge"  # merge | replace
+    # 可选：本次请求内覆盖库内配置，实现一次性导入（不传则仍读 netbox_import_config）
+    base_url: Optional[str] = None
+    api_credential_id: Optional[int] = None
 
 
 class NetboxImportResult(BaseModel):
+    aggregates_created: int = 0
+    aggregates_updated: int = 0
+    prefixes_created: int = 0
+    prefixes_updated: int = 0
+    message: str = ""
+
+
+# ---------- phpIPAM 一次性导入（请求体传参，不落库） ----------
+class PhpipamImportBody(BaseModel):
+    """phpIPAM API 根路径需含 /api/{应用名}，如 https://ipam.example.com/api/my_app"""
+    api_base_url: str
+    api_credential_id: int  # 凭证表 API_KEY，secret 作为 phpipam token
+    strategy: Optional[str] = "merge"  # 与 NetBox 字段对齐；当前仅合并语义
+
+
+class PhpipamImportResult(BaseModel):
     aggregates_created: int = 0
     aggregates_updated: int = 0
     prefixes_created: int = 0

@@ -61,3 +61,6 @@ boto3>=1.28.0
 # ??? discovery (ECS)
 alibabacloud_ecs20140526>=3.0.0
 alibabacloud_tea_openapi>=0.3.0
+
+# Test
+pytest>=7.4.0

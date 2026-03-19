@@ -115,14 +115,16 @@ body {
   margin: 0;
 }
 
-/* 系统管理、监控系统集成等左侧 Tab 页面样式 */
+/* 系统管理、监控系统集成、网络地址导入等左侧 Tab 页面样式 */
 .system-management .ant-tabs-nav,
-.monitoring-integration .ant-tabs-nav {
+.monitoring-integration .ant-tabs-nav,
+.ip-network-import .ant-tabs-nav {
   width: 200px;
 }
 
 .system-management .ant-tabs-content-holder,
-.monitoring-integration .ant-tabs-content-holder {
+.monitoring-integration .ant-tabs-content-holder,
+.ip-network-import .ant-tabs-content-holder {
   padding-left: 24px;
   border-left: 1px solid #f0f0f0;
 }
@@ -163,12 +165,14 @@ body {
 /* 响应式样式 */
 @media (max-width: 768px) {
   .system-management .ant-tabs-nav,
-  .monitoring-integration .ant-tabs-nav {
+  .monitoring-integration .ant-tabs-nav,
+  .ip-network-import .ant-tabs-nav {
     width: auto;
   }
   
   .system-management .ant-tabs-content-holder,
-  .monitoring-integration .ant-tabs-content-holder {
+  .monitoring-integration .ant-tabs-content-holder,
+  .ip-network-import .ant-tabs-content-holder {
     padding-left: 0;
     border-left: none;
   }
