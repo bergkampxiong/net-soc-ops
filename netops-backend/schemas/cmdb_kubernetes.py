@@ -33,7 +33,7 @@ class K8sClusterInDB(K8sClusterBase):
     updated_at: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class K8sCluster(K8sClusterInDB):
     pass
@@ -75,7 +75,7 @@ class K8sNodeInDB(K8sNodeBase):
     updated_at: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class K8sNode(K8sNodeInDB):
     pass

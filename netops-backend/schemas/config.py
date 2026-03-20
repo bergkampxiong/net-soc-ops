@@ -33,4 +33,4 @@ class ConfigFile(ConfigFileBase):
     versions: List[ConfigVersion] = []
 
     class Config:
-        orm_mode = True 
+        from_attributes = True 

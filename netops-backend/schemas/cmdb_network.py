@@ -33,7 +33,7 @@ class NetworkInterfaceInDB(NetworkInterfaceBase):
     updated_at: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class NetworkInterface(NetworkInterfaceInDB):
     pass
@@ -62,7 +62,7 @@ class NetworkDeviceInDB(NetworkDeviceBase):
     updated_at: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class NetworkDevice(NetworkDeviceInDB):
     interfaces: Optional[List[NetworkInterface]] = None 

@@ -20,7 +20,7 @@ class DeviceTypeInDB(DeviceTypeBase):
     updated_at: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class DeviceType(DeviceTypeInDB):
     pass
@@ -46,7 +46,7 @@ class VendorInDB(VendorBase):
     updated_at: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class Vendor(VendorInDB):
     pass
@@ -70,7 +70,7 @@ class LocationInDB(LocationBase):
     updated_at: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class Location(LocationInDB):
     pass
@@ -92,7 +92,7 @@ class DepartmentInDB(DepartmentBase):
     updated_at: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class Department(DepartmentInDB):
     pass
@@ -114,7 +114,7 @@ class AssetStatusInDB(AssetStatusBase):
     updated_at: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class AssetStatus(AssetStatusInDB):
     pass
@@ -128,4 +128,4 @@ class SystemType(BaseModel):
     updated_at: str
 
     class Config:
-        orm_mode = True 
+        from_attributes = True 

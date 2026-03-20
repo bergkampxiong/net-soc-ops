@@ -46,7 +46,7 @@ class JobResponse(JobBase):
     updated_by: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class JobExecutionBase(BaseModel):
     """作业执行基础模型"""
@@ -69,7 +69,7 @@ class JobExecutionResponse(JobExecutionBase):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class JobExecutionListItem(JobExecutionResponse):
@@ -77,7 +77,7 @@ class JobExecutionListItem(JobExecutionResponse):
     job_name: Optional[str] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class JobExecutionListResponse(BaseModel):

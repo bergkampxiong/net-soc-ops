@@ -33,7 +33,7 @@ class ServerInDB(ServerBase):
     updated_at: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class Server(ServerInDB):
     pass
@@ -67,7 +67,7 @@ class VirtualMachineInDB(VirtualMachineBase):
     updated_at: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class VirtualMachine(VirtualMachineInDB):
     pass

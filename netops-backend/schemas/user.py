@@ -42,7 +42,7 @@ class UserInDB(UserBase):
     is_2fa_verified: bool = False
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class UserResponse(UserInDB):
     """用户响应模型"""
@@ -58,4 +58,4 @@ class UserOut(UserBase):
     last_login: Optional[str]
     
     class Config:
-        orm_mode = True 
+        from_attributes = True 
